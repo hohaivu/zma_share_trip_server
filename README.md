@@ -4,13 +4,13 @@ Stateless proxy that exchanges Zalo Mini App tokens for user data via the Zalo O
 
 ## Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/authorize` | Validate access token, return user profile |
-| POST | `/api/user-info` | Get user profile from access token |
-| POST | `/api/phone-number` | Exchange phone token → phone number |
-| POST | `/api/location` | Exchange location token → GPS coords |
-| GET | `/health` | Server health check |
+| Method | Path                | Description                                |
+| ------ | ------------------- | ------------------------------------------ |
+| POST   | `/api/authorize`    | Validate access token, return user profile |
+| POST   | `/api/user-info`    | Get user profile from access token         |
+| POST   | `/api/phone-number` | Exchange phone token → phone number        |
+| POST   | `/api/location`     | Exchange location token → GPS coords       |
+| GET    | `/health`           | Server health check                        |
 
 ## Quick Start
 
@@ -25,12 +25,12 @@ Server starts at `http://localhost:3000`.
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ZALO_APP_ID` | ✅ | — | From [developers.zalo.me](https://developers.zalo.me) |
-| `ZALO_APP_SECRET` | ✅ | — | Secret key from app dashboard |
-| `PORT` | ❌ | `3000` | Server port |
-| `ALLOWED_ORIGINS` | ❌ | `*` | Comma-separated CORS origins |
+| Variable          | Required | Default | Description                                           |
+| ----------------- | -------- | ------- | ----------------------------------------------------- |
+| `ZALO_APP_ID`     | ✅       | —       | From [developers.zalo.me](https://developers.zalo.me) |
+| `ZALO_APP_SECRET` | ✅       | —       | Secret key from app dashboard                         |
+| `PORT`            | ❌       | `3000`  | Server port                                           |
+| `ALLOWED_ORIGINS` | ❌       | `*`     | Comma-separated CORS origins                          |
 
 ## Deploy to Render
 
