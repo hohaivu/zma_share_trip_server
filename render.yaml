@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: cung-tuyen-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: ZALO_APP_ID
+        sync: false
+      - key: ZALO_APP_SECRET
+        sync: false
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /health
