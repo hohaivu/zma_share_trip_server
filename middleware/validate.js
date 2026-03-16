@@ -8,11 +8,11 @@ function validate(...requiredFields) {
       if (!req.body[field]) {
         return res
           .status(400)
-          .json({ error: -1, message: `Missing required field: ${field}` });
+          .json({ error: -1, message: `Missing required field: ${field}` })
       }
     }
-    next();
-  };
+    next()
+  }
 }
 
-module.exports = validate;
+module.exports = validate
