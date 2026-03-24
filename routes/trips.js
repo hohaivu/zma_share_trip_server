@@ -3,92 +3,136 @@ const store = require('../store')
 
 const router = Router()
 
-router.post('/trips/routes', (req, res) => {
-  const { driverId, ...data } = req.body || {}
-  if (!driverId) {
-    return res.status(400).json({ message: 'driverId is required' })
+// ─── Trip Summary & Complete (Phase 2) ─────────────────────────────────────────
+// These operate on either a route or trip-plan, finding the accepted counterpart
+// via group offers or search requests.
+
+function findAcceptedForRoute(routeId) {
+  const route = store.getRoute(routeId)
+  if (!route) return null
+
+  // Check search requests for this route
+  const searchReqs = store.listSearchRequestsByRoute(routeId)
+  const acceptedSearch = searchReqs.find((r) => r.status === 'accepted')
+  if (acceptedSearch) {
+    const client = store.getUser(acceptedSearch.clientId)
+    const tp = store.getTripPlan(acceptedSearch.tripPlanId)
+    return {
+      type: 'search_request',
+      requestId: acceptedSearch.id,
+      matchedUser: client || null,
+      tripPlan: tp || null,
+      tripPrice: acceptedSearch.tripPrice,
+      status: acceptedSearch.status,
+    }
   }
 
-  const route = store.createRoute(driverId, data)
-  res.status(201).json(route)
-})
-
-router.post('/trips/demands', (req, res) => {
-  const { clientId, ...data } = req.body || {}
-  if (!clientId) {
-    return res.status(400).json({ message: 'clientId is required' })
+  // Check group offers for this route
+  const groupOffers = store.listGroupOffersByRoute(routeId)
+  const acceptedOffer = groupOffers.find((o) => o.status === 'accepted')
+  if (acceptedOffer) {
+    const client = store.getUser(acceptedOffer.clientId)
+    const tp = store.getTripPlan(acceptedOffer.tripPlanId)
+    return {
+      type: 'group_offer',
+      offerId: acceptedOffer.id,
+      matchedUser: client || null,
+      tripPlan: tp || null,
+      tripPrice: acceptedOffer.tripPrice,
+      status: acceptedOffer.status,
+    }
   }
 
-  const demand = store.createDemand(clientId, data)
-  res.status(201).json(demand)
-})
+  return null
+}
 
-router.get('/trips/routes', (req, res) => {
-  const { driverId } = req.query
-  if (!driverId) {
-    return res.status(400).json({ message: 'driverId query is required' })
+function findAcceptedForTripPlan(tripPlanId) {
+  const tp = store.getTripPlan(tripPlanId)
+  if (!tp) return null
+
+  // Check search requests where this trip plan is the source
+  const clientSearchReqs = store.listSearchRequestsByClient(tp.clientId)
+  const acceptedSearch = clientSearchReqs.find(
+    (r) => r.tripPlanId === tripPlanId && r.status === 'accepted',
+  )
+  if (acceptedSearch) {
+    const driver = store.getUser(acceptedSearch.driverId)
+    const route = store.getRoute(acceptedSearch.routeId)
+    return {
+      type: 'search_request',
+      requestId: acceptedSearch.id,
+      matchedUser: driver || null,
+      route: route || null,
+      tripPrice: acceptedSearch.tripPrice,
+      status: acceptedSearch.status,
+    }
   }
 
-  res.status(200).json(store.listRoutesByDriver(driverId))
-})
-
-router.get('/trips/demands', (req, res) => {
-  const { clientId } = req.query
-  if (!clientId) {
-    return res.status(400).json({ message: 'clientId query is required' })
+  // Check group offers for this client
+  const clientOffers = store.listGroupOffersByClient(tp.clientId)
+  const acceptedOffer = clientOffers.find(
+    (o) => o.tripPlanId === tripPlanId && o.status === 'accepted',
+  )
+  if (acceptedOffer) {
+    const driver = store.getUser(acceptedOffer.driverId)
+    const route = store.getRoute(acceptedOffer.routeId)
+    return {
+      type: 'group_offer',
+      offerId: acceptedOffer.id,
+      matchedUser: driver || null,
+      route: route || null,
+      tripPrice: acceptedOffer.tripPrice,
+      status: acceptedOffer.status,
+    }
   }
 
-  res.status(200).json(store.listDemandsByClient(clientId))
-})
+  return null
+}
 
-router.put('/trips/routes/:id', (req, res) => {
-  const route = store.updateRoute(req.params.id, req.body || {})
-  if (!route) {
-    return res.status(404).json({ message: 'Route not found' })
+// GET /api/trips/:id/summary
+router.get('/trips/:id/summary', (req, res) => {
+  const tripId = req.params.id
+  const route = store.getRoute(tripId)
+  const tripPlan = store.getTripPlan(tripId)
+
+  if (!route && !tripPlan) {
+    return res.status(404).json({ message: 'Trip not found' })
   }
 
-  res.status(200).json(route)
+  const entity = route || tripPlan
+  const counterpart = route
+    ? findAcceptedForRoute(tripId)
+    : findAcceptedForTripPlan(tripId)
+
+  res.status(200).json({
+    ...entity,
+    accepted: counterpart || null,
+  })
 })
 
-router.put('/trips/demands/:id', (req, res) => {
-  const demand = store.updateDemand(req.params.id, req.body || {})
-  if (!demand) {
-    return res.status(404).json({ message: 'Demand not found' })
+// POST /api/trips/:id/complete
+router.post('/trips/:id/complete', (req, res) => {
+  const tripId = req.params.id
+  const route = store.getRoute(tripId)
+  const tripPlan = store.getTripPlan(tripId)
+
+  if (!route && !tripPlan) {
+    return res.status(404).json({ message: 'Trip not found' })
   }
 
-  res.status(200).json(demand)
-})
-
-router.post('/trips/templates', (req, res) => {
-  const template = store.createTemplate(req.body || {})
-  res.status(201).json(template)
-})
-
-router.get('/trips/templates', (_req, res) => {
-  res.status(200).json(store.listTemplates())
-})
-
-router.delete('/trips/templates/:id', (req, res) => {
-  const deleted = store.deleteTemplate(req.params.id)
-  if (!deleted) {
-    return res.status(404).json({ message: 'Template not found' })
+  if (route) {
+    const updated = store.updateRoute(tripId, { status: 'completed' })
+    return res.status(200).json(updated)
   }
 
-  res.status(204).end()
+  const updated = store.updateTripPlan(tripId, { status: 'completed' })
+  res.status(200).json(updated)
 })
 
-router.post('/trips/templates/:id/create', (req, res) => {
-  const { driverId, carId } = req.body || {}
-  if (!driverId || !carId) {
-    return res.status(400).json({ message: 'driverId and carId are required' })
-  }
+// ─── Deprecated: templates and saved locations (kept inert) ────────────────────
 
-  const route = store.createRouteFromTemplate(req.params.id, driverId, carId)
-  if (!route) {
-    return res.status(404).json({ message: 'Template not found' })
-  }
-
-  res.status(201).json(route)
+router.get('/trips/saved-locations', (_req, res) => {
+  res.status(200).json(store.listSavedLocations())
 })
 
 router.post('/trips/saved-locations', (req, res) => {
@@ -100,60 +144,12 @@ router.post('/trips/saved-locations', (req, res) => {
   }
 })
 
-router.get('/trips/saved-locations', (_req, res) => {
-  res.status(200).json(store.listSavedLocations())
-})
-
 router.delete('/trips/saved-locations/:id', (req, res) => {
   const deleted = store.deleteSavedLocation(req.params.id)
   if (!deleted) {
     return res.status(404).json({ message: 'Saved location not found' })
   }
-
   res.status(204).end()
-})
-
-router.get('/trips/:id', (req, res) => {
-  const detail = store.getTripDetail(req.params.id)
-  if (!detail) {
-    return res.status(404).json({ message: 'Trip not found' })
-  }
-
-  res.status(200).json(detail)
-})
-
-router.post('/trips/:id/transition', (req, res) => {
-  const { status } = req.body || {}
-  if (!status) {
-    return res.status(400).json({ message: 'status is required' })
-  }
-
-  try {
-    const trip = store.transitionTripStatus(req.params.id, status)
-    if (!trip) {
-      return res.status(404).json({ message: 'Trip not found' })
-    }
-
-    return res.status(200).json(trip)
-  } catch (error) {
-    return res.status(400).json({ message: error.message })
-  }
-})
-
-router.get('/trips', (req, res) => {
-  const { userId, statusGroup } = req.query
-  if (!userId || !statusGroup) {
-    return res
-      .status(400)
-      .json({ message: 'userId and statusGroup query are required' })
-  }
-
-  try {
-    const trips = store.listTripsByStatusGroup(userId, statusGroup)
-    return res.status(200).json(trips)
-  } catch (error) {
-    return res.status(400).json({ message: error.message })
-  }
 })
 
 module.exports = router
