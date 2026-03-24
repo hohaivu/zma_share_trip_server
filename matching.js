@@ -1,6 +1,6 @@
 const store = require('./store')
 
-// ─── Geo helpers (retained for near-3 heuristic) ──────────────────────────────
+// ─── Geo helpers ───────────────────────────────────────────────────────────────
 
 const EARTH_RADIUS_KM = 6371
 
@@ -19,47 +19,185 @@ function haversineDistance(a, b) {
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h))
 }
 
-// Near-3 threshold: ward-pair distance within this km to be considered "near"
+/**
+ * Calculate the initial bearing (compass direction) from point a to point b.
+ * @returns Bearing in degrees (0–360).
+ */
+function computeBearing(a, b) {
+  const dLng = toRad(b.lng - a.lng)
+  const lat1 = toRad(a.lat)
+  const lat2 = toRad(b.lat)
+  const y = Math.sin(dLng) * Math.cos(lat2)
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI
+  return (bearing + 360) % 360
+}
+
+/**
+ * Calculate the absolute angular difference between two bearings.
+ * @returns Difference in degrees (0–180).
+ */
+function bearingDifference(a, b) {
+  const diff = Math.abs(a - b) % 360
+  return diff > 180 ? 360 - diff : diff
+}
+
+// ─── Thresholds ────────────────────────────────────────────────────────────────
+
+const MAX_BEARING_DIFF = 30 // degrees
+const MAX_PICKUP_KM = 5
+const MAX_DROPOFF_KM = 5
+
+// Near-3 threshold retained for tier classification heuristic
 const NEAR_3_MAX_WARD_DISTANCE_KM = 5
 
-// ─── Matching Logic ────────────────────────────────────────────────────────────
+// ─── Scoring weights ──────────────────────────────────────────────────────────
+
+const W_DIRECTION = 0.3
+const W_PICKUP = 0.25
+const W_DROPOFF = 0.25
+const W_TIME = 0.2
+
+// ─── Component score functions ────────────────────────────────────────────────
+
+function directionScore(routeBearing, planBearing) {
+  const diff = bearingDifference(routeBearing, planBearing)
+  // Linear: 0° diff → 1.0, 30° diff → 0.0
+  return Math.max(0, 1 - diff / MAX_BEARING_DIFF)
+}
+
+function proximityScore(distKm, maxKm) {
+  return Math.max(0, 1 - distKm / maxKm)
+}
+
+/**
+ * Time overlap score: 1.0 when departure is at block center, 0.0 at edges.
+ * route has a single departureTime; group/plan exposes departureBlockStart/End.
+ */
+function timeOverlapScore(departureTime, blockStart, blockEnd) {
+  const rTime = new Date(departureTime).getTime()
+  const dStart = new Date(blockStart).getTime()
+  const dEnd = new Date(blockEnd).getTime()
+  const blockDuration = dEnd - dStart
+  if (blockDuration <= 0) return rTime === dStart ? 1 : 0
+  const distToCenter = Math.abs(rTime - (dStart + blockDuration / 2))
+  return Math.max(0, 1 - distToCenter / (blockDuration / 2))
+}
+
+/**
+ * Estimate detour in minutes at 30km/h city speed.
+ */
+function estimateDetour(pickupDist, dropoffDist) {
+  return Math.round(((pickupDist + dropoffDist) / 30) * 60)
+}
+
+// ─── Hard Filters ─────────────────────────────────────────────────────────────
+
+/**
+ * Reject candidates that fail any hard constraint.
+ * route: { serviceDate, departureTime, origin, destination, driverId }
+ * planLike: { serviceDate, departureBlockStart, departureBlockEnd, pickup, dropoff }
+ * driver: { blockedUserIds } | null
+ * clientIds: string[] — all client IDs to check for bidirectional block
+ */
+function passesHardFilters(route, planLike, driver, clientIds) {
+  if (route.serviceDate !== planLike.serviceDate) return false
+
+  // Departure block overlap
+  const routeBlock = store.computeDepartureBlock(route.departureTime)
+  const blockOverlaps =
+    routeBlock.start < planLike.departureBlockEnd &&
+    planLike.departureBlockStart < routeBlock.end
+  if (!blockOverlaps) return false
+
+  // Bidirectional blocked-user check
+  if (driver) {
+    const ids = Array.isArray(clientIds) ? clientIds : []
+    for (const clientId of ids) {
+      const client = store.getUser(clientId)
+      if (
+        client &&
+        (driver.blockedUserIds.includes(clientId) ||
+          client.blockedUserIds.includes(driver.id))
+      ) {
+        return false
+      }
+    }
+  }
+
+  // Direction
+  const routeBearing = computeBearing(route.origin, route.destination)
+  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
+  if (bearingDifference(routeBearing, planBearing) > MAX_BEARING_DIFF)
+    return false
+
+  // Pickup proximity
+  if (haversineDistance(route.origin, planLike.pickup) > MAX_PICKUP_KM)
+    return false
+
+  // Dropoff proximity
+  if (haversineDistance(route.destination, planLike.dropoff) > MAX_DROPOFF_KM)
+    return false
+
+  return true
+}
+
+// ─── Score computation ────────────────────────────────────────────────────────
+
+/**
+ * Compute scoring fields for a route vs planLike pair.
+ * Returns { matchScore, pickupFit, dropoffFit, timeFit, detourEstimate }.
+ */
+function computeMatchScore(route, planLike) {
+  const pickupDist = haversineDistance(route.origin, planLike.pickup)
+  const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
+  const routeBearing = computeBearing(route.origin, route.destination)
+  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
+
+  const dir = directionScore(routeBearing, planBearing)
+  const pickup = proximityScore(pickupDist, MAX_PICKUP_KM)
+  const dropoff = proximityScore(dropoffDist, MAX_DROPOFF_KM)
+  const time = timeOverlapScore(
+    route.departureTime,
+    planLike.departureBlockStart,
+    planLike.departureBlockEnd,
+  )
+  const detour = estimateDetour(pickupDist, dropoffDist)
+
+  const matchScore = Math.round(
+    (dir * W_DIRECTION +
+      pickup * W_PICKUP +
+      dropoff * W_DROPOFF +
+      time * W_TIME) *
+      100,
+  )
+
+  return { matchScore, pickupFit: pickup, dropoffFit: dropoff, timeFit: time, detourEstimate: detour }
+}
+
+// ─── Tier classification ──────────────────────────────────────────────────────
 
 /**
  * Classify a demand group against a route as exact_3 or near_3.
- * exact_3: same service date + same pickup ward + same dropoff ward + overlapping departure block
- * near_3: same service date + nearby wards (within threshold) + overlapping departure block
+ * Uses actual pickup/dropoff coordinates from the group.
  * Returns null if not eligible.
  */
 function classifyMatch(route, group) {
-  // Must share service date
   if (route.serviceDate !== group.serviceDate) return null
 
-  // Check departure block overlap
   const routeBlock = store.computeDepartureBlock(route.departureTime)
   const blockOverlaps =
     routeBlock.start < group.departureBlockEnd &&
     group.departureBlockStart < routeBlock.end
   if (!blockOverlaps) return null
 
-  // Exact-3: normalized ward match
-  // We compare route origin/destination wards vs group pickup/dropoff wards.
-  // For demo, we check using a simple ward-proximity heuristic since routes
-  // don't have explicit ward IDs — we use geo proximity as a stand-in.
+  const pickupDist = haversineDistance(route.origin, group.pickup)
+  const dropoffDist = haversineDistance(route.destination, group.dropoff)
 
-  // If we had ward IDs on routes, we'd do:
-  //   route.pickupWardId === group.pickupWardId && route.dropoffWardId === group.dropoffWardId
-  // For the demo, use geo-distance from route endpoints to determine ward match:
-  const pickupDist = haversineDistance(route.origin, { lat: 10.7769, lng: 106.7009 }) // representative ward center
-  const dropoffDist = haversineDistance(route.destination, { lat: 10.8544, lng: 106.7539 })
-
-  // Simple heuristic: very close = exact_3, somewhat close = near_3
-  const isExactPickup = pickupDist < 1.0 // within 1km = same ward
-  const isExactDropoff = dropoffDist < 1.0
-  const isNearPickup = pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM
-  const isNearDropoff = dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM
-
-  if (isExactPickup && isExactDropoff) return 'exact_3'
-  if (isNearPickup && isNearDropoff) return 'near_3'
+  if (pickupDist < 1.0 && dropoffDist < 1.0) return 'exact_3'
+  if (pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM && dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM) return 'near_3'
   return null
 }
 
@@ -73,21 +211,24 @@ function computeVisibilityMode(matchTier, memberCount) {
 }
 
 /**
- * Sort match results: exact_3 first, then near_3.
+ * Sort match results: exact_3 first, near_3 second; within tier sort by matchScore desc.
  */
-function sortByMatchTier(a, b) {
+function sortByTierThenScore(a, b) {
   if (a.matchTier === 'exact_3' && b.matchTier !== 'exact_3') return -1
   if (a.matchTier !== 'exact_3' && b.matchTier === 'exact_3') return 1
-  return 0
+  return b.matchScore - a.matchScore
 }
 
+// ─── Main matching functions ──────────────────────────────────────────────────
+
 /**
- * For a given route, compute all matched demand groups with tier/visibility.
+ * For a given route, compute all matched demand groups with tier/visibility/score.
  */
 function computeMatchedDemandGroups(routeId) {
   const route = store.getRoute(routeId)
   if (!route) return []
 
+  const driver = store.getUser(route.driverId)
   const groups = store.deriveDemandGroups()
   const results = []
 
@@ -95,7 +236,11 @@ function computeMatchedDemandGroups(routeId) {
     const matchTier = classifyMatch(route, group)
     if (!matchTier) continue
 
+    // Apply hard filters (includes blocked-user check)
+    if (!passesHardFilters(route, group, driver, group.clientIds)) continue
+
     const visibilityMode = computeVisibilityMode(matchTier, group.memberCount)
+    const scores = computeMatchScore(route, group)
 
     results.push({
       demandGroupId: group.id,
@@ -109,16 +254,17 @@ function computeMatchedDemandGroups(routeId) {
       departureBlockEnd: group.departureBlockEnd,
       memberCount: group.memberCount,
       totalPassengerCount: group.totalPassengerCount,
+      ...scores,
     })
   }
 
-  results.sort(sortByMatchTier)
+  results.sort(sortByTierThenScore)
 
   return results
 }
 
 /**
- * For a search_only trip plan, find eligible routes.
+ * For a search_only trip plan, find eligible routes with scores.
  */
 function computeMatchingRoutes(tripPlanId) {
   const tp = store.getTripPlan(tripPlanId)
@@ -132,26 +278,21 @@ function computeMatchingRoutes(tripPlanId) {
 
   for (const route of allRoutes) {
     if (route.status !== 'published') continue
-    if (route.serviceDate !== tp.serviceDate) continue
 
-    // Check departure block overlap
-    const routeBlock = store.computeDepartureBlock(route.departureTime)
-    const blockOverlaps =
-      routeBlock.start < tp.departureBlockEnd &&
-      tp.departureBlockStart < routeBlock.end
-    if (!blockOverlaps) continue
+    const driver = store.getUser(route.driverId)
 
-    // Proximity check for ward match (demo heuristic)
+    // Apply hard filters
+    if (!passesHardFilters(route, tp, driver, [tp.clientId])) continue
+
+    // Tier classification (same heuristic as demand groups)
     const pickupDist = haversineDistance(route.origin, tp.pickup)
     const dropoffDist = haversineDistance(route.destination, tp.dropoff)
-
     let matchTier = null
     if (pickupDist < 1.0 && dropoffDist < 1.0) matchTier = 'exact_3'
     else if (pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM && dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM) matchTier = 'near_3'
     if (!matchTier) continue
 
-    // Enrich with driver info
-    const driver = store.getUser(route.driverId)
+    const scores = computeMatchScore(route, tp)
 
     results.push({
       routeId: route.id,
@@ -172,16 +313,32 @@ function computeMatchingRoutes(tripPlanId) {
         : null,
       carId: route.carId,
       routeAvailable: store.isRouteAvailable(route.id),
+      ...scores,
     })
   }
 
-  results.sort(sortByMatchTier)
+  results.sort(sortByTierThenScore)
 
   return results
 }
 
 module.exports = {
+  // Geo helpers (exported for tests)
   haversineDistance,
+  computeBearing,
+  bearingDifference,
+  // Scoring helpers (exported for tests)
+  directionScore,
+  proximityScore,
+  timeOverlapScore,
+  estimateDetour,
+  passesHardFilters,
+  computeMatchScore,
+  // Thresholds (exported for tests)
+  MAX_BEARING_DIFF,
+  MAX_PICKUP_KM,
+  MAX_DROPOFF_KM,
+  // Existing exports
   computeVisibilityMode,
   computeMatchedDemandGroups,
   computeMatchingRoutes,

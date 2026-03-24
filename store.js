@@ -450,12 +450,18 @@ function deriveDemandGroups() {
         memberCount: 0,
         totalPassengerCount: 0,
         memberTripPlanIds: [],
+        // Representative geo coords from first member (used by scoring engine)
+        pickup: tp.pickup,
+        dropoff: tp.dropoff,
+        // All client IDs in this group (needed for blocked-user filtering)
+        clientIds: [],
       })
     }
     const group = grouped.get(key)
     group.memberCount += 1
     group.totalPassengerCount += tp.passengerCount
     group.memberTripPlanIds.push(tp.id)
+    group.clientIds.push(tp.clientId)
   }
 
   return [...grouped.values()]
