@@ -149,7 +149,7 @@ describe('computeMatchScore', () => {
   it('returns matchScore < 50 for a marginal match (far pickup)', () => {
     const marginalPlan = {
       ...BASE_PLAN,
-      pickup: { lat: 10.810, lng: 106.680, label: 'Xa' }, // ~4.5km away
+      pickup: { lat: 10.81, lng: 106.68, label: 'Xa' }, // ~4.5km away
     }
     const { matchScore } = matching.computeMatchScore(BASE_ROUTE, marginalPlan)
     assert.ok(matchScore < 75, `Expected < 75, got ${matchScore}`)
@@ -160,8 +160,14 @@ describe('computeMatchScore', () => {
       BASE_ROUTE,
       BASE_PLAN,
     )
-    assert.ok(pickupFit >= 0 && pickupFit <= 1, `pickupFit out of range: ${pickupFit}`)
-    assert.ok(dropoffFit >= 0 && dropoffFit <= 1, `dropoffFit out of range: ${dropoffFit}`)
+    assert.ok(
+      pickupFit >= 0 && pickupFit <= 1,
+      `pickupFit out of range: ${pickupFit}`,
+    )
+    assert.ok(
+      dropoffFit >= 0 && dropoffFit <= 1,
+      `dropoffFit out of range: ${dropoffFit}`,
+    )
     assert.ok(timeFit >= 0 && timeFit <= 1, `timeFit out of range: ${timeFit}`)
   })
 

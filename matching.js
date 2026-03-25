@@ -174,7 +174,13 @@ function computeMatchScore(route, planLike) {
       100,
   )
 
-  return { matchScore, pickupFit: pickup, dropoffFit: dropoff, timeFit: time, detourEstimate: detour }
+  return {
+    matchScore,
+    pickupFit: pickup,
+    dropoffFit: dropoff,
+    timeFit: time,
+    detourEstimate: detour,
+  }
 }
 
 // ─── Tier classification ──────────────────────────────────────────────────────
@@ -197,7 +203,11 @@ function classifyMatch(route, group) {
   const dropoffDist = haversineDistance(route.destination, group.dropoff)
 
   if (pickupDist < 1.0 && dropoffDist < 1.0) return 'exact_3'
-  if (pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM && dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM) return 'near_3'
+  if (
+    pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM &&
+    dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM
+  )
+    return 'near_3'
   return null
 }
 
@@ -206,7 +216,8 @@ function classifyMatch(route, group) {
  */
 function computeVisibilityMode(matchTier, memberCount) {
   if (matchTier === 'exact_3' && memberCount === 1) return 'single_client_card'
-  if (matchTier === 'exact_3' && memberCount > 1) return 'group_with_client_list'
+  if (matchTier === 'exact_3' && memberCount > 1)
+    return 'group_with_client_list'
   return 'group_summary_only'
 }
 
@@ -270,7 +281,9 @@ function computeMatchingRoutes(tripPlanId) {
   const tp = store.getTripPlan(tripPlanId)
   if (!tp) return null
   if (tp.publishMode !== 'search_only') {
-    throw new Error('Only search_only trip plans can search for matching routes')
+    throw new Error(
+      'Only search_only trip plans can search for matching routes',
+    )
   }
 
   const allRoutes = store.listAllRoutes()
@@ -289,7 +302,11 @@ function computeMatchingRoutes(tripPlanId) {
     const dropoffDist = haversineDistance(route.destination, tp.dropoff)
     let matchTier = null
     if (pickupDist < 1.0 && dropoffDist < 1.0) matchTier = 'exact_3'
-    else if (pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM && dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM) matchTier = 'near_3'
+    else if (
+      pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM &&
+      dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM
+    )
+      matchTier = 'near_3'
     if (!matchTier) continue
 
     const scores = computeMatchScore(route, tp)

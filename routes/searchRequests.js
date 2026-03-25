@@ -13,7 +13,12 @@ router.post('/search-requests', (req, res) => {
   }
 
   try {
-    const result = store.createSearchRequest(clientId, tripPlanId, routeId, note)
+    const result = store.createSearchRequest(
+      clientId,
+      tripPlanId,
+      routeId,
+      note,
+    )
     res.status(201).json(result)
   } catch (error) {
     res.status(400).json({ message: error.message })

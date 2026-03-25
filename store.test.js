@@ -122,9 +122,9 @@ describe('first-accept-wins', () => {
     // Check siblings are closed
     for (const offer of result.offers) {
       if (offer.id === winnerId) continue
-      const sibling = store.listGroupOffersByClient(offer.clientId).find(
-        (o) => o.id === offer.id,
-      )
+      const sibling = store
+        .listGroupOffersByClient(offer.clientId)
+        .find((o) => o.id === offer.id)
       assert.equal(sibling.status, 'closed', 'Sibling should be closed')
     }
   })
@@ -184,11 +184,7 @@ describe('search request isolation', () => {
   it('rejects search request for grouped trip plan', () => {
     assert.throws(
       () =>
-        store.createSearchRequest(
-          'client-001',
-          'tripPlan-001',
-          'route-001',
-        ),
+        store.createSearchRequest('client-001', 'tripPlan-001', 'route-001'),
       /search_only/,
       'Grouped trip plan should not create search requests',
     )

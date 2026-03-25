@@ -296,13 +296,19 @@ function setUserMode(userId, mode) {
   user.preferredMode = mode
   user.modeSelectedAt = new Date().toISOString()
   users.set(userId, user)
-  return { preferredMode: user.preferredMode, modeSelectedAt: user.modeSelectedAt }
+  return {
+    preferredMode: user.preferredMode,
+    modeSelectedAt: user.modeSelectedAt,
+  }
 }
 
 function getUserMode(userId) {
   const user = users.get(userId)
   if (!user) return null
-  return { preferredMode: user.preferredMode || null, modeSelectedAt: user.modeSelectedAt || null }
+  return {
+    preferredMode: user.preferredMode || null,
+    modeSelectedAt: user.modeSelectedAt || null,
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -554,7 +560,9 @@ function acceptGroupOffer(offerId) {
     throw new Error(`Cannot accept offer in status: ${offer.status}`)
   }
   if (!isRouteAvailable(offer.routeId)) {
-    throw new Error('Route is no longer available — another client was accepted first')
+    throw new Error(
+      'Route is no longer available — another client was accepted first',
+    )
   }
 
   // Mark this offer accepted
@@ -687,7 +695,9 @@ function acceptSearchRequest(requestId) {
     throw new Error(`Cannot accept search request in status: ${sreq.status}`)
   }
   if (!isRouteAvailable(sreq.routeId)) {
-    throw new Error('Route is no longer available — another client was accepted first')
+    throw new Error(
+      'Route is no longer available — another client was accepted first',
+    )
   }
 
   sreq.status = 'accepted'
@@ -703,7 +713,11 @@ function acceptSearchRequest(requestId) {
 
   // Close conflicting pending search requests for this route (except the winner)
   for (const req of searchRequests.values()) {
-    if (req.routeId === sreq.routeId && req.id !== requestId && req.status === 'pending') {
+    if (
+      req.routeId === sreq.routeId &&
+      req.id !== requestId &&
+      req.status === 'pending'
+    ) {
       req.status = 'closed'
       searchRequests.set(req.id, req)
     }

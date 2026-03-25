@@ -47,7 +47,10 @@ function request(server, method, path, body) {
       res.on('data', (chunk) => (data += chunk))
       res.on('end', () => {
         try {
-          resolve({ status: res.statusCode, body: data ? JSON.parse(data) : null })
+          resolve({
+            status: res.statusCode,
+            body: data ? JSON.parse(data) : null,
+          })
         } catch {
           resolve({ status: res.statusCode, body: data })
         }
@@ -80,7 +83,7 @@ describe('POST /api/trip-plans', () => {
   it('creates a trip plan', async () => {
     const res = await request(server, 'POST', '/api/trip-plans', {
       clientId: 'client-001',
-      pickup: { lat: 10.77, lng: 106.70, label: 'Q1' },
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-test',
       dropoffWardId: 'ward-test2',
@@ -107,7 +110,7 @@ describe('POST /api/routes', () => {
     const res = await request(server, 'POST', '/api/routes', {
       driverId: 'driver-001',
       carId: 'car-001',
-      origin: { lat: 10.77, lng: 106.70, label: 'Q1' },
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       serviceDate: '2030-04-01',
       departureTime: '2030-04-01T07:00:00.000Z',
@@ -121,13 +124,21 @@ describe('POST /api/routes', () => {
 
 describe('GET /api/routes/:id/matched-demand-groups', () => {
   it('returns matched demand groups for a route', async () => {
-    const res = await request(server, 'GET', '/api/routes/route-001/matched-demand-groups')
+    const res = await request(
+      server,
+      'GET',
+      '/api/routes/route-001/matched-demand-groups',
+    )
     assert.equal(res.status, 200)
     assert.ok(Array.isArray(res.body))
   })
 
   it('returns 404 for unknown route', async () => {
-    const res = await request(server, 'GET', '/api/routes/route-999/matched-demand-groups')
+    const res = await request(
+      server,
+      'GET',
+      '/api/routes/route-999/matched-demand-groups',
+    )
     assert.equal(res.status, 404)
   })
 })
@@ -138,7 +149,7 @@ describe('POST /api/search-requests', () => {
     const routeRes = await request(server, 'POST', '/api/routes', {
       driverId: 'driver-001',
       carId: 'car-001',
-      origin: { lat: 10.77, lng: 106.70, label: 'Q1' },
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       serviceDate: '2030-04-02',
       departureTime: '2030-04-02T07:00:00.000Z',
@@ -148,7 +159,7 @@ describe('POST /api/search-requests', () => {
     // Create a search_only trip plan
     const tpRes = await request(server, 'POST', '/api/trip-plans', {
       clientId: 'client-001',
-      pickup: { lat: 10.77, lng: 106.70, label: 'Q1' },
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-test',
       dropoffWardId: 'ward-test2',
@@ -183,14 +194,21 @@ describe('POST /api/search-requests', () => {
 
 describe('preserved endpoints', () => {
   it('POST /api/authorize returns 200', async () => {
-    const res = await request(server, 'POST', '/api/authorize', { code: 'test' })
+    const res = await request(server, 'POST', '/api/authorize', {
+      code: 'test',
+    })
     // authorize route makes an external call, so it should return 500 or similar
     // in test — we just verify the endpoint exists and doesn't 404
-    assert.ok([200, 400, 401, 500].includes(res.status), 'Endpoint should exist')
+    assert.ok(
+      [200, 400, 401, 500].includes(res.status),
+      'Endpoint should exist',
+    )
   })
 
   it('POST /api/user-info returns response', async () => {
-    const res = await request(server, 'POST', '/api/user-info', { accessToken: 'test' })
+    const res = await request(server, 'POST', '/api/user-info', {
+      accessToken: 'test',
+    })
     assert.ok([200, 400, 401, 500].includes(res.status))
   })
 

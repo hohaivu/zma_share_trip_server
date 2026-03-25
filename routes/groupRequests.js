@@ -13,7 +13,12 @@ router.post('/group-requests', (req, res) => {
   }
 
   try {
-    const result = store.createGroupRequest(driverId, routeId, demandGroupId, note)
+    const result = store.createGroupRequest(
+      driverId,
+      routeId,
+      demandGroupId,
+      note,
+    )
     res.status(201).json(result)
   } catch (error) {
     res.status(400).json({ message: error.message })
