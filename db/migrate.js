@@ -4,16 +4,23 @@ const { initPool, closePool } = require('./connection')
 
 async function migrate() {
   const pool = initPool()
-
-  const migrationPath = path.join(__dirname, 'migrations', '01_init.sql')
-  const sql = fs.readFileSync(migrationPath, 'utf8')
+  const migrationsDir = path.join(__dirname, 'migrations')
+  const migrationFiles = fs
+    .readdirSync(migrationsDir)
+    .filter((file) => file.endsWith('.sql'))
+    .sort()
 
   console.log('Running schema migration...')
 
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    await client.query(sql)
+    for (const migrationFile of migrationFiles) {
+      const migrationPath = path.join(migrationsDir, migrationFile)
+      const sql = fs.readFileSync(migrationPath, 'utf8')
+      console.log(`Applying migration: ${migrationFile}`)
+      await client.query(sql)
+    }
     await client.query('COMMIT')
     console.log('Migration completed successfully.')
   } catch (err) {
