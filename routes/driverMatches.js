@@ -4,7 +4,7 @@ const store = require('../store')
 
 const router = Router()
 
-// GET /api/routes/:id/matched-demand-groups (Task 4.3)
+// GET /api/driver/routes/:id/matched-demand-groups
 router.get('/routes/:id/matched-demand-groups', async (req, res) => {
   try {
     const route = await store.getRoute(req.params.id)
@@ -19,20 +19,7 @@ router.get('/routes/:id/matched-demand-groups', async (req, res) => {
   }
 })
 
-// GET /api/trip-plans/:id/matching-routes (Task 4.5)
-router.get('/trip-plans/:id/matching-routes', async (req, res) => {
-  try {
-    const results = await matching.computeMatchingRoutes(req.params.id)
-    if (results === null) {
-      return res.status(404).json({ message: 'Trip plan not found' })
-    }
-    res.status(200).json(results)
-  } catch (error) {
-    res.status(400).json({ message: error.message })
-  }
-})
-
-// GET /api/routes/:id/inbound-search-requests (Task 4.6)
+// GET /api/driver/routes/:id/inbound-search-requests
 router.get('/routes/:id/inbound-search-requests', async (req, res) => {
   try {
     const route = await store.getRoute(req.params.id)

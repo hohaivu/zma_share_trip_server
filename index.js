@@ -16,13 +16,15 @@ const driverRoutesRoute = require('./routes/driverRoutes')
 const tripPlansRoute = require('./routes/tripPlans')
 const usersRoute = require('./routes/users')
 const demandGroupsRoute = require('./routes/demandGroups')
-const matchesRoute = require('./routes/matches')
+const driverMatchesRoute = require('./routes/driverMatches')
+const clientMatchesRoute = require('./routes/clientMatches')
 const tripsRoute = require('./routes/trips')
 
 // --- Phase 2 request orchestration routes ---
 const groupRequestsRoute = require('./routes/groupRequests')
 const groupOffersRoute = require('./routes/groupOffers')
-const searchRequestsRoute = require('./routes/searchRequests')
+const driverSearchRequestsRoute = require('./routes/driverSearchRequests')
+const clientSearchRequestsRoute = require('./routes/clientSearchRequests')
 
 const app = express()
 const PORT = process.env.PORT || 3010
@@ -42,22 +44,22 @@ app.use('/api', authorizeRoute)
 app.use('/api', userInfoRoute)
 app.use('/api', phoneNumberRoute)
 app.use('/api', locationRoute)
-
-// --- Preserved routes ---
-app.use('/api', carsRoute)
-
-// --- Phase 2 resource routes ---
-app.use('/api', driverRoutesRoute)
-app.use('/api', tripPlansRoute)
-app.use('/api', usersRoute)
-app.use('/api', demandGroupsRoute)
-app.use('/api', matchesRoute)
 app.use('/api', tripsRoute)
+app.use('/api', usersRoute)
 
-// --- Phase 2 request orchestration routes ---
-app.use('/api', groupRequestsRoute)
-app.use('/api', groupOffersRoute)
-app.use('/api', searchRequestsRoute)
+// --- Driver Namespace ---
+app.use('/api/driver', carsRoute)
+app.use('/api/driver', driverRoutesRoute)
+app.use('/api/driver', groupRequestsRoute)
+app.use('/api/driver', demandGroupsRoute)
+app.use('/api/driver', driverMatchesRoute)
+app.use('/api/driver', driverSearchRequestsRoute)
+
+// --- Client Namespace ---
+app.use('/api/client', tripPlansRoute)
+app.use('/api/client', groupOffersRoute)
+app.use('/api/client', clientMatchesRoute)
+app.use('/api/client', clientSearchRequestsRoute)
 
 // --- Health check ---
 app.get('/health', (_req, res) => {

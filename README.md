@@ -4,13 +4,23 @@ Stateless proxy that exchanges Zalo Mini App tokens for user data via the Zalo O
 
 ## Endpoints
 
-| Method | Path                | Description                                |
-| ------ | ------------------- | ------------------------------------------ |
-| POST   | `/api/authorize`    | Validate access token, return user profile |
-| POST   | `/api/user-info`    | Get user profile from access token         |
-| POST   | `/api/phone-number` | Exchange phone token → phone number        |
-| POST   | `/api/location`     | Exchange location token → GPS coords       |
-| GET    | `/health`           | Server health check                        |
+## Endpoints
+
+| Method | Path | Description |
+| ------ | -----| ----------- |
+| GET | `/health` | Server health check |
+| POST | `/api/authorize` | Validate access token, return user profile |
+| POST | `/api/user-info` | Get user profile from access token |
+| POST | `/api/phone-number` | Exchange phone token → phone number |
+| POST | `/api/location` | Exchange location token → GPS coords |
+
+### App Ecosystem Namespaces
+
+The trip matching capabilities are split across three distinct API namespaces based on resource ownership:
+
+- **Shared (`/api/`)**: Base entities and lifecycle methods accessible by anyone (Users, Trips summary/complete).
+- **Driver (`/api/driver/`)**: Driver-owned operations (Cars, Routes, inbound Demand Groups, handling Client Search Requests, sending Group Requests).
+- **Client (`/api/client/`)**: Client-owned operations (Trip Plans, viewing matching Routes, handling inbound Group Offers, sending Client Search Requests).
 
 ## Quick Start
 

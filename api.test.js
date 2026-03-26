@@ -53,9 +53,9 @@ after(async () => {
 
 // ─── 6.7 Route-handler tests ──────────────────────────────────────────────────
 
-describe('POST /api/trip-plans', () => {
+describe('POST /api/client/trip-plans', () => {
   it('creates a trip plan', async () => {
-    const res = await request(server, 'POST', '/api/trip-plans', {
+    const res = await request(server, 'POST', '/api/client/trip-plans', {
       clientId: 'client-001',
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -74,14 +74,14 @@ describe('POST /api/trip-plans', () => {
   })
 
   it('rejects without clientId', async () => {
-    const res = await request(server, 'POST', '/api/trip-plans', {})
+    const res = await request(server, 'POST', '/api/client/trip-plans', {})
     assert.equal(res.status, 400)
   })
 })
 
-describe('POST /api/routes', () => {
+describe('POST /api/driver/routes', () => {
   it('creates a driver route', async () => {
-    const res = await request(server, 'POST', '/api/routes', {
+    const res = await request(server, 'POST', '/api/driver/routes', {
       driverId: 'driver-001',
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
@@ -96,12 +96,12 @@ describe('POST /api/routes', () => {
   })
 })
 
-describe('GET /api/routes/:id/matched-demand-groups', () => {
+describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
   it('returns matched demand groups for a route', async () => {
     const res = await request(
       server,
       'GET',
-      '/api/routes/route-001/matched-demand-groups',
+      '/api/driver/routes/route-001/matched-demand-groups',
     )
     assert.equal(res.status, 200)
     assert.ok(Array.isArray(res.body))
@@ -111,16 +111,16 @@ describe('GET /api/routes/:id/matched-demand-groups', () => {
     const res = await request(
       server,
       'GET',
-      '/api/routes/route-999/matched-demand-groups',
+      '/api/driver/routes/route-999/matched-demand-groups',
     )
     assert.equal(res.status, 404)
   })
 })
 
-describe('POST /api/search-requests', () => {
+describe('POST /api/client/search-requests', () => {
   it('creates a search request for search_only plan', async () => {
     // Create a fresh route so it's available
-    const routeRes = await request(server, 'POST', '/api/routes', {
+    const routeRes = await request(server, 'POST', '/api/driver/routes', {
       driverId: 'driver-001',
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
@@ -131,7 +131,7 @@ describe('POST /api/search-requests', () => {
     })
 
     // Create a search_only trip plan
-    const tpRes = await request(server, 'POST', '/api/trip-plans', {
+    const tpRes = await request(server, 'POST', '/api/client/trip-plans', {
       clientId: 'client-001',
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -144,7 +144,7 @@ describe('POST /api/search-requests', () => {
       publishMode: 'search_only',
     })
 
-    const res = await request(server, 'POST', '/api/search-requests', {
+    const res = await request(server, 'POST', '/api/client/search-requests', {
       clientId: 'client-001',
       tripPlanId: tpRes.body.id,
       routeId: routeRes.body.id,
@@ -154,7 +154,7 @@ describe('POST /api/search-requests', () => {
   })
 
   it('rejects for grouped trip plan', async () => {
-    const res = await request(server, 'POST', '/api/search-requests', {
+    const res = await request(server, 'POST', '/api/client/search-requests', {
       clientId: 'client-001',
       tripPlanId: 'tripPlan-001',
       routeId: 'route-001',
@@ -202,14 +202,14 @@ describe('preserved endpoints', () => {
     assert.ok([200, 400, 401, 500].includes(res.status))
   })
 
-  it('GET /api/cars?ownerId= works', async () => {
-    const res = await request(server, 'GET', '/api/cars?ownerId=driver-001')
+  it('GET /api/driver/cars?ownerId= works', async () => {
+    const res = await request(server, 'GET', '/api/driver/cars?ownerId=driver-001')
     assert.equal(res.status, 200)
     assert.ok(Array.isArray(res.body))
   })
 
-  it('POST /api/cars works', async () => {
-    const res = await request(server, 'POST', '/api/cars', {
+  it('POST /api/driver/cars works', async () => {
+    const res = await request(server, 'POST', '/api/driver/cars', {
       ownerId: 'driver-001',
       plateNumberFull: '51A-999.99',
       brand: 'Test',
