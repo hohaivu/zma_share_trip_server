@@ -97,7 +97,7 @@ async function findOrCreateUser(zaloId, displayName, avatarUrl) {
     `
     INSERT INTO users (id, zalo_id, display_name, avatar_url, role, created_at)
     VALUES ($1, $2, $3, $4, $5, NOW())
-    ON CONFLICT (zalo_id) DO UPDATE SET
+    ON CONFLICT (id) DO UPDATE SET
       display_name = EXCLUDED.display_name,
       avatar_url = EXCLUDED.avatar_url
     RETURNING *
