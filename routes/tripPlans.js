@@ -6,10 +6,13 @@ const router = Router()
 // POST /api/trip-plans — create a trip plan
 router.post('/trip-plans', async (req, res) => {
   try {
-    const { clientId, ...data } = req.body || {}
+    const { clientId, clientName, clientAvatar, ...data } = req.body || {}
     if (!clientId) {
       return res.status(400).json({ message: 'clientId is required' })
     }
+
+    // Ensure the client exists in the users table (upsert)
+    await store.findOrCreateUser(clientId, clientName, clientAvatar)
 
     const tripPlan = await store.createTripPlan(clientId, data)
     res.status(201).json(tripPlan)

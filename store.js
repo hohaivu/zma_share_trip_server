@@ -92,6 +92,21 @@ async function getUserMode(userId) {
   return toCamelCase(result.rows[0])
 }
 
+async function findOrCreateUser(zaloId, displayName, avatarUrl) {
+  const result = await query(
+    `
+    INSERT INTO users (id, zalo_id, display_name, avatar_url, role, created_at)
+    VALUES ($1, $2, $3, $4, $5, NOW())
+    ON CONFLICT (zalo_id) DO UPDATE SET
+      display_name = EXCLUDED.display_name,
+      avatar_url = EXCLUDED.avatar_url
+    RETURNING *
+  `,
+    [zaloId, zaloId, displayName || '', avatarUrl || '', 'client'],
+  )
+  return toCamelCase(result.rows[0])
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPERS — Car (unchanged)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -765,6 +780,7 @@ async function deleteSavedLocation(id) {
 module.exports = {
   // User
   getUser,
+  findOrCreateUser,
   setUserMode,
   getUserMode,
 

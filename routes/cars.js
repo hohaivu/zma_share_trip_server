@@ -12,7 +12,7 @@ function maskPlate(full) {
 
 router.post('/cars', async (req, res) => {
   try {
-    const { ownerId, ...data } = req.body || {}
+    const { ownerId, ownerName, ownerAvatar, ...data } = req.body || {}
     if (!ownerId) {
       return res.status(400).json({ message: 'ownerId is required' })
     }
@@ -20,6 +20,9 @@ router.post('/cars', async (req, res) => {
     if (!data.plateNumberFull) {
       return res.status(400).json({ message: 'plateNumberFull is required' })
     }
+
+    // Ensure the owner exists in the users table (upsert)
+    await store.findOrCreateUser(ownerId, ownerName, ownerAvatar)
 
     const car = await store.createCar(ownerId, {
       ...data,

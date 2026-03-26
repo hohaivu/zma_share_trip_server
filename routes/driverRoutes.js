@@ -6,10 +6,13 @@ const router = Router()
 // POST /api/routes — create a driver route
 router.post('/routes', async (req, res) => {
   try {
-    const { driverId, ...data } = req.body || {}
+    const { driverId, driverName, driverAvatar, ...data } = req.body || {}
     if (!driverId) {
       return res.status(400).json({ message: 'driverId is required' })
     }
+
+    // Ensure the driver exists in the users table (upsert)
+    await store.findOrCreateUser(driverId, driverName, driverAvatar)
 
     const route = await store.createRoute(driverId, data)
     res.status(201).json(route)
