@@ -102,7 +102,7 @@ function estimateDetour(pickupDist, dropoffDist) {
  * driver: { blockedUserIds } | null
  * clientIds: string[] — all client IDs to check for bidirectional block
  */
-function passesHardFilters(route, planLike, driver, clientIds) {
+async function passesHardFilters(route, planLike, driver, clientIds) {
   if (route.serviceDate !== planLike.serviceDate) return false
 
   // Departure block overlap
@@ -116,7 +116,7 @@ function passesHardFilters(route, planLike, driver, clientIds) {
   if (driver) {
     const ids = Array.isArray(clientIds) ? clientIds : []
     for (const clientId of ids) {
-      const client = store.getUser(clientId)
+      const client = await store.getUser(clientId)
       if (
         client &&
         (driver.blockedUserIds.includes(clientId) ||
@@ -186,8 +186,22 @@ function computeMatchScore(route, planLike) {
 // ─── Tier classification ──────────────────────────────────────────────────────
 
 /**
+ * Classify match tier from pickup/dropoff distances.
+ * Returns 'exact_3', 'near_3', or null.
+ */
+function classifyByDistance(pickupDist, dropoffDist) {
+  if (pickupDist < 1.0 && dropoffDist < 1.0) return 'exact_3'
+  if (
+    pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM &&
+    dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM
+  ) {
+    return 'near_3'
+  }
+  return null
+}
+
+/**
  * Classify a demand group against a route as exact_3 or near_3.
- * Uses actual pickup/dropoff coordinates from the group.
  * Returns null if not eligible.
  */
 function classifyMatch(route, group) {
@@ -199,16 +213,10 @@ function classifyMatch(route, group) {
     group.departureBlockStart < routeBlock.end
   if (!blockOverlaps) return null
 
-  const pickupDist = haversineDistance(route.origin, group.pickup)
-  const dropoffDist = haversineDistance(route.destination, group.dropoff)
-
-  if (pickupDist < 1.0 && dropoffDist < 1.0) return 'exact_3'
-  if (
-    pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM &&
-    dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM
+  return classifyByDistance(
+    haversineDistance(route.origin, group.pickup),
+    haversineDistance(route.destination, group.dropoff),
   )
-    return 'near_3'
-  return null
 }
 
 /**
@@ -235,12 +243,12 @@ function sortByTierThenScore(a, b) {
 /**
  * For a given route, compute all matched demand groups with tier/visibility/score.
  */
-function computeMatchedDemandGroups(routeId) {
-  const route = store.getRoute(routeId)
+async function computeMatchedDemandGroups(routeId) {
+  const route = await store.getRoute(routeId)
   if (!route) return []
 
-  const driver = store.getUser(route.driverId)
-  const groups = store.deriveDemandGroups()
+  const driver = await store.getUser(route.driverId)
+  const groups = await store.deriveDemandGroups()
   const results = []
 
   for (const group of groups) {
@@ -248,7 +256,13 @@ function computeMatchedDemandGroups(routeId) {
     if (!matchTier) continue
 
     // Apply hard filters (includes blocked-user check)
-    if (!passesHardFilters(route, group, driver, group.clientIds)) continue
+    const passed = await passesHardFilters(
+      route,
+      group,
+      driver,
+      group.clientIds,
+    )
+    if (!passed) continue
 
     const visibilityMode = computeVisibilityMode(matchTier, group.memberCount)
     const scores = computeMatchScore(route, group)
@@ -277,8 +291,8 @@ function computeMatchedDemandGroups(routeId) {
 /**
  * For a search_only trip plan, find eligible routes with scores.
  */
-function computeMatchingRoutes(tripPlanId) {
-  const tp = store.getTripPlan(tripPlanId)
+async function computeMatchingRoutes(tripPlanId) {
+  const tp = await store.getTripPlan(tripPlanId)
   if (!tp) return null
   if (tp.publishMode !== 'search_only') {
     throw new Error(
@@ -286,30 +300,26 @@ function computeMatchingRoutes(tripPlanId) {
     )
   }
 
-  const allRoutes = store.listAllRoutes()
+  const allRoutes = await store.listAllRoutes()
   const results = []
 
   for (const route of allRoutes) {
     if (route.status !== 'published') continue
 
-    const driver = store.getUser(route.driverId)
+    const driver = await store.getUser(route.driverId)
 
     // Apply hard filters
-    if (!passesHardFilters(route, tp, driver, [tp.clientId])) continue
+    const passed = await passesHardFilters(route, tp, driver, [tp.clientId])
+    if (!passed) continue
 
-    // Tier classification (same heuristic as demand groups)
+    // Tier classification (reuses shared helper)
     const pickupDist = haversineDistance(route.origin, tp.pickup)
     const dropoffDist = haversineDistance(route.destination, tp.dropoff)
-    let matchTier = null
-    if (pickupDist < 1.0 && dropoffDist < 1.0) matchTier = 'exact_3'
-    else if (
-      pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM &&
-      dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM
-    )
-      matchTier = 'near_3'
+    const matchTier = classifyByDistance(pickupDist, dropoffDist)
     if (!matchTier) continue
 
     const scores = computeMatchScore(route, tp)
+    const routeAvailable = await store.isRouteAvailable(route.id)
 
     results.push({
       routeId: route.id,
@@ -329,7 +339,7 @@ function computeMatchingRoutes(tripPlanId) {
           }
         : null,
       carId: route.carId,
-      routeAvailable: store.isRouteAvailable(route.id),
+      routeAvailable,
       ...scores,
     })
   }

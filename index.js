@@ -71,8 +71,28 @@ app.use((err, _req, res, _next) => {
 })
 
 // --- Startup ---
-app.listen(PORT, () => {
-  if (!process.env.ZALO_APP_ID) console.warn('⚠ ZALO_APP_ID is not set')
-  if (!process.env.ZALO_APP_SECRET) console.warn('⚠ ZALO_APP_SECRET is not set')
-  console.log(`✓ cung-tuyen-api listening on :${PORT}`)
-})
+const { checkConnection } = require('./db/connection')
+
+async function start() {
+  try {
+    console.log('Connecting to Postgres...')
+    await checkConnection()
+    console.log('✓ Postgres connected')
+  } catch (err) {
+    console.error('⨯ Failed to connect to Postgres:', err.message)
+    process.exit(1)
+  }
+
+  app.listen(PORT, () => {
+    if (!process.env.ZALO_APP_ID) console.warn('⚠ ZALO_APP_ID is not set')
+    if (!process.env.ZALO_APP_SECRET)
+      console.warn('⚠ ZALO_APP_SECRET is not set')
+    console.log(`✓ cung-tuyen-api listening on :${PORT}`)
+  })
+}
+
+if (require.main === module) {
+  start()
+}
+
+module.exports = app

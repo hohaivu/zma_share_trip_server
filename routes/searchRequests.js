@@ -4,7 +4,7 @@ const store = require('../store')
 const router = Router()
 
 // POST /api/search-requests — create search request
-router.post('/search-requests', (req, res) => {
+router.post('/search-requests', async (req, res) => {
   const { clientId, tripPlanId, routeId, note } = req.body || {}
   if (!clientId || !tripPlanId || !routeId) {
     return res
@@ -13,7 +13,7 @@ router.post('/search-requests', (req, res) => {
   }
 
   try {
-    const result = store.createSearchRequest(
+    const result = await store.createSearchRequest(
       clientId,
       tripPlanId,
       routeId,
@@ -27,26 +27,34 @@ router.post('/search-requests', (req, res) => {
 
 // GET /api/search-requests?driverId= — driver inbox
 // GET /api/search-requests?clientId= — client's sent requests
-router.get('/search-requests', (req, res) => {
-  const { driverId, clientId } = req.query
+router.get('/search-requests', async (req, res) => {
+  try {
+    const { driverId, clientId } = req.query
 
-  if (driverId) {
-    return res.status(200).json(store.listSearchRequestsByDriver(driverId))
+    if (driverId) {
+      return res
+        .status(200)
+        .json(await store.listSearchRequestsByDriver(driverId))
+    }
+
+    if (clientId) {
+      return res
+        .status(200)
+        .json(await store.listSearchRequestsByClient(clientId))
+    }
+
+    return res
+      .status(400)
+      .json({ message: 'driverId or clientId query is required' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
   }
-
-  if (clientId) {
-    return res.status(200).json(store.listSearchRequestsByClient(clientId))
-  }
-
-  return res
-    .status(400)
-    .json({ message: 'driverId or clientId query is required' })
 })
 
 // POST /api/search-requests/:id/accept
-router.post('/search-requests/:id/accept', (req, res) => {
+router.post('/search-requests/:id/accept', async (req, res) => {
   try {
-    const result = store.acceptSearchRequest(req.params.id)
+    const result = await store.acceptSearchRequest(req.params.id)
     res.status(200).json(result)
   } catch (error) {
     res.status(400).json({ message: error.message })
@@ -54,9 +62,9 @@ router.post('/search-requests/:id/accept', (req, res) => {
 })
 
 // POST /api/search-requests/:id/decline
-router.post('/search-requests/:id/decline', (req, res) => {
+router.post('/search-requests/:id/decline', async (req, res) => {
   try {
-    const result = store.declineSearchRequest(req.params.id)
+    const result = await store.declineSearchRequest(req.params.id)
     res.status(200).json(result)
   } catch (error) {
     res.status(400).json({ message: error.message })

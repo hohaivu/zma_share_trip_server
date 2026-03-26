@@ -15,21 +15,24 @@ Stateless proxy that exchanges Zalo Mini App tokens for user data via the Zalo O
 ## Quick Start
 
 ```bash
-cd server
-cp .env.example .env   # fill in ZALO_APP_ID, ZALO_APP_SECRET
+cd zma_share_trip_server
+cp .env.example .env   # fill in ZALO_APP_ID, ZALO_APP_SECRET, DATABASE_URL
 npm install
+npm run db:migrate     # initialize Postgres schema
+npm run db:seed        # insert demo data
 npm run dev
 ```
 
-Server starts at `http://localhost:3000`.
+Server starts at `http://localhost:3010`.
 
 ## Environment Variables
 
 | Variable          | Required | Default | Description                                           |
 | ----------------- | -------- | ------- | ----------------------------------------------------- |
+| `DATABASE_URL`    | ✅       | —       | Postgres connection string                            |
 | `ZALO_APP_ID`     | ✅       | —       | From [developers.zalo.me](https://developers.zalo.me) |
 | `ZALO_APP_SECRET` | ✅       | —       | Secret key from app dashboard                         |
-| `PORT`            | ❌       | `3000`  | Server port                                           |
+| `PORT`            | ❌       | `3010`  | Server port                                           |
 | `ALLOWED_ORIGINS` | ❌       | `*`     | Comma-separated CORS origins                          |
 
 ## Deploy to Render
@@ -37,7 +40,7 @@ Server starts at `http://localhost:3000`.
 1. Push to GitHub/GitLab
 2. Render Dashboard → **New** → **Blueprint**
 3. Connect repo → Render reads `render.yaml`
-4. Set `ZALO_APP_ID` and `ZALO_APP_SECRET` in dashboard
+4. Set `ZALO_APP_ID` and `ZALO_APP_SECRET` in dashboard (Postgres connects automatically via Blueprint)
 5. Deploy 🚀
 
 ## Test

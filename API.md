@@ -1,6 +1,6 @@
 # Cùng Tuyến — Phase 2 Server API
 
-> Express.js demo server with in-memory state. All data resets on restart.
+> Express.js demo server backed by Postgres. Data is durable across restarts. Requires a `DATABASE_URL` during startup. Run `npm run db:migrate` and `npm run db:seed` before starting the development server.
 
 **Base URL**: `http://localhost:3010/api`
 

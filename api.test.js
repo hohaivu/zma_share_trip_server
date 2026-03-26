@@ -1,35 +1,8 @@
 const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('node:http')
-const express = require('express')
-
-// Build a test app identical to index.js but without listening on a fixed port
-function createApp() {
-  const app = express()
-  app.use(express.json())
-
-  // Zalo proxy routes
-  app.use('/api', require('./routes/authorize'))
-  app.use('/api', require('./routes/userInfo'))
-  app.use('/api', require('./routes/phoneNumber'))
-  app.use('/api', require('./routes/location'))
-
-  // Preserved
-  app.use('/api', require('./routes/cars'))
-
-  // Phase 2
-  app.use('/api', require('./routes/driverRoutes'))
-  app.use('/api', require('./routes/tripPlans'))
-  app.use('/api', require('./routes/users'))
-  app.use('/api', require('./routes/demandGroups'))
-  app.use('/api', require('./routes/matches'))
-  app.use('/api', require('./routes/trips'))
-  app.use('/api', require('./routes/groupRequests'))
-  app.use('/api', require('./routes/groupOffers'))
-  app.use('/api', require('./routes/searchRequests'))
-
-  return app
-}
+const app = require('./index')
+const { setupTestDb, teardownTestDb } = require('./test-db')
 
 // Simple fetch helper
 function request(server, method, path, body) {
@@ -64,14 +37,15 @@ function request(server, method, path, body) {
 
 let server
 
-before(() => {
+before(async () => {
+  await setupTestDb()
   return new Promise((resolve) => {
-    const app = createApp()
     server = app.listen(0, resolve)
   })
 })
 
-after(() => {
+after(async () => {
+  await teardownTestDb()
   return new Promise((resolve) => {
     server.close(resolve)
   })

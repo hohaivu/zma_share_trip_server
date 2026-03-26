@@ -4,7 +4,7 @@ const store = require('../store')
 const router = Router()
 
 // POST /api/group-requests — create group request + fan-out
-router.post('/group-requests', (req, res) => {
+router.post('/group-requests', async (req, res) => {
   const { driverId, routeId, demandGroupId, note } = req.body || {}
   if (!driverId || !routeId || !demandGroupId) {
     return res
@@ -13,7 +13,7 @@ router.post('/group-requests', (req, res) => {
   }
 
   try {
-    const result = store.createGroupRequest(
+    const result = await store.createGroupRequest(
       driverId,
       routeId,
       demandGroupId,
@@ -26,19 +26,23 @@ router.post('/group-requests', (req, res) => {
 })
 
 // GET /api/group-requests?driverId= — driver's sent requests
-router.get('/group-requests', (req, res) => {
-  const { driverId } = req.query
-  if (!driverId) {
-    return res.status(400).json({ message: 'driverId query is required' })
-  }
+router.get('/group-requests', async (req, res) => {
+  try {
+    const { driverId } = req.query
+    if (!driverId) {
+      return res.status(400).json({ message: 'driverId query is required' })
+    }
 
-  res.status(200).json(store.listGroupRequestsByDriver(driverId))
+    res.status(200).json(await store.listGroupRequestsByDriver(driverId))
+  } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
 })
 
 // POST /api/group-requests/:id/cancel — cancel + close pending offers
-router.post('/group-requests/:id/cancel', (req, res) => {
+router.post('/group-requests/:id/cancel', async (req, res) => {
   try {
-    const result = store.cancelGroupRequest(req.params.id)
+    const result = await store.cancelGroupRequest(req.params.id)
     res.status(200).json(result)
   } catch (error) {
     res.status(400).json({ message: error.message })

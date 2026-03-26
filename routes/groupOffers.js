@@ -4,19 +4,23 @@ const store = require('../store')
 const router = Router()
 
 // GET /api/group-offers?clientId= — client inbox
-router.get('/group-offers', (req, res) => {
-  const { clientId } = req.query
-  if (!clientId) {
-    return res.status(400).json({ message: 'clientId query is required' })
-  }
+router.get('/group-offers', async (req, res) => {
+  try {
+    const { clientId } = req.query
+    if (!clientId) {
+      return res.status(400).json({ message: 'clientId query is required' })
+    }
 
-  res.status(200).json(store.listGroupOffersByClient(clientId))
+    res.status(200).json(await store.listGroupOffersByClient(clientId))
+  } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
 })
 
 // POST /api/group-offers/:id/accept
-router.post('/group-offers/:id/accept', (req, res) => {
+router.post('/group-offers/:id/accept', async (req, res) => {
   try {
-    const result = store.acceptGroupOffer(req.params.id)
+    const result = await store.acceptGroupOffer(req.params.id)
     res.status(200).json(result)
   } catch (error) {
     res.status(400).json({ message: error.message })
@@ -24,9 +28,9 @@ router.post('/group-offers/:id/accept', (req, res) => {
 })
 
 // POST /api/group-offers/:id/decline
-router.post('/group-offers/:id/decline', (req, res) => {
+router.post('/group-offers/:id/decline', async (req, res) => {
   try {
-    const result = store.declineGroupOffer(req.params.id)
+    const result = await store.declineGroupOffer(req.params.id)
     res.status(200).json(result)
   } catch (error) {
     res.status(400).json({ message: error.message })
