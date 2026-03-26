@@ -10,7 +10,9 @@ router.get('/search-requests', async (req, res) => {
     if (!driverId) {
       return res.status(400).json({ message: 'driverId query is required' })
     }
-    return res.status(200).json(await store.listSearchRequestsByDriver(driverId))
+    return res
+      .status(200)
+      .json(await store.listSearchRequestsByDriver(driverId))
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

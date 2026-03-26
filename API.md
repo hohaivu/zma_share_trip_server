@@ -42,13 +42,13 @@
 
 ## Client Trip Plans
 
-| Method | Path                              | Description                                                                                                                                                            |
-| ------ | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/trip-plans`                     | Create trip plan. Body: `{ clientId, pickup, dropoff, pickupWardId, dropoffWardId, serviceDate, departureBlockStart, departureBlockEnd, passengerCount, publishMode }` |
-| GET    | `/trip-plans?clientId=`           | List trip plans by client                                                                                                                                              |
-| GET    | `/trip-plans/:id`                 | Trip plan detail                                                                                                                                                       |
-| PUT    | `/trip-plans/:id`                 | Update trip plan                                                                                                                                                       |
-| GET    | `/trip-plans/:id/matching-routes` | Matching routes for `search_only` plans                                                                                                                                |
+| Method | Path                              | Description                                                                                                                                                              |
+| ------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/trip-plans`                     | Create client plan. Body: `{ clientId, pickup, dropoff, pickupWardId, dropoffWardId, serviceDate, departureBlockStart, departureBlockEnd, passengerCount, publishMode }` |
+| GET    | `/trip-plans?clientId=`           | List client plans by client                                                                                                                                              |
+| GET    | `/trip-plans/:id`                 | Client plan detail                                                                                                                                                       |
+| PUT    | `/trip-plans/:id`                 | Update client plan                                                                                                                                                       |
+| GET    | `/trip-plans/:id/matching-routes` | Matching routes for `search_only` plans                                                                                                                                  |
 
 ### publishMode Values
 
@@ -71,7 +71,7 @@
 | GET    | `/demand-groups/:id`         | Group summary (serviceDate, wards, block, memberCount, totalPassengerCount) |
 | GET    | `/demand-groups/:id/members` | Member trip plans (exact-3 visibility only)                                 |
 
-> Demand groups are computed on-read from published `grouped` trip plans.
+> Demand groups are computed on-read from published `grouped` client plans.
 > Group ID format: `dg-{serviceDate}|{pickupWardId}|{dropoffWardId}|{departureBlockStart}`
 
 ## Group Requests (Driver → Group)
@@ -109,14 +109,16 @@
 | POST   | `/search-requests/:id/accept`  | Driver accepts search request                                           |
 | POST   | `/search-requests/:id/decline` | Driver declines search request                                          |
 
-> Only `search_only` trip plans can create search requests.
+> Only `search_only` client plans can create search requests.
 
-## Trip Summary & Completion
+## Journey Summary & Completion
 
-| Method | Path                  | Description                                                    |
-| ------ | --------------------- | -------------------------------------------------------------- |
-| GET    | `/trips/:id/summary`  | Trip summary with accepted counterpart (route or trip plan ID) |
-| POST   | `/trips/:id/complete` | Mark trip as completed                                         |
+| Method | Path                  | Description                                                                                           |
+| ------ | --------------------- | ----------------------------------------------------------------------------------------------------- |
+| GET    | `/trips/:id/summary`  | Shared journey summary with accepted counterpart; the underlying draft remains a route or client plan |
+| POST   | `/trips/:id/complete` | Mark the shared journey as completed                                                                  |
+
+> These are stable journey-lifecycle endpoints. They expose accepted shared state derived from route or client-plan records without renaming the public backend path.
 
 ## Saved Locations (Deprecated)
 
@@ -152,7 +154,7 @@
 | `availableSeats` | Route        | Removed; seat capacity is on Car                        |
 | `pricePerSeat`   | Route, Offer | `tripPrice` (single number per route)                   |
 | `seatCount`      | Offer        | Not applicable; single accepted client per route in MVP |
-| `clientDemandId` | Match        | Replaced by demand group and trip plan references       |
+| `clientDemandId` | Match        | Replaced by demand group and client plan references     |
 | `shareableSeats` | Car          | Removed from decision logic; `seatCapacity` retained    |
 
 ---
@@ -163,4 +165,4 @@
 2. **Sibling closure**: When a group offer is accepted, all other pending offers from the same group request are auto-closed.
 3. **Route exclusivity**: One route can have only one accepted client (via group offer OR search request).
 4. **Cross-flow blocking**: An accepted group offer blocks pending search requests for that route, and vice versa.
-5. **Mode isolation**: Only `search_only` trip plans can create search requests; `grouped` plans stay in grouped demand flow.
+5. **Mode isolation**: Only `search_only` client plans can create search requests; `grouped` plans stay in grouped demand flow.

@@ -1,8 +1,15 @@
-const { describe, it, before, after } = require('node:test')
+const { describe, before, after } = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('node:http')
 const app = require('./index')
-const { setupTestDb, teardownTestDb } = require('./test-db')
+const {
+  setupTestDb,
+  teardownTestDb,
+  createDbTest,
+  isDbAvailable,
+} = require('./test-db')
+
+const it = createDbTest('Postgres unavailable for DB-backed API tests')
 
 // Simple fetch helper
 function request(server, method, path, body) {
@@ -39,6 +46,7 @@ let server
 
 before(async () => {
   await setupTestDb()
+  if (!isDbAvailable()) return
   return new Promise((resolve) => {
     server = app.listen(0, resolve)
   })
@@ -46,6 +54,7 @@ before(async () => {
 
 after(async () => {
   await teardownTestDb()
+  if (!server) return
   return new Promise((resolve) => {
     server.close(resolve)
   })
@@ -203,7 +212,11 @@ describe('preserved endpoints', () => {
   })
 
   it('GET /api/driver/cars?ownerId= works', async () => {
-    const res = await request(server, 'GET', '/api/driver/cars?ownerId=driver-001')
+    const res = await request(
+      server,
+      'GET',
+      '/api/driver/cars?ownerId=driver-001',
+    )
     assert.equal(res.status, 200)
     assert.ok(Array.isArray(res.body))
   })

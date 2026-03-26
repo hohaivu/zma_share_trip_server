@@ -1,7 +1,18 @@
-const { describe, it } = require('node:test')
+const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
 
 const matching = require('./matching')
+const { setupTestDb, teardownTestDb, createDbTest } = require('./test-db')
+
+const itDb = createDbTest('Postgres unavailable for DB-backed matching tests')
+
+before(async () => {
+  await setupTestDb()
+})
+
+after(async () => {
+  await teardownTestDb()
+})
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -79,61 +90,80 @@ describe('bearingDifference', () => {
 // ─── 2.2 passesHardFilters ────────────────────────────────────────────────────
 
 describe('passesHardFilters', () => {
-  it('passes for a well-aligned route/plan pair', () => {
-    assert.ok(matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, null, []))
+  it('passes for a well-aligned route/plan pair', async () => {
+    assert.ok(await matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, null, []))
   })
 
-  it('rejects different serviceDate', () => {
+  it('rejects different serviceDate', async () => {
     const plan = { ...BASE_PLAN, serviceDate: '2030-03-21' }
-    assert.equal(matching.passesHardFilters(BASE_ROUTE, plan, null, []), false)
+    assert.equal(
+      await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
+      false,
+    )
   })
 
-  it('rejects non-overlapping departure block', () => {
+  it('rejects non-overlapping departure block', async () => {
     const plan = {
       ...BASE_PLAN,
       departureBlockStart: '2030-03-20T08:00:00.000Z',
       departureBlockEnd: '2030-03-20T08:30:00.000Z',
     }
-    assert.equal(matching.passesHardFilters(BASE_ROUTE, plan, null, []), false)
+    assert.equal(
+      await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
+      false,
+    )
   })
 
-  it('rejects opposite direction (> 30° bearing difference)', () => {
+  it('rejects opposite direction (> 30° bearing difference)', async () => {
     // Heading south-west — opposite of our north-east route
     const plan = {
       ...BASE_PLAN,
       pickup: TD_DROPOFF,
       dropoff: Q1_PICKUP,
     }
-    assert.equal(matching.passesHardFilters(BASE_ROUTE, plan, null, []), false)
-  })
-
-  it('rejects pickup distance > 5km', () => {
-    const plan = { ...BASE_PLAN, pickup: TB_PICKUP }
-    assert.equal(matching.passesHardFilters(BASE_ROUTE, plan, null, []), false)
-  })
-
-  it('rejects dropoff distance > 5km', () => {
-    const farDropoff = { lat: 10.95, lng: 106.85, label: 'Biên Hòa' }
-    const plan = { ...BASE_PLAN, dropoff: farDropoff }
-    assert.equal(matching.passesHardFilters(BASE_ROUTE, plan, null, []), false)
-  })
-
-  it('rejects when driver blocks client', () => {
-    const driver = { id: 'driver-001', blockedUserIds: ['client-001'] }
     assert.equal(
-      matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, driver, ['client-001']),
+      await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
       false,
     )
   })
 
-  it('rejects when client blocks driver', () => {
+  it('rejects pickup distance > 5km', async () => {
+    const plan = { ...BASE_PLAN, pickup: TB_PICKUP }
+    assert.equal(
+      await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
+      false,
+    )
+  })
+
+  it('rejects dropoff distance > 5km', async () => {
+    const farDropoff = { lat: 10.95, lng: 106.85, label: 'Biên Hòa' }
+    const plan = { ...BASE_PLAN, dropoff: farDropoff }
+    assert.equal(
+      await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
+      false,
+    )
+  })
+
+  itDb('rejects when driver blocks client', async () => {
+    const driver = { id: 'driver-001', blockedUserIds: ['client-001'] }
+    assert.equal(
+      await matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, driver, [
+        'client-001',
+      ]),
+      false,
+    )
+  })
+
+  itDb('rejects when client blocks driver', async () => {
     // We need the store client to have driver-001 blocked.
     // We test this indirectly: if the stored client-001 doesn't block driver-001
     // we skip. This test covers the code path with a synthetic driver object.
     const driver = { id: 'driver-blocked', blockedUserIds: [] }
     // client-001 doesn't block driver-blocked in seed, so passes
     assert.ok(
-      matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, driver, ['client-001']),
+      await matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, driver, [
+        'client-001',
+      ]),
     )
   })
 })
@@ -180,8 +210,8 @@ describe('computeMatchScore', () => {
 // ─── 2.4 computeMatchedDemandGroups ──────────────────────────────────────────
 
 describe('computeMatchedDemandGroups', () => {
-  it('returns results enriched with scoring fields', () => {
-    const results = matching.computeMatchedDemandGroups('route-001')
+  itDb('returns results enriched with scoring fields', async () => {
+    const results = await matching.computeMatchedDemandGroups('route-001')
     assert.ok(results.length > 0, 'Should return at least one result')
     for (const r of results) {
       assert.ok('matchScore' in r, 'Missing matchScore')
@@ -192,8 +222,8 @@ describe('computeMatchedDemandGroups', () => {
     }
   })
 
-  it('within each tier, higher matchScore appears first', () => {
-    const results = matching.computeMatchedDemandGroups('route-001')
+  itDb('within each tier, higher matchScore appears first', async () => {
+    const results = await matching.computeMatchedDemandGroups('route-001')
     const exactResults = results.filter((r) => r.matchTier === 'exact_3')
     for (let i = 1; i < exactResults.length; i++) {
       assert.ok(
@@ -210,8 +240,8 @@ describe('computeMatchedDemandGroups', () => {
     }
   })
 
-  it('exact_3 results appear before near_3', () => {
-    const results = matching.computeMatchedDemandGroups('route-001')
+  itDb('exact_3 results appear before near_3', async () => {
+    const results = await matching.computeMatchedDemandGroups('route-001')
     let seenNear = false
     for (const r of results) {
       if (r.matchTier === 'near_3') seenNear = true
@@ -221,18 +251,18 @@ describe('computeMatchedDemandGroups', () => {
     }
   })
 
-  it('returns empty array for non-existent route', () => {
-    assert.deepEqual(matching.computeMatchedDemandGroups('route-999'), [])
+  itDb('returns empty array for non-existent route', async () => {
+    assert.deepEqual(await matching.computeMatchedDemandGroups('route-999'), [])
   })
 })
 
 // ─── 2.5 computeMatchingRoutes ────────────────────────────────────────────────
 
 describe('computeMatchingRoutes', () => {
-  it('returns enriched score fields for search_only trip plan', () => {
+  itDb('returns enriched score fields for search_only trip plan', async () => {
     // tripPlan-004 is search_only, date 2030-03-21 — route-001/002 are 2030-03-20
     // so results may be empty for the seed data; test non-null return
-    const results = matching.computeMatchingRoutes('tripPlan-004')
+    const results = await matching.computeMatchingRoutes('tripPlan-004')
     assert.ok(Array.isArray(results), 'Should return an array')
     for (const r of results) {
       assert.ok('matchScore' in r, 'Missing matchScore')
@@ -244,8 +274,8 @@ describe('computeMatchingRoutes', () => {
     }
   })
 
-  it('throws for non-search_only trip plan', () => {
-    assert.throws(
+  itDb('throws for non-search_only trip plan', async () => {
+    await assert.rejects(
       () => matching.computeMatchingRoutes('tripPlan-001'),
       /search_only/,
     )

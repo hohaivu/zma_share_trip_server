@@ -32,7 +32,9 @@ router.get('/search-requests', async (req, res) => {
     if (!clientId) {
       return res.status(400).json({ message: 'clientId query is required' })
     }
-    return res.status(200).json(await store.listSearchRequestsByClient(clientId))
+    return res
+      .status(200)
+      .json(await store.listSearchRequestsByClient(clientId))
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

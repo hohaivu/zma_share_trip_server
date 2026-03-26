@@ -1,8 +1,10 @@
-const { describe, it, before, after } = require('node:test')
+const { describe, before, after } = require('node:test')
 const assert = require('node:assert/strict')
-const { setupTestDb, teardownTestDb } = require('./test-db')
+const { setupTestDb, teardownTestDb, createDbTest } = require('./test-db')
 const store = require('./store')
 const matching = require('./matching')
+
+const it = createDbTest('Postgres unavailable for DB-backed store tests')
 
 // Note: require resets are not trivial in CJS, so we test against the shared
 // store instance. Tests should not depend on ordering within a describe block.
