@@ -23,11 +23,16 @@ async function setupTestDb() {
   `)
 
   // Re-run migration just in case (optional, we assume it's run)
-  const migration = fs.readFileSync(
+  const migration1 = fs.readFileSync(
     path.join(__dirname, 'db', 'migrations', '01_init.sql'),
     'utf8',
   )
-  await query(migration)
+  const migration2 = fs.readFileSync(
+    path.join(__dirname, 'db', 'migrations', '02_add_ward_keys.sql'),
+    'utf8',
+  )
+  await query(migration1)
+  await query(migration2)
 
   // Clean again to be sure
   await query(`

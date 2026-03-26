@@ -210,8 +210,8 @@ async function listAllRoutes() {
 async function createTripPlan(clientId, data) {
   const res = await query(
     `
-    INSERT INTO trip_plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+    INSERT INTO trip_plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
     RETURNING *
   `,
     [
@@ -221,6 +221,10 @@ async function createTripPlan(clientId, data) {
       JSON.stringify(data.dropoff),
       data.pickupWardId,
       data.dropoffWardId,
+      data.pickupWardKey,
+      data.dropoffWardKey,
+      data.pickupProvinceId,
+      data.dropoffProvinceId,
       data.serviceDate,
       data.departureBlockStart,
       data.departureBlockEnd,
@@ -280,7 +284,9 @@ function buildGroupKey(tp) {
     tp.departureBlockStart instanceof Date
       ? tp.departureBlockStart.toISOString()
       : tp.departureBlockStart
-  return `${svcDate}|${tp.pickupWardId}|${tp.dropoffWardId}|${dbs}`
+  const pickupKey = tp.pickupWardKey || tp.pickupWardId
+  const dropoffKey = tp.dropoffWardKey || tp.dropoffWardId
+  return `${svcDate}|${pickupKey}|${dropoffKey}|${dbs}`
 }
 
 async function deriveDemandGroups() {
@@ -300,6 +306,10 @@ async function deriveDemandGroups() {
         serviceDate: tp.serviceDate,
         pickupWardId: tp.pickupWardId,
         dropoffWardId: tp.dropoffWardId,
+        pickupWardKey: tp.pickupWardKey,
+        dropoffWardKey: tp.dropoffWardKey,
+        pickupProvinceId: tp.pickupProvinceId,
+        dropoffProvinceId: tp.dropoffProvinceId,
         departureBlockStart: tp.departureBlockStart,
         departureBlockEnd: tp.departureBlockEnd,
         memberCount: 0,

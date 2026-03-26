@@ -132,6 +132,10 @@ const tripPlans = [
     dropoff: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
     pickupWardId: 'ward-q1-bennghe',
     dropoffWardId: 'ward-td-binhtho',
+    pickupWardKey: 'ward-q1-bennghe_79',
+    dropoffWardKey: 'ward-td-binhtho_79',
+    pickupProvinceId: '79',
+    dropoffProvinceId: '79',
     serviceDate: '2030-03-20',
     departureBlockStart: '2030-03-20T07:00:00.000Z',
     departureBlockEnd: '2030-03-20T07:30:00.000Z',
@@ -148,6 +152,10 @@ const tripPlans = [
     dropoff: { lat: 10.855, lng: 106.754, label: 'Thủ Đức' },
     pickupWardId: 'ward-q1-bennghe',
     dropoffWardId: 'ward-td-binhtho',
+    pickupWardKey: 'ward-q1-bennghe_79',
+    dropoffWardKey: 'ward-td-binhtho_79',
+    pickupProvinceId: '79',
+    dropoffProvinceId: '79',
     serviceDate: '2030-03-20',
     departureBlockStart: '2030-03-20T07:00:00.000Z',
     departureBlockEnd: '2030-03-20T07:30:00.000Z',
@@ -164,6 +172,10 @@ const tripPlans = [
     dropoff: { lat: 10.85, lng: 106.76, label: 'Thủ Đức' },
     pickupWardId: 'ward-tb-p15',
     dropoffWardId: 'ward-td-binhtho',
+    pickupWardKey: 'ward-tb-p15_79',
+    dropoffWardKey: 'ward-td-binhtho_79',
+    pickupProvinceId: '79',
+    dropoffProvinceId: '79',
     serviceDate: '2030-03-20',
     departureBlockStart: '2030-03-20T07:00:00.000Z',
     departureBlockEnd: '2030-03-20T07:30:00.000Z',
@@ -180,6 +192,10 @@ const tripPlans = [
     dropoff: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
     pickupWardId: 'ward-q1-bennghe',
     dropoffWardId: 'ward-td-binhtho',
+    pickupWardKey: 'ward-q1-bennghe_79',
+    dropoffWardKey: 'ward-td-binhtho_79',
+    pickupProvinceId: '79',
+    dropoffProvinceId: '79',
     serviceDate: '2030-03-21',
     departureBlockStart: '2030-03-21T07:00:00.000Z',
     departureBlockEnd: '2030-03-21T07:30:00.000Z',
@@ -287,8 +303,8 @@ async function seed() {
     for (const t of tripPlans) {
       await client.query(
         `
-        INSERT INTO trip_plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        INSERT INTO trip_plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       `,
         [
           t.id,
@@ -297,6 +313,10 @@ async function seed() {
           JSON.stringify(t.dropoff),
           t.pickupWardId,
           t.dropoffWardId,
+          t.pickupWardKey,
+          t.dropoffWardKey,
+          t.pickupProvinceId,
+          t.dropoffProvinceId,
           t.serviceDate,
           t.departureBlockStart,
           t.departureBlockEnd,
