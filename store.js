@@ -198,11 +198,27 @@ async function deleteCar(id) {
 
 // --- Route ---
 
+function extractWardFields(data, prefix, geoObj) {
+  const wardId = data[`${prefix}WardId`] || geoObj?.ward_id || ''
+  const provinceId = data[`${prefix}ProvinceId`] || geoObj?.province_id || ''
+  const wardKey = data[`${prefix}WardKey`] || (wardId && provinceId ? `${wardId}_${provinceId}` : '')
+  return { wardId, provinceId, wardKey }
+}
+
 async function createRoute(driverId, data) {
+  const origin = extractWardFields(data, 'origin', data.origin)
+  const dest = extractWardFields(data, 'destination', data.destination)
+
   const res = await query(
     `
-    INSERT INTO routes (id, driver_id, car_id, origin, destination, service_date, departure_time, window_start, window_end, trip_price, notes, status, created_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+    INSERT INTO routes (
+      id, driver_id, car_id, origin, destination, 
+      origin_ward_key, origin_ward_id, origin_province_id,
+      destination_ward_key, destination_ward_id, destination_province_id,
+      service_date, departure_time, window_start, window_end, 
+      trip_price, notes, status, created_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
     RETURNING *
   `,
     [
@@ -211,6 +227,12 @@ async function createRoute(driverId, data) {
       data.carId,
       JSON.stringify(data.origin),
       JSON.stringify(data.destination),
+      origin.wardKey,
+      origin.wardId,
+      origin.provinceId,
+      dest.wardKey,
+      dest.wardId,
+      dest.provinceId,
       data.serviceDate,
       normalizeUtc(data.departureTime),
       normalizeUtc(data.windowStart),

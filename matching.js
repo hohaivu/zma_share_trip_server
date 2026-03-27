@@ -203,11 +203,28 @@ function computeMatchScore(route, planLike) {
 // ─── Tier classification ──────────────────────────────────────────────────────
 
 /**
- * Classify match tier from pickup/dropoff distances.
+ * Classify match tier using administrative identity as primary, 
+ * with distance metrics as legacy fallback or near_3 classification.
  * Returns 'exact_3', 'near_3', or null.
  */
-function classifyByDistance(pickupDist, dropoffDist) {
-  if (pickupDist < 1.0 && dropoffDist < 1.0) return 'exact_3'
+function classifyByAdminAndDistance(route, planLike) {
+  const pickupDist = haversineDistance(route.origin, planLike.pickup)
+  const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
+
+  // Primary: VNMap normalized administrative identity
+  const hasAdminMatch = 
+    route.originWardKey && 
+    planLike.pickupWardKey &&
+    route.originWardKey === planLike.pickupWardKey &&
+    route.destinationWardKey && 
+    planLike.dropoffWardKey &&
+    route.destinationWardKey === planLike.dropoffWardKey
+
+  // Fallback: strict distance (for legacy records)
+  const hasDistanceExact = pickupDist < 1.0 && dropoffDist < 1.0
+
+  if (hasAdminMatch || hasDistanceExact) return 'exact_3'
+
   if (
     pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM &&
     dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM
@@ -232,10 +249,7 @@ function classifyMatch(route, group) {
   )
     return null
 
-  return classifyByDistance(
-    haversineDistance(route.origin, group.pickup),
-    haversineDistance(route.destination, group.dropoff),
-  )
+  return classifyByAdminAndDistance(route, group)
 }
 
 /**
@@ -335,10 +349,8 @@ async function computeMatchingRoutes(planId) {
     const passed = await passesHardFilters(route, tp, driver, [tp.clientId])
     if (!passed) continue
 
-    // Tier classification (reuses shared helper)
-    const pickupDist = haversineDistance(route.origin, tp.pickup)
-    const dropoffDist = haversineDistance(route.destination, tp.dropoff)
-    const matchTier = classifyByDistance(pickupDist, dropoffDist)
+    // Tier classification
+    const matchTier = classifyByAdminAndDistance(route, tp)
     if (!matchTier) continue
 
     const scores = computeMatchScore(route, tp)
