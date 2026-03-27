@@ -9,16 +9,19 @@ ADD COLUMN IF NOT EXISTS destination_province_id VARCHAR(255);
 
 -- Backfill data from legacy location columns. Older deployments stored route
 -- locations as TEXT, so parse defensively instead of assuming JSONB.
-CREATE OR REPLACE FUNCTION pg_temp.try_parse_jsonb(value TEXT)
-RETURNS JSONB
+CREATE OR REPLACE FUNCTION pg_temp.try_jsonb_get_text(value TEXT, key TEXT)
+RETURNS TEXT
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  parsed JSONB;
 BEGIN
   IF value IS NULL OR btrim(value) = '' THEN
     RETURN NULL;
   END IF;
 
-  RETURN value::jsonb;
+  parsed := value::jsonb;
+  RETURN jsonb_extract_path_text(parsed, key);
 EXCEPTION
   WHEN OTHERS THEN
     RETURN NULL;
@@ -28,48 +31,52 @@ $$;
 WITH route_locations AS (
   SELECT
     id,
-    pg_temp.try_parse_jsonb(origin::text) AS origin_json,
-    pg_temp.try_parse_jsonb(destination::text) AS destination_json
+    NULLIF(pg_temp.try_jsonb_get_text(origin::text, 'ward_id'), '') AS origin_ward_id_json,
+    NULLIF(pg_temp.try_jsonb_get_text(origin::text, 'province_id'), '') AS origin_province_id_json,
+    NULLIF(pg_temp.try_jsonb_get_text(origin::text, 'ward_key'), '') AS origin_ward_key_json,
+    NULLIF(pg_temp.try_jsonb_get_text(destination::text, 'ward_id'), '') AS destination_ward_id_json,
+    NULLIF(pg_temp.try_jsonb_get_text(destination::text, 'province_id'), '') AS destination_province_id_json,
+    NULLIF(pg_temp.try_jsonb_get_text(destination::text, 'ward_key'), '') AS destination_ward_key_json
   FROM routes
 )
 UPDATE routes AS routes
 SET
   origin_ward_key = COALESCE(
     CASE
-      WHEN COALESCE(route_locations.origin_json->>'ward_id', '') <> ''
-       AND COALESCE(route_locations.origin_json->>'province_id', '') <> ''
-      THEN route_locations.origin_json->>'ward_id' || '_' || route_locations.origin_json->>'province_id'
+      WHEN route_locations.origin_ward_id_json IS NOT NULL
+       AND route_locations.origin_province_id_json IS NOT NULL
+      THEN route_locations.origin_ward_id_json || '_' || route_locations.origin_province_id_json
     END,
-    NULLIF(route_locations.origin_json->>'ward_key', ''),
+    route_locations.origin_ward_key_json,
     ''
   ),
   origin_ward_id = COALESCE(
-    NULLIF(route_locations.origin_json->>'ward_id', ''),
-    NULLIF(split_part(COALESCE(route_locations.origin_json->>'ward_key', ''), '_', 1), ''),
+    route_locations.origin_ward_id_json,
+    NULLIF(split_part(COALESCE(route_locations.origin_ward_key_json, ''), '_', 1), ''),
     ''
   ),
   origin_province_id = COALESCE(
-    NULLIF(route_locations.origin_json->>'province_id', ''),
-    NULLIF(split_part(COALESCE(route_locations.origin_json->>'ward_key', ''), '_', 2), ''),
+    route_locations.origin_province_id_json,
+    NULLIF(split_part(COALESCE(route_locations.origin_ward_key_json, ''), '_', 2), ''),
     ''
   ),
   destination_ward_key = COALESCE(
     CASE
-      WHEN COALESCE(route_locations.destination_json->>'ward_id', '') <> ''
-       AND COALESCE(route_locations.destination_json->>'province_id', '') <> ''
-      THEN route_locations.destination_json->>'ward_id' || '_' || route_locations.destination_json->>'province_id'
+      WHEN route_locations.destination_ward_id_json IS NOT NULL
+       AND route_locations.destination_province_id_json IS NOT NULL
+      THEN route_locations.destination_ward_id_json || '_' || route_locations.destination_province_id_json
     END,
-    NULLIF(route_locations.destination_json->>'ward_key', ''),
+    route_locations.destination_ward_key_json,
     ''
   ),
   destination_ward_id = COALESCE(
-    NULLIF(route_locations.destination_json->>'ward_id', ''),
-    NULLIF(split_part(COALESCE(route_locations.destination_json->>'ward_key', ''), '_', 1), ''),
+    route_locations.destination_ward_id_json,
+    NULLIF(split_part(COALESCE(route_locations.destination_ward_key_json, ''), '_', 1), ''),
     ''
   ),
   destination_province_id = COALESCE(
-    NULLIF(route_locations.destination_json->>'province_id', ''),
-    NULLIF(split_part(COALESCE(route_locations.destination_json->>'ward_key', ''), '_', 2), ''),
+    route_locations.destination_province_id_json,
+    NULLIF(split_part(COALESCE(route_locations.destination_ward_key_json, ''), '_', 2), ''),
     ''
   )
 FROM route_locations
