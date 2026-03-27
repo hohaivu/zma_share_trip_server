@@ -98,6 +98,12 @@ const routes = [
     carId: 'car-001',
     origin: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
     destination: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
+    originWardId: 'ward-q1-bennghe',
+    originWardKey: 'ward-q1-bennghe_79',
+    originProvinceId: '79',
+    destinationWardId: 'ward-td-binhtho',
+    destinationWardKey: 'ward-td-binhtho_79',
+    destinationProvinceId: '79',
     serviceDate: '2030-03-20',
     departureTime: '2030-03-20T00:00:00.000Z', // 07:00 local
     windowStart: '2030-03-19T23:45:00.000Z', // 06:45 local
@@ -113,6 +119,12 @@ const routes = [
     carId: 'car-002',
     origin: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
     destination: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
+    originWardId: 'ward-q1-bennghe',
+    originWardKey: 'ward-q1-bennghe_79',
+    originProvinceId: '79',
+    destinationWardId: 'ward-td-binhtho',
+    destinationWardKey: 'ward-td-binhtho_79',
+    destinationProvinceId: '79',
     serviceDate: '2030-03-20',
     departureTime: '2030-03-20T00:30:00.000Z',
     windowStart: '2030-03-20T00:15:00.000Z',
@@ -278,8 +290,8 @@ async function seed() {
     for (const r of routes) {
       await client.query(
         `
-        INSERT INTO routes (id, driver_id, car_id, origin, destination, service_date, departure_time, window_start, window_end, trip_price, notes, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        INSERT INTO routes (id, driver_id, car_id, origin, destination, origin_ward_id, origin_ward_key, origin_province_id, destination_ward_id, destination_ward_key, destination_province_id, service_date, departure_time, window_start, window_end, trip_price, notes, status, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       `,
         [
           r.id,
@@ -287,6 +299,12 @@ async function seed() {
           r.carId,
           JSON.stringify(r.origin),
           JSON.stringify(r.destination),
+          r.originWardId,
+          r.originWardKey,
+          r.originProvinceId,
+          r.destinationWardId,
+          r.destinationWardKey,
+          r.destinationProvinceId,
           r.serviceDate,
           r.departureTime,
           r.windowStart,
