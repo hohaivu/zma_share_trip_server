@@ -100,8 +100,8 @@ const routes = [
     destination: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
     serviceDate: '2030-03-20',
     departureTime: '2030-03-20T00:00:00.000Z', // 07:00 local
-    windowStart: '2030-03-19T23:45:00.000Z',   // 06:45 local
-    windowEnd: '2030-03-20T00:15:00.000Z',     // 07:15 local
+    windowStart: '2030-03-19T23:45:00.000Z', // 06:45 local
+    windowEnd: '2030-03-20T00:15:00.000Z', // 07:15 local
     tripPrice: 120000,
     notes: '',
     status: 'published',

@@ -29,18 +29,27 @@ function toSnakeCase(key) {
   return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
 }
 
+function listByColumn(table, column, mapFn = toCamelCase) {
+  return async (value) => {
+    const result = await query(`SELECT * FROM ${table} WHERE ${column} = $1`, [
+      value,
+    ])
+    return result.rows.map(mapFn)
+  }
+}
+
 const CAR_COLORS = {
   'Xanh dương': '#006AF5',
-  'Trắng': '#FFFFFF',
-  'Đen': '#1A1A1A',
-  'Đỏ': '#CC0000',
+  Trắng: '#FFFFFF',
+  Đen: '#1A1A1A',
+  Đỏ: '#CC0000',
   'Xanh lá': '#00C853',
-  'Cam': '#FFA000',
-  'Tím': '#9C27B0',
-  'Nâu': '#795548',
-  'Bạc': '#C0C0C0',
+  Cam: '#FFA000',
+  Tím: '#9C27B0',
+  Nâu: '#795548',
+  Bạc: '#C0C0C0',
   'Xanh đậm': '#1565C0',
-  'Xám': '#757575',
+  Xám: '#757575',
 }
 
 function mapCar(row) {
@@ -48,7 +57,6 @@ function mapCar(row) {
   if (c?.color) c.colorHex = CAR_COLORS[c.color] || c.color
   return c
 }
-
 
 /**
  * Generic dynamic-update for any table. Builds a parameterized UPDATE from
@@ -62,10 +70,17 @@ async function dynamicUpdate(table, id, data, jsonFields = []) {
   }
 
   const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`)
-  const timeFields = ['departureTime', 'windowStart', 'windowEnd', 'departureBlockStart', 'departureBlockEnd']
+  const timeFields = [
+    'departureTime',
+    'windowStart',
+    'windowEnd',
+    'departureBlockStart',
+    'departureBlockEnd',
+  ]
   const vals = keys.map((k) => {
     if (jsonFields.includes(k)) return JSON.stringify(data[k])
-    if (timeFields.includes(k) && data[k]) return new Date(data[k]).toISOString()
+    if (timeFields.includes(k) && data[k])
+      return new Date(data[k]).toISOString()
     return data[k]
   })
 
@@ -208,12 +223,7 @@ async function createRoute(driverId, data) {
   return toCamelCase(res.rows[0])
 }
 
-async function listRoutesByDriver(driverId) {
-  const result = await query('SELECT * FROM routes WHERE driver_id = $1', [
-    driverId,
-  ])
-  return result.rows.map(toCamelCase)
-}
+const listRoutesByDriver = listByColumn('routes', 'driver_id')
 
 async function getRoute(id) {
   const result = await query('SELECT * FROM routes WHERE id = $1', [id])
@@ -270,12 +280,7 @@ async function updatePlan(id, data) {
   return dynamicUpdate('plans', id, data, ['pickup', 'dropoff'])
 }
 
-async function listPlansByClient(clientId) {
-  const result = await query('SELECT * FROM plans WHERE client_id = $1', [
-    clientId,
-  ])
-  return result.rows.map(toCamelCase)
-}
+const listPlansByClient = listByColumn('plans', 'client_id')
 
 // --- Departure Block ---
 
@@ -301,9 +306,10 @@ function buildGroupKey(tp) {
     tp.serviceDate instanceof Date
       ? tp.serviceDate.toISOString().split('T')[0]
       : tp.serviceDate
-  const dbs = tp.departureBlockStart instanceof Date
-    ? tp.departureBlockStart.toISOString()
-    : normalizeUtc(tp.departureBlockStart)
+  const dbs =
+    tp.departureBlockStart instanceof Date
+      ? tp.departureBlockStart.toISOString()
+      : normalizeUtc(tp.departureBlockStart)
 
   const pickupKey = tp.pickupWardKey || tp.pickupWardId
   const dropoffKey = tp.dropoffWardKey || tp.dropoffWardId
@@ -710,49 +716,12 @@ async function declineSearchRequest(requestId) {
   return sreq
 }
 
-async function listGroupRequestsByDriver(driverId) {
-  const res = await query('SELECT * FROM group_requests WHERE driver_id = $1', [
-    driverId,
-  ])
-  return res.rows.map(toCamelCase)
-}
-
-async function listGroupOffersByClient(clientId) {
-  const res = await query('SELECT * FROM group_offers WHERE client_id = $1', [
-    clientId,
-  ])
-  return res.rows.map(toCamelCase)
-}
-
-async function listSearchRequestsByDriver(driverId) {
-  const res = await query(
-    'SELECT * FROM search_requests WHERE driver_id = $1',
-    [driverId],
-  )
-  return res.rows.map(toCamelCase)
-}
-
-async function listSearchRequestsByClient(clientId) {
-  const res = await query(
-    'SELECT * FROM search_requests WHERE client_id = $1',
-    [clientId],
-  )
-  return res.rows.map(toCamelCase)
-}
-
-async function listSearchRequestsByRoute(routeId) {
-  const res = await query('SELECT * FROM search_requests WHERE route_id = $1', [
-    routeId,
-  ])
-  return res.rows.map(toCamelCase)
-}
-
-async function listGroupOffersByRoute(routeId) {
-  const res = await query('SELECT * FROM group_offers WHERE route_id = $1', [
-    routeId,
-  ])
-  return res.rows.map(toCamelCase)
-}
+const listGroupRequestsByDriver = listByColumn('group_requests', 'driver_id')
+const listGroupOffersByClient = listByColumn('group_offers', 'client_id')
+const listSearchRequestsByDriver = listByColumn('search_requests', 'driver_id')
+const listSearchRequestsByClient = listByColumn('search_requests', 'client_id')
+const listSearchRequestsByRoute = listByColumn('search_requests', 'route_id')
+const listGroupOffersByRoute = listByColumn('group_offers', 'route_id')
 
 // --- Deprecated: saved locations ---
 

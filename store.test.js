@@ -37,27 +37,41 @@ describe('deriveDemandGroups', () => {
   it('normalizes mixed timezone inputs into identical canonical UTC keys', async () => {
     // Both 14:00+07:00 and 07:00Z represent the same instant and must group together.
     const planA = await store.createPlan('client-utc-1', {
-      pickup: { lat: 10, lng: 106, label: 'A' }, dropoff: { lat: 11, lng: 106, label: 'B' },
-      pickupWardId: 'ward-utc', dropoffWardId: 'ward-utc-dest',
+      pickup: { lat: 10, lng: 106, label: 'A' },
+      dropoff: { lat: 11, lng: 106, label: 'B' },
+      pickupWardId: 'ward-utc',
+      dropoffWardId: 'ward-utc-dest',
       serviceDate: '2030-05-05',
       departureBlockStart: '2030-05-05T14:00:00.000+07:00', // mapped to 07:00Z
       departureBlockEnd: '2030-05-05T14:30:00.000+07:00',
-      passengerCount: 1, publishMode: 'grouped'
+      passengerCount: 1,
+      publishMode: 'grouped',
     })
     const planB = await store.createPlan('client-utc-2', {
-      pickup: { lat: 10, lng: 106, label: 'A' }, dropoff: { lat: 11, lng: 106, label: 'B' },
-      pickupWardId: 'ward-utc', dropoffWardId: 'ward-utc-dest',
+      pickup: { lat: 10, lng: 106, label: 'A' },
+      dropoff: { lat: 11, lng: 106, label: 'B' },
+      pickupWardId: 'ward-utc',
+      dropoffWardId: 'ward-utc-dest',
       serviceDate: '2030-05-05',
       departureBlockStart: '2030-05-05T07:00:00.000Z',
       departureBlockEnd: '2030-05-05T07:30:00.000Z',
-      passengerCount: 2, publishMode: 'grouped'
+      passengerCount: 2,
+      publishMode: 'grouped',
     })
 
     const groups = await store.deriveDemandGroups()
-    const utcGroup = groups.find(g => g.pickupWardId === 'ward-utc')
+    const utcGroup = groups.find((g) => g.pickupWardId === 'ward-utc')
     assert.ok(utcGroup)
-    assert.equal(utcGroup.memberCount, 2, 'Should group both plans into the same demand group despite different input strings')
-    assert.equal(utcGroup.departureBlockStart.endsWith('Z'), true, 'Should use explicit canonical UTC Z-time on reads')
+    assert.equal(
+      utcGroup.memberCount,
+      2,
+      'Should group both plans into the same demand group despite different input strings',
+    )
+    assert.equal(
+      utcGroup.departureBlockStart.endsWith('Z'),
+      true,
+      'Should use explicit canonical UTC Z-time on reads',
+    )
   })
 
   it('excludes search_only plans from grouped demand', async () => {

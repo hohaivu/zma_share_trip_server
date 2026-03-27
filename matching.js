@@ -93,6 +93,20 @@ function estimateDetour(pickupDist, dropoffDist) {
   return Math.round(((pickupDist + dropoffDist) / 30) * 60)
 }
 
+// ─── Block Overlap ────────────────────────────────────────────────────────────
+
+/**
+ * Check whether a route's departure block overlaps with a plan's departure block.
+ */
+function blocksOverlap(routeDepartureTime, blockStart, blockEnd) {
+  const routeBlock = store.computeDepartureBlock(routeDepartureTime)
+  const routeStartMs = new Date(routeBlock.start).getTime()
+  const routeEndMs = new Date(routeBlock.end).getTime()
+  const planStartMs = new Date(blockStart).getTime()
+  const planEndMs = new Date(blockEnd).getTime()
+  return routeStartMs < planEndMs && planStartMs < routeEndMs
+}
+
 // ─── Hard Filters ─────────────────────────────────────────────────────────────
 
 /**
@@ -106,13 +120,14 @@ async function passesHardFilters(route, planLike, driver, clientIds) {
   if (route.serviceDate !== planLike.serviceDate) return false
 
   // Departure block overlap
-  const routeBlock = store.computeDepartureBlock(route.departureTime)
-  const routeStart = new Date(routeBlock.start).getTime()
-  const routeEnd = new Date(routeBlock.end).getTime()
-  const planStart = new Date(planLike.departureBlockStart).getTime()
-  const planEnd = new Date(planLike.departureBlockEnd).getTime()
-  const blockOverlaps = routeStart < planEnd && planStart < routeEnd
-  if (!blockOverlaps) return false
+  if (
+    !blocksOverlap(
+      route.departureTime,
+      planLike.departureBlockStart,
+      planLike.departureBlockEnd,
+    )
+  )
+    return false
 
   // Bidirectional blocked-user check
   if (driver) {
@@ -208,14 +223,14 @@ function classifyByDistance(pickupDist, dropoffDist) {
  */
 function classifyMatch(route, group) {
   if (route.serviceDate !== group.serviceDate) return null
-
-  const routeBlock = store.computeDepartureBlock(route.departureTime)
-  const routeStart = new Date(routeBlock.start).getTime()
-  const routeEnd = new Date(routeBlock.end).getTime()
-  const groupStart = new Date(group.departureBlockStart).getTime()
-  const groupEnd = new Date(group.departureBlockEnd).getTime()
-  const blockOverlaps = routeStart < groupEnd && groupStart < routeEnd
-  if (!blockOverlaps) return null
+  if (
+    !blocksOverlap(
+      route.departureTime,
+      group.departureBlockStart,
+      group.departureBlockEnd,
+    )
+  )
+    return null
 
   return classifyByDistance(
     haversineDistance(route.origin, group.pickup),
@@ -279,6 +294,8 @@ async function computeMatchedDemandGroups(routeId) {
       serviceDate: group.serviceDate,
       pickupWardId: group.pickupWardId,
       dropoffWardId: group.dropoffWardId,
+      pickupWardName: group.pickup?.label || group.pickupWardId,
+      dropoffWardName: group.dropoff?.label || group.dropoffWardId,
       pickupWardKey: group.pickupWardKey,
       dropoffWardKey: group.dropoffWardKey,
       pickupProvinceId: group.pickupProvinceId,

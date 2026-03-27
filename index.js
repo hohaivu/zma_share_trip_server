@@ -18,6 +18,7 @@ const groupRequestsRoute = require('./routes/groupRequests')
 const groupOffersRoute = require('./routes/groupOffers')
 const driverSearchRequestsRoute = require('./routes/driverSearchRequests')
 const clientSearchRequestsRoute = require('./routes/clientSearchRequests')
+const { checkConnection } = require('./db/connection')
 
 const app = express()
 const PORT = process.env.PORT || 3010
@@ -61,8 +62,6 @@ app.use((err, _req, res, _next) => {
   console.error('[server error]', err)
   res.status(500).json({ error: -1, message: 'Internal server error' })
 })
-
-const { checkConnection } = require('./db/connection')
 
 async function start() {
   try {

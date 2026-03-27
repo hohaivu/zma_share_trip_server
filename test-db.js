@@ -27,12 +27,9 @@ const TRUNCATE_ALL_SQL = `
 `
 
 function isUnavailableDatabaseError(error) {
-  const queue = [error]
+  const errors = [error, error?.cause].filter(Boolean)
 
-  while (queue.length > 0) {
-    const current = queue.shift()
-    if (!current) continue
-
+  for (const current of errors) {
     const code = typeof current.code === 'string' ? current.code : ''
     if (UNAVAILABLE_CODES.has(code)) return true
 
@@ -41,13 +38,10 @@ function isUnavailableDatabaseError(error) {
     for (const keyword of UNAVAILABLE_CODES) {
       if (message.includes(keyword)) return true
     }
-    const normalizedMessage = message.toLowerCase()
+    const lower = message.toLowerCase()
     for (const keyword of UNAVAILABLE_MESSAGES) {
-      if (normalizedMessage.includes(keyword)) return true
+      if (lower.includes(keyword)) return true
     }
-
-    if (Array.isArray(current.errors)) queue.push(...current.errors)
-    if (current.cause) queue.push(current.cause)
   }
 
   return false
