@@ -16,12 +16,12 @@ async function findAcceptedForRoute(routeId) {
   const acceptedSearch = searchReqs.find((r) => r.status === 'accepted')
   if (acceptedSearch) {
     const client = await store.getUser(acceptedSearch.clientId)
-    const tp = await store.getTripPlan(acceptedSearch.tripPlanId)
+    const tp = await store.getPlan(acceptedSearch.planId)
     return {
       type: 'search_request',
       requestId: acceptedSearch.id,
       matchedUser: client || null,
-      tripPlan: tp || null,
+      plan: tp || null,
       tripPrice: acceptedSearch.tripPrice,
       status: acceptedSearch.status,
     }
@@ -32,12 +32,12 @@ async function findAcceptedForRoute(routeId) {
   const acceptedOffer = groupOffers.find((o) => o.status === 'accepted')
   if (acceptedOffer) {
     const client = await store.getUser(acceptedOffer.clientId)
-    const tp = await store.getTripPlan(acceptedOffer.tripPlanId)
+    const tp = await store.getPlan(acceptedOffer.planId)
     return {
       type: 'group_offer',
       offerId: acceptedOffer.id,
       matchedUser: client || null,
-      tripPlan: tp || null,
+      plan: tp || null,
       tripPrice: acceptedOffer.tripPrice,
       status: acceptedOffer.status,
     }
@@ -46,14 +46,14 @@ async function findAcceptedForRoute(routeId) {
   return null
 }
 
-async function findAcceptedForTripPlan(tripPlanId) {
-  const tp = await store.getTripPlan(tripPlanId)
+async function findAcceptedForPlan(planId) {
+  const tp = await store.getPlan(planId)
   if (!tp) return null
 
-  // Check search requests where this trip plan is the source
+  // Check search requests where this plan is the source
   const clientSearchReqs = await store.listSearchRequestsByClient(tp.clientId)
   const acceptedSearch = clientSearchReqs.find(
-    (r) => r.tripPlanId === tripPlanId && r.status === 'accepted',
+    (r) => r.planId === planId && r.status === 'accepted',
   )
   if (acceptedSearch) {
     const driver = await store.getUser(acceptedSearch.driverId)
@@ -71,7 +71,7 @@ async function findAcceptedForTripPlan(tripPlanId) {
   // Check group offers for this client
   const clientOffers = await store.listGroupOffersByClient(tp.clientId)
   const acceptedOffer = clientOffers.find(
-    (o) => o.tripPlanId === tripPlanId && o.status === 'accepted',
+    (o) => o.planId === planId && o.status === 'accepted',
   )
   if (acceptedOffer) {
     const driver = await store.getUser(acceptedOffer.driverId)
@@ -94,16 +94,16 @@ router.get('/trips/:id/summary', async (req, res) => {
   try {
     const tripId = req.params.id
     const route = await store.getRoute(tripId)
-    const tripPlan = await store.getTripPlan(tripId)
+    const plan = await store.getPlan(tripId)
 
-    if (!route && !tripPlan) {
+    if (!route && !plan) {
       return res.status(404).json({ message: 'Trip not found' })
     }
 
-    const entity = route || tripPlan
+    const entity = route || plan
     const counterpart = route
       ? await findAcceptedForRoute(tripId)
-      : await findAcceptedForTripPlan(tripId)
+      : await findAcceptedForPlan(tripId)
 
     res.status(200).json({
       ...entity,
@@ -120,9 +120,9 @@ router.post('/trips/:id/complete', async (req, res) => {
   try {
     const tripId = req.params.id
     const route = await store.getRoute(tripId)
-    const tripPlan = await store.getTripPlan(tripId)
+    const plan = await store.getPlan(tripId)
 
-    if (!route && !tripPlan) {
+    if (!route && !plan) {
       return res.status(404).json({ message: 'Trip not found' })
     }
 
@@ -131,7 +131,7 @@ router.post('/trips/:id/complete', async (req, res) => {
       return res.status(200).json(updated)
     }
 
-    const updated = await store.updateTripPlan(tripId, { status: 'completed' })
+    const updated = await store.updatePlan(tripId, { status: 'completed' })
     res.status(200).json(updated)
   } catch (error) {
     console.error(error)

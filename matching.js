@@ -293,14 +293,14 @@ async function computeMatchedDemandGroups(routeId) {
 }
 
 /**
- * For a search_only trip plan, find eligible routes with scores.
+ * For a search_only plan, find eligible routes with scores.
  */
-async function computeMatchingRoutes(tripPlanId) {
-  const tp = await store.getTripPlan(tripPlanId)
+async function computeMatchingRoutes(planId) {
+  const tp = await store.getPlan(planId)
   if (!tp) return null
   if (tp.publishMode !== 'search_only') {
     throw new Error(
-      'Only search_only trip plans can search for matching routes',
+      'Only search_only plans can search for matching routes',
     )
   }
 

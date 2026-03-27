@@ -5,17 +5,17 @@ const router = Router()
 
 // POST /api/client/search-requests — create search request
 router.post('/search-requests', async (req, res) => {
-  const { clientId, tripPlanId, routeId, note } = req.body || {}
-  if (!clientId || !tripPlanId || !routeId) {
+  const { clientId, planId, routeId, note } = req.body || {}
+  if (!clientId || !planId || !routeId) {
     return res
       .status(400)
-      .json({ message: 'clientId, tripPlanId, and routeId are required' })
+      .json({ message: 'clientId, planId, and routeId are required' })
   }
 
   try {
     const result = await store.createSearchRequest(
       clientId,
-      tripPlanId,
+      planId,
       routeId,
       note,
     )

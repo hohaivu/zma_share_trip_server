@@ -155,17 +155,17 @@ describe('POST /api/client/search-requests', () => {
 
     const res = await request(server, 'POST', '/api/client/search-requests', {
       clientId: 'client-001',
-      tripPlanId: tpRes.body.id,
+      planId: tpRes.body.id,
       routeId: routeRes.body.id,
     })
     assert.equal(res.status, 201)
     assert.equal(res.body.status, 'pending')
   })
 
-  it('rejects for grouped trip plan', async () => {
+  it('rejects for grouped plan', async () => {
     const res = await request(server, 'POST', '/api/client/search-requests', {
       clientId: 'client-001',
-      tripPlanId: 'tripPlan-001',
+      planId: 'plan-001',
       routeId: 'route-001',
     })
     assert.equal(res.status, 400)

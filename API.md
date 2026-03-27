@@ -103,7 +103,7 @@
 
 | Method | Path                           | Description                                                             |
 | ------ | ------------------------------ | ----------------------------------------------------------------------- |
-| POST   | `/search-requests`             | Create search request. Body: `{ clientId, tripPlanId, routeId, note? }` |
+| POST   | `/search-requests`             | Create search request. Body: `{ clientId, planId, routeId, note? }` |
 | GET    | `/search-requests?driverId=`   | Driver's inbound search requests                                        |
 | GET    | `/search-requests?clientId=`   | Client's sent search requests                                           |
 | POST   | `/search-requests/:id/accept`  | Driver accepts search request                                           |

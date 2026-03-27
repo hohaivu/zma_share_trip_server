@@ -259,10 +259,10 @@ describe('computeMatchedDemandGroups', () => {
 // ─── 2.5 computeMatchingRoutes ────────────────────────────────────────────────
 
 describe('computeMatchingRoutes', () => {
-  itDb('returns enriched score fields for search_only trip plan', async () => {
-    // tripPlan-004 is search_only, date 2030-03-21 — route-001/002 are 2030-03-20
+  itDb('returns enriched score fields for search_only plan', async () => {
+    // plan-004 is search_only, date 2030-03-21 — route-001/002 are 2030-03-20
     // so results may be empty for the seed data; test non-null return
-    const results = await matching.computeMatchingRoutes('tripPlan-004')
+    const results = await matching.computeMatchingRoutes('plan-004')
     assert.ok(Array.isArray(results), 'Should return an array')
     for (const r of results) {
       assert.ok('matchScore' in r, 'Missing matchScore')
@@ -274,9 +274,9 @@ describe('computeMatchingRoutes', () => {
     }
   })
 
-  itDb('throws for non-search_only trip plan', async () => {
+  itDb('throws for non-search_only plan', async () => {
     await assert.rejects(
-      () => matching.computeMatchingRoutes('tripPlan-001'),
+      () => matching.computeMatchingRoutes('plan-001'),
       /search_only/,
     )
   })

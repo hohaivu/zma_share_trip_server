@@ -124,9 +124,9 @@ const routes = [
   },
 ]
 
-const tripPlans = [
+const plans = [
   {
-    id: 'tripPlan-001',
+    id: 'plan-001',
     clientId: 'client-001',
     pickup: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
     dropoff: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
@@ -146,7 +146,7 @@ const tripPlans = [
     createdAt: '2026-01-05T00:00:00.000Z',
   },
   {
-    id: 'tripPlan-002',
+    id: 'plan-002',
     clientId: 'client-002',
     pickup: { lat: 10.778, lng: 106.702, label: 'Quận 1' },
     dropoff: { lat: 10.855, lng: 106.754, label: 'Thủ Đức' },
@@ -166,7 +166,7 @@ const tripPlans = [
     createdAt: '2026-01-05T01:00:00.000Z',
   },
   {
-    id: 'tripPlan-003',
+    id: 'plan-003',
     clientId: 'client-001',
     pickup: { lat: 10.8, lng: 106.65, label: 'Tân Bình' },
     dropoff: { lat: 10.85, lng: 106.76, label: 'Thủ Đức' },
@@ -186,7 +186,7 @@ const tripPlans = [
     createdAt: '2026-01-05T02:00:00.000Z',
   },
   {
-    id: 'tripPlan-004',
+    id: 'plan-004',
     clientId: 'client-002',
     pickup: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
     dropoff: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
@@ -223,7 +223,7 @@ async function seed() {
     // Clear existing data (cascading constraints should handle most, but we can truncate manually or just ignore conflicts if we want)
     // for safety we will truncate
     await client.query(`
-      TRUNCATE TABLE group_offers, search_requests, group_requests, trip_plans, routes, cars, users, saved_locations CASCADE;
+      TRUNCATE TABLE group_offers, search_requests, group_requests, plans, routes, cars, users, saved_locations CASCADE;
     `)
 
     // Insert users
@@ -299,11 +299,11 @@ async function seed() {
       )
     }
 
-    // Insert trip plans
-    for (const t of tripPlans) {
+    // Insert plans
+    for (const t of plans) {
       await client.query(
         `
-        INSERT INTO trip_plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
+        INSERT INTO plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       `,
         [

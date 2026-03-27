@@ -20,9 +20,9 @@ after(async () => {
 // ─── 6.1 deriveDemandGroups ────────────────────────────────────────────────────
 
 describe('deriveDemandGroups', () => {
-  it('groups trip plans by serviceDate + ward pair + departure block', async () => {
+  it('groups plans by serviceDate + ward pair + departure block', async () => {
     const groups = await store.deriveDemandGroups()
-    // Seed has tripPlan-001 and tripPlan-002 sharing the same group key
+    // Seed has plan-001 and plan-002 sharing the same group key
     const q1TdGroup = groups.find(
       (g) =>
         g.pickupWardId === 'ward-q1-bennghe' &&
@@ -34,11 +34,11 @@ describe('deriveDemandGroups', () => {
     assert.equal(q1TdGroup.totalPassengerCount, 3, '1 + 2 passengers')
   })
 
-  it('excludes search_only trip plans from grouped demand', async () => {
+  it('excludes search_only plans from grouped demand', async () => {
     const groups = await store.deriveDemandGroups()
     for (const g of groups) {
       assert.ok(
-        !g.memberTripPlanIds.includes('tripPlan-004'),
+        !g.memberTripPlanIds.includes('plan-004'),
         'search_only plan should not be in any demand group',
       )
     }
@@ -166,7 +166,7 @@ describe('route exclusivity', () => {
     // Create a search request for route-002
     const sreq = await store.createSearchRequest(
       'client-002',
-      'tripPlan-004',
+      'plan-004',
       'route-002',
     )
     assert.equal(sreq.status, 'pending')
@@ -181,24 +181,24 @@ describe('route exclusivity', () => {
 // ─── 6.6 search request isolation ─────────────────────────────────────────────
 
 describe('search request isolation', () => {
-  it('rejects search request for grouped trip plan', async () => {
+  it('rejects search request for grouped plan', async () => {
     await assert.rejects(
       async () =>
         await store.createSearchRequest(
           'client-001',
-          'tripPlan-001',
+          'plan-001',
           'route-001',
         ),
       /search_only/,
-      'Grouped trip plan should not create search requests',
+      'Grouped plan should not create search requests',
     )
   })
 
-  it('search_only trip plans do not appear in demand groups', async () => {
+  it('search_only plans do not appear in demand groups', async () => {
     const groups = await store.deriveDemandGroups()
     for (const g of groups) {
       assert.ok(
-        !g.memberTripPlanIds.includes('tripPlan-004'),
+        !g.memberTripPlanIds.includes('plan-004'),
         'search_only plan should not be in demand groups',
       )
     }

@@ -14,8 +14,8 @@ router.post('/trip-plans', async (req, res) => {
     // Ensure the client exists in the users table (upsert)
     await store.findOrCreateUser(clientId, clientName, clientAvatar)
 
-    const tripPlan = await store.createTripPlan(clientId, data)
-    res.status(201).json(tripPlan)
+    const plan = await store.createPlan(clientId, data)
+    res.status(201).json(plan)
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -29,7 +29,7 @@ router.get('/trip-plans', async (req, res) => {
       return res.status(400).json({ message: 'clientId query is required' })
     }
 
-    res.status(200).json(await store.listTripPlansByClient(clientId))
+    res.status(200).json(await store.listPlansByClient(clientId))
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -38,12 +38,12 @@ router.get('/trip-plans', async (req, res) => {
 // GET /api/trip-plans/:id — detail
 router.get('/trip-plans/:id', async (req, res) => {
   try {
-    const tripPlan = await store.getTripPlan(req.params.id)
-    if (!tripPlan) {
-      return res.status(404).json({ message: 'Trip plan not found' })
+    const plan = await store.getPlan(req.params.id)
+    if (!plan) {
+      return res.status(404).json({ message: 'Plan not found' })
     }
 
-    res.status(200).json(tripPlan)
+    res.status(200).json(plan)
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -52,12 +52,12 @@ router.get('/trip-plans/:id', async (req, res) => {
 // PUT /api/trip-plans/:id — update
 router.put('/trip-plans/:id', async (req, res) => {
   try {
-    const tripPlan = await store.updateTripPlan(req.params.id, req.body || {})
-    if (!tripPlan) {
-      return res.status(404).json({ message: 'Trip plan not found' })
+    const plan = await store.updatePlan(req.params.id, req.body || {})
+    if (!plan) {
+      return res.status(404).json({ message: 'Plan not found' })
     }
 
-    res.status(200).json(tripPlan)
+    res.status(200).json(plan)
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

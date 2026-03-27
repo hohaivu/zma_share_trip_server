@@ -204,18 +204,18 @@ async function listAllRoutes() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — Trip Plan (replaces demand CRUD)
+// HELPERS — Plan (replaces demand CRUD)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function createTripPlan(clientId, data) {
+async function createPlan(clientId, data) {
   const res = await query(
     `
-    INSERT INTO trip_plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
+    INSERT INTO plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
     RETURNING *
   `,
     [
-      generateId('tripPlan'),
+      generateId('plan'),
       clientId,
       JSON.stringify(data.pickup),
       JSON.stringify(data.dropoff),
@@ -237,17 +237,17 @@ async function createTripPlan(clientId, data) {
   return toCamelCase(res.rows[0])
 }
 
-async function getTripPlan(id) {
-  const result = await query('SELECT * FROM trip_plans WHERE id = $1', [id])
+async function getPlan(id) {
+  const result = await query('SELECT * FROM plans WHERE id = $1', [id])
   return toCamelCase(result.rows[0])
 }
 
-async function updateTripPlan(id, data) {
-  return dynamicUpdate('trip_plans', id, data, ['pickup', 'dropoff'])
+async function updatePlan(id, data) {
+  return dynamicUpdate('plans', id, data, ['pickup', 'dropoff'])
 }
 
-async function listTripPlansByClient(clientId) {
-  const result = await query('SELECT * FROM trip_plans WHERE client_id = $1', [
+async function listPlansByClient(clientId) {
+  const result = await query('SELECT * FROM plans WHERE client_id = $1', [
     clientId,
   ])
   return result.rows.map(toCamelCase)
@@ -293,7 +293,7 @@ async function deriveDemandGroups() {
   const grouped = new Map()
 
   const result = await query(
-    'SELECT * FROM trip_plans WHERE publish_mode = $1 AND status = $2',
+    'SELECT * FROM plans WHERE publish_mode = $1 AND status = $2',
     ['grouped', 'published'],
   )
   const activePlans = result.rows.map(toCamelCase)
@@ -342,7 +342,7 @@ async function getDemandGroupMembers(groupId) {
   if (!group) return null
 
   const result = await query(
-    'SELECT * FROM trip_plans WHERE id = ANY($1::varchar[])',
+    'SELECT * FROM plans WHERE id = ANY($1::varchar[])',
     [group.memberTripPlanIds],
   )
   return result.rows.map(toCamelCase)
@@ -403,7 +403,7 @@ async function createGroupRequest(driverId, routeId, demandGroupId, note) {
     const createdOffers = []
 
     for (const tpId of group.memberTripPlanIds) {
-      const tpRes = await tx.query('SELECT * FROM trip_plans WHERE id = $1', [
+      const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [
         tpId,
       ])
       const tp = toCamelCase(tpRes.rows[0])
@@ -412,7 +412,7 @@ async function createGroupRequest(driverId, routeId, demandGroupId, note) {
 
       const offerRes = await tx.query(
         `
-        INSERT INTO group_offers (id, group_request_id, route_id, driver_id, client_id, trip_plan_id, trip_price, status, created_at)
+        INSERT INTO group_offers (id, group_request_id, route_id, driver_id, client_id, plan_id, trip_price, status, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
         RETURNING *
       `,
@@ -571,15 +571,15 @@ async function cancelGroupRequest(requestId) {
   return result.greq
 }
 
-async function createSearchRequest(clientId, tripPlanId, routeId, note) {
+async function createSearchRequest(clientId, planId, routeId, note) {
   const resData = await withTransaction(async (tx) => {
-    const tpRes = await tx.query('SELECT * FROM trip_plans WHERE id = $1', [
-      tripPlanId,
+    const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [
+      planId,
     ])
     const tp = toCamelCase(tpRes.rows[0])
-    if (!tp) throw new Error('Trip plan not found')
+    if (!tp) throw new Error('Plan not found')
     if (tp.publishMode !== 'search_only') {
-      throw new Error('Only search_only trip plans can create search requests')
+      throw new Error('Only search_only plans can create search requests')
     }
 
     const routeRes = await tx.query(
@@ -597,14 +597,14 @@ async function createSearchRequest(clientId, tripPlanId, routeId, note) {
 
     const sreqRes = await tx.query(
       `
-      INSERT INTO search_requests (id, client_id, trip_plan_id, route_id, driver_id, trip_price, note, status, created_at)
+      INSERT INTO search_requests (id, client_id, plan_id, route_id, driver_id, trip_price, note, status, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
       RETURNING *
     `,
       [
         sreqId,
         clientId,
-        tripPlanId,
+        planId,
         routeId,
         route.driverId,
         route.tripPrice,
@@ -807,11 +807,11 @@ module.exports = {
   updateRoute,
   listAllRoutes,
 
-  // Trip Plan
-  createTripPlan,
-  getTripPlan,
-  updateTripPlan,
-  listTripPlansByClient,
+  // Plan
+  createPlan,
+  getPlan,
+  updatePlan,
+  listPlansByClient,
 
   // Departure Block
   computeDepartureBlock,
