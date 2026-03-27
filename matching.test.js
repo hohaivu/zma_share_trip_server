@@ -94,6 +94,17 @@ describe('passesHardFilters', () => {
     assert.ok(await matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, null, []))
   })
 
+  it('correctly maps identical local offsets to overlapping UTC instants', async () => {
+    // 14:15 +07:00 is 07:15 UTC
+    const route = { ...BASE_ROUTE, departureTime: '2030-03-20T14:15:00.000+07:00' }
+    const plan = {
+      ...BASE_PLAN,
+      departureBlockStart: '2030-03-20T14:00:00.000+07:00',
+      departureBlockEnd: '2030-03-20T14:30:00.000+07:00',
+    }
+    assert.ok(await matching.passesHardFilters(route, plan, null, []))
+  })
+
   it('rejects different serviceDate', async () => {
     const plan = { ...BASE_PLAN, serviceDate: '2030-03-21' }
     assert.equal(

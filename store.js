@@ -1,11 +1,6 @@
-// ─── Phase 2 Store ────────────────────────────────────────────────────────────
-// Postgres-backed store aligned to PRD v1.1.
-// Demand groups are computed on-read. Request orchestration is transactional.
-// ──────────────────────────────────────────────────────────────────────────────
-
 const { query, withTransaction } = require('./db/connection')
 
-// ─── Shared Helpers ────────────────────────────────────────────────────────────
+// --- Helpers ---
 
 function generateId(prefix) {
   return `${prefix}-${Date.now()}${Math.random().toString().slice(2, 6)}`
@@ -15,15 +10,45 @@ function toCamelCase(row) {
   if (!row) return null
   const res = {}
   for (const key in row) {
+    let val = row[key]
+    if (val instanceof Date) {
+      val = val.toISOString()
+    }
     const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase())
-    res[camelKey] = row[key]
+    res[camelKey] = val
   }
   return res
+}
+
+function normalizeUtc(val) {
+  if (!val) return val
+  return new Date(val).toISOString()
 }
 
 function toSnakeCase(key) {
   return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
 }
+
+const CAR_COLORS = {
+  'Xanh dương': '#006AF5',
+  'Trắng': '#FFFFFF',
+  'Đen': '#1A1A1A',
+  'Đỏ': '#CC0000',
+  'Xanh lá': '#00C853',
+  'Cam': '#FFA000',
+  'Tím': '#9C27B0',
+  'Nâu': '#795548',
+  'Bạc': '#C0C0C0',
+  'Xanh đậm': '#1565C0',
+  'Xám': '#757575',
+}
+
+function mapCar(row) {
+  const c = toCamelCase(row)
+  if (c?.color) c.colorHex = CAR_COLORS[c.color] || c.color
+  return c
+}
+
 
 /**
  * Generic dynamic-update for any table. Builds a parameterized UPDATE from
@@ -37,9 +62,12 @@ async function dynamicUpdate(table, id, data, jsonFields = []) {
   }
 
   const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`)
-  const vals = keys.map((k) =>
-    jsonFields.includes(k) ? JSON.stringify(data[k]) : data[k],
-  )
+  const timeFields = ['departureTime', 'windowStart', 'windowEnd', 'departureBlockStart', 'departureBlockEnd']
+  const vals = keys.map((k) => {
+    if (jsonFields.includes(k)) return JSON.stringify(data[k])
+    if (timeFields.includes(k) && data[k]) return new Date(data[k]).toISOString()
+    return data[k]
+  })
 
   const result = await query(
     `UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
@@ -48,7 +76,7 @@ async function dynamicUpdate(table, id, data, jsonFields = []) {
   return toCamelCase(result.rows[0])
 }
 
-// ─── Notifications (lightweight hook payloads) ─────────────────────────────────
+// --- Notifications ---
 
 const notifications = []
 
@@ -65,9 +93,7 @@ function listNotifications() {
   return [...notifications]
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — User
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- User ---
 
 async function getUser(userId) {
   const result = await query('SELECT * FROM users WHERE id = $1', [userId])
@@ -107,9 +133,7 @@ async function findOrCreateUser(zaloId, displayName, avatarUrl) {
   return toCamelCase(result.rows[0])
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — Car (unchanged)
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- Car ---
 
 async function createCar(ownerId, data) {
   const result = await query(
@@ -132,18 +156,22 @@ async function createCar(ownerId, data) {
       JSON.stringify(data.photos || []),
     ],
   )
-  return toCamelCase(result.rows[0])
+  return mapCar(result.rows[0])
 }
 
 async function listCarsByOwner(ownerId) {
   const result = await query('SELECT * FROM cars WHERE owner_id = $1', [
     ownerId,
   ])
-  return result.rows.map(toCamelCase)
+  return result.rows.map(mapCar)
 }
 
 async function updateCar(id, data) {
-  return dynamicUpdate('cars', id, data, ['photos'])
+  const result = await dynamicUpdate('cars', id, data, ['photos'])
+  if (result && result.color) {
+    result.colorHex = CAR_COLORS[result.color] || result.color
+  }
+  return result
 }
 
 async function deleteCar(id) {
@@ -153,9 +181,7 @@ async function deleteCar(id) {
   return result.rowCount > 0
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — Route (Phase 2: tripPrice, serviceDate)
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- Route ---
 
 async function createRoute(driverId, data) {
   const res = await query(
@@ -171,9 +197,9 @@ async function createRoute(driverId, data) {
       JSON.stringify(data.origin),
       JSON.stringify(data.destination),
       data.serviceDate,
-      data.departureTime,
-      data.windowStart,
-      data.windowEnd,
+      normalizeUtc(data.departureTime),
+      normalizeUtc(data.windowStart),
+      normalizeUtc(data.windowEnd),
       data.tripPrice,
       data.notes || '',
       data.status || 'draft',
@@ -203,9 +229,7 @@ async function listAllRoutes() {
   return result.rows.map(toCamelCase)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — Plan (replaces demand CRUD)
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- Plan ---
 
 async function createPlan(clientId, data) {
   const res = await query(
@@ -226,8 +250,8 @@ async function createPlan(clientId, data) {
       data.pickupProvinceId,
       data.dropoffProvinceId,
       data.serviceDate,
-      data.departureBlockStart,
-      data.departureBlockEnd,
+      normalizeUtc(data.departureBlockStart),
+      normalizeUtc(data.departureBlockEnd),
       data.passengerCount,
       data.publishMode,
       data.notes || '',
@@ -253,9 +277,7 @@ async function listPlansByClient(clientId) {
   return result.rows.map(toCamelCase)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — Departure Block
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- Departure Block ---
 
 function computeDepartureBlock(departureTime) {
   const dt = new Date(departureTime)
@@ -270,20 +292,19 @@ function computeDepartureBlock(departureTime) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — Demand Groups (computed on-read)
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- Demand Groups ---
 
 function buildGroupKey(tp) {
-  // Convert dates to string because pg returns Date objects
+  // `toCamelCase` maps pg Dates to canonical ISO strings, but if
+  // something bypassed it and sent +07:00, force it to canonical UTC
   const svcDate =
     tp.serviceDate instanceof Date
       ? tp.serviceDate.toISOString().split('T')[0]
       : tp.serviceDate
-  const dbs =
-    tp.departureBlockStart instanceof Date
-      ? tp.departureBlockStart.toISOString()
-      : tp.departureBlockStart
+  const dbs = tp.departureBlockStart instanceof Date
+    ? tp.departureBlockStart.toISOString()
+    : normalizeUtc(tp.departureBlockStart)
+
   const pickupKey = tp.pickupWardKey || tp.pickupWardId
   const dropoffKey = tp.dropoffWardKey || tp.dropoffWardId
   return `${svcDate}|${pickupKey}|${dropoffKey}|${dbs}`
@@ -314,7 +335,7 @@ async function deriveDemandGroups() {
         departureBlockEnd: tp.departureBlockEnd,
         memberCount: 0,
         totalPassengerCount: 0,
-        memberTripPlanIds: [],
+        memberPlanIds: [],
         pickup:
           typeof tp.pickup === 'string' ? JSON.parse(tp.pickup) : tp.pickup,
         dropoff:
@@ -325,7 +346,7 @@ async function deriveDemandGroups() {
     const group = grouped.get(key)
     group.memberCount += 1
     group.totalPassengerCount += tp.passengerCount
-    group.memberTripPlanIds.push(tp.id)
+    group.memberPlanIds.push(tp.id)
     group.clientIds.push(tp.clientId)
   }
 
@@ -343,14 +364,12 @@ async function getDemandGroupMembers(groupId) {
 
   const result = await query(
     'SELECT * FROM plans WHERE id = ANY($1::varchar[])',
-    [group.memberTripPlanIds],
+    [group.memberPlanIds],
   )
   return result.rows.map(toCamelCase)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — Route Availability
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- Route Availability ---
 
 const ROUTE_ACCEPTED_SQL = `
   SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
@@ -367,9 +386,7 @@ async function isRouteAvailable(routeId) {
   return checkRouteAvailability({ query }, routeId)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — Group Request Orchestration
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- Group Request Orchestration ---
 
 async function createGroupRequest(driverId, routeId, demandGroupId, note) {
   const resData = await withTransaction(async (tx) => {
@@ -402,10 +419,8 @@ async function createGroupRequest(driverId, routeId, demandGroupId, note) {
     const greq = toCamelCase(greqRes.rows[0])
     const createdOffers = []
 
-    for (const tpId of group.memberTripPlanIds) {
-      const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [
-        tpId,
-      ])
+    for (const tpId of group.memberPlanIds) {
+      const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [tpId])
       const tp = toCamelCase(tpRes.rows[0])
       if (!tp) continue
       const offerId = generateId('goffer')
@@ -573,9 +588,7 @@ async function cancelGroupRequest(requestId) {
 
 async function createSearchRequest(clientId, planId, routeId, note) {
   const resData = await withTransaction(async (tx) => {
-    const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [
-      planId,
-    ])
+    const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [planId])
     const tp = toCamelCase(tpRes.rows[0])
     if (!tp) throw new Error('Plan not found')
     if (tp.publishMode !== 'search_only') {
@@ -741,9 +754,7 @@ async function listGroupOffersByRoute(routeId) {
   return res.rows.map(toCamelCase)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS — Deprecated template / saved-location (kept inert)
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- Deprecated: saved locations ---
 
 function parseLocationRow(row) {
   const loc = toCamelCase(row)
@@ -783,9 +794,7 @@ async function deleteSavedLocation(id) {
   return result.rowCount > 0
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- Exports ---
 
 module.exports = {
   // User

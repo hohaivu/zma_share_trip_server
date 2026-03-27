@@ -107,9 +107,11 @@ async function passesHardFilters(route, planLike, driver, clientIds) {
 
   // Departure block overlap
   const routeBlock = store.computeDepartureBlock(route.departureTime)
-  const blockOverlaps =
-    routeBlock.start < planLike.departureBlockEnd &&
-    planLike.departureBlockStart < routeBlock.end
+  const routeStart = new Date(routeBlock.start).getTime()
+  const routeEnd = new Date(routeBlock.end).getTime()
+  const planStart = new Date(planLike.departureBlockStart).getTime()
+  const planEnd = new Date(planLike.departureBlockEnd).getTime()
+  const blockOverlaps = routeStart < planEnd && planStart < routeEnd
   if (!blockOverlaps) return false
 
   // Bidirectional blocked-user check
@@ -208,9 +210,11 @@ function classifyMatch(route, group) {
   if (route.serviceDate !== group.serviceDate) return null
 
   const routeBlock = store.computeDepartureBlock(route.departureTime)
-  const blockOverlaps =
-    routeBlock.start < group.departureBlockEnd &&
-    group.departureBlockStart < routeBlock.end
+  const routeStart = new Date(routeBlock.start).getTime()
+  const routeEnd = new Date(routeBlock.end).getTime()
+  const groupStart = new Date(group.departureBlockStart).getTime()
+  const groupEnd = new Date(group.departureBlockEnd).getTime()
+  const blockOverlaps = routeStart < groupEnd && groupStart < routeEnd
   if (!blockOverlaps) return null
 
   return classifyByDistance(
@@ -299,9 +303,7 @@ async function computeMatchingRoutes(planId) {
   const tp = await store.getPlan(planId)
   if (!tp) return null
   if (tp.publishMode !== 'search_only') {
-    throw new Error(
-      'Only search_only plans can search for matching routes',
-    )
+    throw new Error('Only search_only plans can search for matching routes')
   }
 
   const allRoutes = await store.listAllRoutes()

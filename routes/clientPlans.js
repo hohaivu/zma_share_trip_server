@@ -3,7 +3,7 @@ const store = require('../store')
 
 const router = Router()
 
-// POST /api/trip-plans — create a trip plan
+// POST /api/client/trip-plans — create a plan
 router.post('/trip-plans', async (req, res) => {
   try {
     const { clientId, clientName, clientAvatar, ...data } = req.body || {}
@@ -21,7 +21,7 @@ router.post('/trip-plans', async (req, res) => {
   }
 })
 
-// GET /api/trip-plans?clientId= — list by client
+// GET /api/client/trip-plans?clientId= — list by client
 router.get('/trip-plans', async (req, res) => {
   try {
     const { clientId } = req.query
@@ -35,7 +35,7 @@ router.get('/trip-plans', async (req, res) => {
   }
 })
 
-// GET /api/trip-plans/:id — detail
+// GET /api/client/trip-plans/:id — detail
 router.get('/trip-plans/:id', async (req, res) => {
   try {
     const plan = await store.getPlan(req.params.id)
@@ -49,7 +49,7 @@ router.get('/trip-plans/:id', async (req, res) => {
   }
 })
 
-// PUT /api/trip-plans/:id — update
+// PUT /api/client/trip-plans/:id — update
 router.put('/trip-plans/:id', async (req, res) => {
   try {
     const plan = await store.updatePlan(req.params.id, req.body || {})

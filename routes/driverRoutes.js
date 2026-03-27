@@ -3,7 +3,7 @@ const store = require('../store')
 
 const router = Router()
 
-// POST /api/routes — create a driver route
+// POST /api/driver/routes — create a driver route
 router.post('/routes', async (req, res) => {
   try {
     const { driverId, driverName, driverAvatar, ...data } = req.body || {}
@@ -21,7 +21,7 @@ router.post('/routes', async (req, res) => {
   }
 })
 
-// GET /api/routes?driverId= — list by driver
+// GET /api/driver/routes?driverId= — list by driver
 router.get('/routes', async (req, res) => {
   try {
     const { driverId } = req.query
@@ -35,7 +35,7 @@ router.get('/routes', async (req, res) => {
   }
 })
 
-// GET /api/routes/:id — detail
+// GET /api/driver/routes/:id — detail
 router.get('/routes/:id', async (req, res) => {
   try {
     const route = await store.getRoute(req.params.id)
@@ -49,7 +49,7 @@ router.get('/routes/:id', async (req, res) => {
   }
 })
 
-// PUT /api/routes/:id — update
+// PUT /api/driver/routes/:id — update
 router.put('/routes/:id', async (req, res) => {
   try {
     const route = await store.updateRoute(req.params.id, req.body || {})

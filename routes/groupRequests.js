@@ -3,7 +3,7 @@ const store = require('../store')
 
 const router = Router()
 
-// POST /api/group-requests — create group request + fan-out
+// POST /api/driver/group-requests — create group request + fan-out
 router.post('/group-requests', async (req, res) => {
   const { driverId, routeId, demandGroupId, note } = req.body || {}
   if (!driverId || !routeId || !demandGroupId) {
@@ -25,7 +25,7 @@ router.post('/group-requests', async (req, res) => {
   }
 })
 
-// GET /api/group-requests?driverId= — driver's sent requests
+// GET /api/driver/group-requests?driverId= — driver's sent requests
 router.get('/group-requests', async (req, res) => {
   try {
     const { driverId } = req.query
@@ -39,7 +39,7 @@ router.get('/group-requests', async (req, res) => {
   }
 })
 
-// POST /api/group-requests/:id/cancel — cancel + close pending offers
+// POST /api/driver/group-requests/:id/cancel — cancel + close pending offers
 router.post('/group-requests/:id/cancel', async (req, res) => {
   try {
     const result = await store.cancelGroupRequest(req.params.id)

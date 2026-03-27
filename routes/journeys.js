@@ -3,15 +3,10 @@ const store = require('../store')
 
 const router = Router()
 
-// ─── Trip Summary & Complete (Phase 2) ─────────────────────────────────────────
-// These operate on either a route or trip-plan, finding the accepted counterpart
-// via group offers or search requests.
-
 async function findAcceptedForRoute(routeId) {
   const route = await store.getRoute(routeId)
   if (!route) return null
 
-  // Check search requests for this route
   const searchReqs = await store.listSearchRequestsByRoute(routeId)
   const acceptedSearch = searchReqs.find((r) => r.status === 'accepted')
   if (acceptedSearch) {
@@ -27,7 +22,6 @@ async function findAcceptedForRoute(routeId) {
     }
   }
 
-  // Check group offers for this route
   const groupOffers = await store.listGroupOffersByRoute(routeId)
   const acceptedOffer = groupOffers.find((o) => o.status === 'accepted')
   if (acceptedOffer) {
@@ -50,7 +44,6 @@ async function findAcceptedForPlan(planId) {
   const tp = await store.getPlan(planId)
   if (!tp) return null
 
-  // Check search requests where this plan is the source
   const clientSearchReqs = await store.listSearchRequestsByClient(tp.clientId)
   const acceptedSearch = clientSearchReqs.find(
     (r) => r.planId === planId && r.status === 'accepted',
@@ -68,7 +61,6 @@ async function findAcceptedForPlan(planId) {
     }
   }
 
-  // Check group offers for this client
   const clientOffers = await store.listGroupOffersByClient(tp.clientId)
   const acceptedOffer = clientOffers.find(
     (o) => o.planId === planId && o.status === 'accepted',
@@ -139,7 +131,7 @@ router.post('/trips/:id/complete', async (req, res) => {
   }
 })
 
-// ─── Deprecated: templates and saved locations (kept inert) ────────────────────
+// Deprecated: saved locations
 
 router.get('/trips/saved-locations', async (_req, res) => {
   try {

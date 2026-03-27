@@ -3,7 +3,7 @@ const store = require('../store')
 
 const router = Router()
 
-// GET /api/demand-groups/:id — group summary
+// GET /api/driver/demand-groups/:id — group summary
 router.get('/demand-groups/:id', async (req, res) => {
   try {
     const group = await store.getDemandGroup(req.params.id)
@@ -17,7 +17,7 @@ router.get('/demand-groups/:id', async (req, res) => {
   }
 })
 
-// GET /api/demand-groups/:id/members — member list (gated on exact-3 visibility)
+// GET /api/driver/demand-groups/:id/members — member list
 router.get('/demand-groups/:id/members', async (req, res) => {
   try {
     const group = await store.getDemandGroup(req.params.id)
