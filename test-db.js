@@ -55,16 +55,19 @@ async function setupTestDb() {
     pool = initPool()
     await query(TRUNCATE_ALL_SQL)
 
-    const migration1 = fs.readFileSync(
-      path.join(__dirname, 'db', 'migrations', '01_init.sql'),
-      'utf8',
-    )
-    const migration2 = fs.readFileSync(
-      path.join(__dirname, 'db', 'migrations', '02_add_ward_keys.sql'),
-      'utf8',
-    )
-    await query(migration1)
-    await query(migration2)
+    const migrationsDir = path.join(__dirname, 'db', 'migrations')
+    const migrationFiles = fs
+      .readdirSync(migrationsDir)
+      .filter((file) => file.endsWith('.sql'))
+      .sort()
+
+    for (const migrationFile of migrationFiles) {
+      const migrationSql = fs.readFileSync(
+        path.join(migrationsDir, migrationFile),
+        'utf8',
+      )
+      await query(migrationSql)
+    }
     await query(TRUNCATE_ALL_SQL)
 
     await seed()
