@@ -133,19 +133,28 @@ async function getUserMode(userId) {
   return toCamelCase(result.rows[0])
 }
 
-async function findOrCreateUser(zaloId, displayName, avatarUrl) {
+async function bootstrapUser(mauid, displayName, avatarUrl) {
+  // Look up existing user by mauid
+  const existing = await query('SELECT * FROM users WHERE mauid = $1', [mauid])
+  if (existing.rows.length > 0) {
+    // Update display fields on subsequent bootstrap calls
+    const updated = await query(
+      `UPDATE users SET display_name = $1, avatar_url = $2 WHERE mauid = $3 RETURNING *`,
+      [displayName || existing.rows[0].display_name, avatarUrl ?? existing.rows[0].avatar_url, mauid],
+    )
+    return { user: toCamelCase(updated.rows[0]), wasCreated: false }
+  }
+
+  // Create new user with auto-generated UUID id
   const result = await query(
     `
-    INSERT INTO users (id, zalo_id, display_name, avatar_url, role, created_at)
-    VALUES ($1, $2, $3, $4, $5, NOW())
-    ON CONFLICT (id) DO UPDATE SET
-      display_name = EXCLUDED.display_name,
-      avatar_url = EXCLUDED.avatar_url
+    INSERT INTO users (mauid, display_name, avatar_url, role, created_at)
+    VALUES ($1, $2, $3, $4, NOW())
     RETURNING *
   `,
-    [zaloId, zaloId, displayName || '', avatarUrl || '', 'client'],
+    [mauid, displayName || '', avatarUrl || '', 'client'],
   )
-  return toCamelCase(result.rows[0])
+  return { user: toCamelCase(result.rows[0]), wasCreated: true }
 }
 
 // --- Car ---
@@ -790,7 +799,7 @@ async function deleteSavedLocation(id) {
 module.exports = {
   // User
   getUser,
-  findOrCreateUser,
+  bootstrapUser,
   setUserMode,
   getUserMode,
 

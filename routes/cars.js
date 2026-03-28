@@ -1,5 +1,6 @@
 const { Router } = require('express')
 const store = require('../store')
+const { asyncHandler, requireParam } = require('./helpers')
 
 const router = Router()
 
@@ -10,75 +11,49 @@ function maskPlate(full) {
   return `${prefix}***${suffix}`
 }
 
-router.post('/cars', async (req, res) => {
-  try {
-    const { ownerId, ownerName, ownerAvatar, ...data } = req.body || {}
-    if (!ownerId) {
-      return res.status(400).json({ message: 'ownerId is required' })
-    }
+router.post('/cars', asyncHandler(async (req, res) => {
+  const { ownerId, ...data } = req.body || {}
+  requireParam(ownerId, 'ownerId is required')
+  requireParam(data.plateNumberFull, 'plateNumberFull is required')
 
-    if (!data.plateNumberFull) {
-      return res.status(400).json({ message: 'plateNumberFull is required' })
-    }
+  const car = await store.createCar(ownerId, {
+    ...data,
+    plateNumberMasked: maskPlate(data.plateNumberFull),
+    verificationStatus: data.verificationStatus || 'unverified',
+    photos: data.photos || [],
+  })
 
-    // Ensure the owner exists in the users table (upsert)
-    await store.findOrCreateUser(ownerId, ownerName, ownerAvatar)
+  res.status(201).json(car)
+}))
 
-    const car = await store.createCar(ownerId, {
-      ...data,
-      plateNumberMasked: maskPlate(data.plateNumberFull),
-      verificationStatus: data.verificationStatus || 'unverified',
-      photos: data.photos || [],
-    })
+router.get('/cars', asyncHandler(async (req, res) => {
+  const { ownerId } = req.query
+  requireParam(ownerId, 'ownerId query is required')
 
-    res.status(201).json(car)
-  } catch (err) {
-    res.status(500).json({ message: err.message })
+  res.status(200).json(await store.listCarsByOwner(ownerId))
+}))
+
+router.put('/cars/:id', asyncHandler(async (req, res) => {
+  const updatePayload = { ...req.body }
+  if (updatePayload.plateNumberFull) {
+    updatePayload.plateNumberMasked = maskPlate(updatePayload.plateNumberFull)
   }
-})
 
-router.get('/cars', async (req, res) => {
-  try {
-    const { ownerId } = req.query
-    if (!ownerId) {
-      return res.status(400).json({ message: 'ownerId query is required' })
-    }
-
-    res.status(200).json(await store.listCarsByOwner(ownerId))
-  } catch (err) {
-    res.status(500).json({ message: err.message })
+  const car = await store.updateCar(req.params.id, updatePayload)
+  if (!car) {
+    return res.status(404).json({ message: 'Car not found' })
   }
-})
 
-router.put('/cars/:id', async (req, res) => {
-  try {
-    const updatePayload = { ...req.body }
-    if (updatePayload.plateNumberFull) {
-      updatePayload.plateNumberMasked = maskPlate(updatePayload.plateNumberFull)
-    }
+  res.status(200).json(car)
+}))
 
-    const car = await store.updateCar(req.params.id, updatePayload)
-    if (!car) {
-      return res.status(404).json({ message: 'Car not found' })
-    }
-
-    res.status(200).json(car)
-  } catch (err) {
-    res.status(500).json({ message: err.message })
+router.delete('/cars/:id', asyncHandler(async (req, res) => {
+  const deleted = await store.deleteCar(req.params.id)
+  if (!deleted) {
+    return res.status(404).json({ message: 'Car not found' })
   }
-})
 
-router.delete('/cars/:id', async (req, res) => {
-  try {
-    const deleted = await store.deleteCar(req.params.id)
-    if (!deleted) {
-      return res.status(404).json({ message: 'Car not found' })
-    }
-
-    res.status(204).end()
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
+  res.status(204).end()
+}))
 
 module.exports = router

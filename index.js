@@ -10,6 +10,7 @@ const carsRoute = require('./routes/cars')
 const driverRoutesRoute = require('./routes/driverRoutes')
 const clientPlansRoute = require('./routes/clientPlans')
 const usersRoute = require('./routes/users')
+const bootstrapRoute = require('./routes/bootstrap')
 const demandGroupsRoute = require('./routes/demandGroups')
 const driverMatchesRoute = require('./routes/driverMatches')
 const clientMatchesRoute = require('./routes/clientMatches')
@@ -32,27 +33,35 @@ app.use(
   }),
 )
 
-// Shared routes
-app.use('/api', authorizeRoute)
-app.use('/api', userInfoRoute)
-app.use('/api', phoneNumberRoute)
-app.use('/api', locationRoute)
-app.use('/api', journeysRoute)
-app.use('/api', usersRoute)
+const sharedRoutes = [
+  authorizeRoute,
+  userInfoRoute,
+  phoneNumberRoute,
+  locationRoute,
+  journeysRoute,
+  usersRoute,
+  bootstrapRoute,
+]
 
-// Driver namespace
-app.use('/api/driver', carsRoute)
-app.use('/api/driver', driverRoutesRoute)
-app.use('/api/driver', groupRequestsRoute)
-app.use('/api/driver', demandGroupsRoute)
-app.use('/api/driver', driverMatchesRoute)
-app.use('/api/driver', driverSearchRequestsRoute)
+const driverRoutes = [
+  carsRoute,
+  driverRoutesRoute,
+  groupRequestsRoute,
+  demandGroupsRoute,
+  driverMatchesRoute,
+  driverSearchRequestsRoute,
+]
 
-// Client namespace
-app.use('/api/client', clientPlansRoute)
-app.use('/api/client', groupOffersRoute)
-app.use('/api/client', clientMatchesRoute)
-app.use('/api/client', clientSearchRequestsRoute)
+const clientRoutes = [
+  clientPlansRoute,
+  groupOffersRoute,
+  clientMatchesRoute,
+  clientSearchRequestsRoute,
+]
+
+for (const route of sharedRoutes) app.use('/api', route)
+for (const route of driverRoutes) app.use('/api/driver', route)
+for (const route of clientRoutes) app.use('/api/client', route)
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })

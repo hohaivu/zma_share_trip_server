@@ -1,69 +1,130 @@
 const { initPool, closePool } = require('./connection')
 
-// The original seed data from store.js
-const users = [
-  {
-    id: 'driver-001',
-    zaloId: 'zalo-driver-001',
-    displayName: 'Tài xế 001',
+// --- Named constants ---
+
+const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
+const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
+const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
+const CLIENT_002_ID = 'a1b2c3d4-0004-4000-8000-000000000004'
+
+const SERVICE_DATE_MAR20 = '2030-03-20'
+const SERVICE_DATE_MAR21 = '2030-03-21'
+
+const COORD_Q1 = { lat: 10.7769, lng: 106.7009, label: 'Quận 1' }
+const COORD_TD = { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' }
+const COORD_Q1_NEAR = { lat: 10.778, lng: 106.702, label: 'Quận 1' }
+const COORD_TD_NEAR = { lat: 10.855, lng: 106.754, label: 'Thủ Đức' }
+const COORD_TB = { lat: 10.8, lng: 106.65, label: 'Tân Bình' }
+const COORD_TD_TB = { lat: 10.85, lng: 106.76, label: 'Thủ Đức' }
+
+const WARD_Q1 = 'ward-q1-bennghe'
+const WARD_TD = 'ward-td-binhtho'
+const WARD_KEY_Q1 = 'ward-q1-bennghe_79'
+const WARD_KEY_TD = 'ward-td-binhtho_79'
+const PROVINCE_HCM = '79'
+
+// --- Factory helpers ---
+
+function makeUser(overrides) {
+  return {
     avatarUrl: '',
     verificationStatus: 'verified',
+    ratingAvg: 4.5,
+    tripCount: 0,
+    blockedUserIds: [],
+    ...overrides,
+  }
+}
+
+function makeRoute(overrides) {
+  return {
+    origin: COORD_Q1,
+    destination: COORD_TD,
+    originWardId: WARD_Q1,
+    originWardKey: WARD_KEY_Q1,
+    originProvinceId: PROVINCE_HCM,
+    destinationWardId: WARD_TD,
+    destinationWardKey: WARD_KEY_TD,
+    destinationProvinceId: PROVINCE_HCM,
+    notes: '',
+    status: 'published',
+    ...overrides,
+  }
+}
+
+function makePlan(overrides) {
+  return {
+    pickup: COORD_Q1,
+    dropoff: COORD_TD,
+    pickupWardId: WARD_Q1,
+    dropoffWardId: WARD_TD,
+    pickupWardKey: WARD_KEY_Q1,
+    dropoffWardKey: WARD_KEY_TD,
+    pickupProvinceId: PROVINCE_HCM,
+    dropoffProvinceId: PROVINCE_HCM,
+    passengerCount: 1,
+    publishMode: 'grouped',
+    notes: '',
+    status: 'published',
+    ...overrides,
+  }
+}
+
+// --- Seed data ---
+
+// Deterministic UUIDs for reproducible demo/dev seeding.
+// mauid values represent external Zalo Mini App identifiers.
+const users = [
+  makeUser({
+    id: DRIVER_001_ID,
+    mauid: 'zalo-driver-001',
+    displayName: 'Tài xế 001',
     ratingAvg: 4.8,
     tripCount: 112,
     role: 'driver',
     preferredMode: 'driver',
     modeSelectedAt: '2026-01-01T00:00:00.000Z',
-    blockedUserIds: [],
     createdAt: '2026-01-01T00:00:00.000Z',
-  },
-  {
-    id: 'driver-002',
-    zaloId: 'zalo-driver-002',
+  }),
+  makeUser({
+    id: DRIVER_002_ID,
+    mauid: 'zalo-driver-002',
     displayName: 'Tài xế 002',
-    avatarUrl: '',
-    verificationStatus: 'verified',
     ratingAvg: 4.5,
     tripCount: 45,
     role: 'driver',
     preferredMode: 'driver',
     modeSelectedAt: '2026-01-02T00:00:00.000Z',
-    blockedUserIds: [],
     createdAt: '2026-01-02T00:00:00.000Z',
-  },
-  {
-    id: 'client-001',
-    zaloId: 'zalo-client-001',
+  }),
+  makeUser({
+    id: CLIENT_001_ID,
+    mauid: 'zalo-client-001',
     displayName: 'Hành khách 001',
-    avatarUrl: '',
-    verificationStatus: 'verified',
     ratingAvg: 4.7,
     tripCount: 52,
     role: 'client',
     preferredMode: 'client',
     modeSelectedAt: '2026-01-01T00:00:00.000Z',
-    blockedUserIds: [],
     createdAt: '2026-01-01T00:00:00.000Z',
-  },
-  {
-    id: 'client-002',
-    zaloId: 'zalo-client-002',
+  }),
+  makeUser({
+    id: CLIENT_002_ID,
+    mauid: 'zalo-client-002',
     displayName: 'Hành khách 002',
-    avatarUrl: '',
-    verificationStatus: 'verified',
     ratingAvg: 4.9,
     tripCount: 30,
     role: 'client',
     preferredMode: 'client',
     modeSelectedAt: '2026-01-02T00:00:00.000Z',
-    blockedUserIds: [],
     createdAt: '2026-01-02T00:00:00.000Z',
-  },
+  }),
 ]
 
 const cars = [
   {
     id: 'car-001',
-    ownerId: 'driver-001',
+    ownerId: DRIVER_001_ID,
     nickname: 'Xe gia đình',
     plateNumberMasked: '51A-***45',
     plateNumberFull: '51A-123.45',
@@ -77,7 +138,7 @@ const cars = [
   },
   {
     id: 'car-002',
-    ownerId: 'driver-002',
+    ownerId: DRIVER_002_ID,
     nickname: 'Xe đi làm',
     plateNumberMasked: '59C-***78',
     plateNumberFull: '59C-456.78',
@@ -92,131 +153,72 @@ const cars = [
 ]
 
 const routes = [
-  {
+  makeRoute({
     id: 'route-001',
-    driverId: 'driver-001',
+    driverId: DRIVER_001_ID,
     carId: 'car-001',
-    origin: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
-    destination: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
-    originWardId: 'ward-q1-bennghe',
-    originWardKey: 'ward-q1-bennghe_79',
-    originProvinceId: '79',
-    destinationWardId: 'ward-td-binhtho',
-    destinationWardKey: 'ward-td-binhtho_79',
-    destinationProvinceId: '79',
-    serviceDate: '2030-03-20',
+    serviceDate: SERVICE_DATE_MAR20,
     departureTime: '2030-03-20T00:00:00.000Z', // 07:00 local
     windowStart: '2030-03-19T23:45:00.000Z', // 06:45 local
     windowEnd: '2030-03-20T00:15:00.000Z', // 07:15 local
     tripPrice: 120000,
-    notes: '',
-    status: 'published',
     createdAt: '2026-01-05T00:00:00.000Z',
-  },
-  {
+  }),
+  makeRoute({
     id: 'route-002',
-    driverId: 'driver-002',
+    driverId: DRIVER_002_ID,
     carId: 'car-002',
-    origin: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
-    destination: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
-    originWardId: 'ward-q1-bennghe',
-    originWardKey: 'ward-q1-bennghe_79',
-    originProvinceId: '79',
-    destinationWardId: 'ward-td-binhtho',
-    destinationWardKey: 'ward-td-binhtho_79',
-    destinationProvinceId: '79',
-    serviceDate: '2030-03-20',
+    serviceDate: SERVICE_DATE_MAR20,
     departureTime: '2030-03-20T00:30:00.000Z',
     windowStart: '2030-03-20T00:15:00.000Z',
     windowEnd: '2030-03-20T00:45:00.000Z',
     tripPrice: 100000,
-    notes: '',
-    status: 'published',
     createdAt: '2026-01-05T00:00:00.000Z',
-  },
+  }),
 ]
 
 const plans = [
-  {
+  makePlan({
     id: 'plan-001',
-    clientId: 'client-001',
-    pickup: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
-    dropoff: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
-    pickupWardId: 'ward-q1-bennghe',
-    dropoffWardId: 'ward-td-binhtho',
-    pickupWardKey: 'ward-q1-bennghe_79',
-    dropoffWardKey: 'ward-td-binhtho_79',
-    pickupProvinceId: '79',
-    dropoffProvinceId: '79',
-    serviceDate: '2030-03-20',
+    clientId: CLIENT_001_ID,
+    serviceDate: SERVICE_DATE_MAR20,
     departureBlockStart: '2030-03-20T00:00:00.000Z',
     departureBlockEnd: '2030-03-20T00:30:00.000Z',
-    passengerCount: 1,
-    publishMode: 'grouped',
-    notes: '',
-    status: 'published',
     createdAt: '2026-01-05T00:00:00.000Z',
-  },
-  {
+  }),
+  makePlan({
     id: 'plan-002',
-    clientId: 'client-002',
-    pickup: { lat: 10.778, lng: 106.702, label: 'Quận 1' },
-    dropoff: { lat: 10.855, lng: 106.754, label: 'Thủ Đức' },
-    pickupWardId: 'ward-q1-bennghe',
-    dropoffWardId: 'ward-td-binhtho',
-    pickupWardKey: 'ward-q1-bennghe_79',
-    dropoffWardKey: 'ward-td-binhtho_79',
-    pickupProvinceId: '79',
-    dropoffProvinceId: '79',
-    serviceDate: '2030-03-20',
+    clientId: CLIENT_002_ID,
+    pickup: COORD_Q1_NEAR,
+    dropoff: COORD_TD_NEAR,
+    serviceDate: SERVICE_DATE_MAR20,
     departureBlockStart: '2030-03-20T00:00:00.000Z',
     departureBlockEnd: '2030-03-20T00:30:00.000Z',
     passengerCount: 2,
-    publishMode: 'grouped',
-    notes: '',
-    status: 'published',
     createdAt: '2026-01-05T01:00:00.000Z',
-  },
-  {
+  }),
+  makePlan({
     id: 'plan-003',
-    clientId: 'client-001',
-    pickup: { lat: 10.8, lng: 106.65, label: 'Tân Bình' },
-    dropoff: { lat: 10.85, lng: 106.76, label: 'Thủ Đức' },
+    clientId: CLIENT_001_ID,
+    pickup: COORD_TB,
+    dropoff: COORD_TD_TB,
     pickupWardId: 'ward-tb-p15',
-    dropoffWardId: 'ward-td-binhtho',
     pickupWardKey: 'ward-tb-p15_79',
-    dropoffWardKey: 'ward-td-binhtho_79',
-    pickupProvinceId: '79',
-    dropoffProvinceId: '79',
-    serviceDate: '2030-03-20',
+    serviceDate: SERVICE_DATE_MAR20,
     departureBlockStart: '2030-03-20T00:00:00.000Z',
     departureBlockEnd: '2030-03-20T00:30:00.000Z',
-    passengerCount: 1,
-    publishMode: 'grouped',
-    notes: '',
-    status: 'published',
     createdAt: '2026-01-05T02:00:00.000Z',
-  },
-  {
+  }),
+  makePlan({
     id: 'plan-004',
-    clientId: 'client-002',
-    pickup: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
-    dropoff: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
-    pickupWardId: 'ward-q1-bennghe',
-    dropoffWardId: 'ward-td-binhtho',
-    pickupWardKey: 'ward-q1-bennghe_79',
-    dropoffWardKey: 'ward-td-binhtho_79',
-    pickupProvinceId: '79',
-    dropoffProvinceId: '79',
-    serviceDate: '2030-03-21',
+    clientId: CLIENT_002_ID,
+    serviceDate: SERVICE_DATE_MAR21,
     departureBlockStart: '2030-03-21T00:00:00.000Z',
     departureBlockEnd: '2030-03-21T00:30:00.000Z',
-    passengerCount: 1,
     publishMode: 'search_only',
     notes: 'Tìm tài xế trực tiếp',
-    status: 'published',
     createdAt: '2026-01-05T03:00:00.000Z',
-  },
+  }),
 ]
 
 const savedLocations = [
@@ -232,8 +234,6 @@ async function seed() {
   try {
     await client.query('BEGIN')
 
-    // Clear existing data (cascading constraints should handle most, but we can truncate manually or just ignore conflicts if we want)
-    // for safety we will truncate
     await client.query(`
       TRUNCATE TABLE group_offers, search_requests, group_requests, plans, routes, cars, users, saved_locations CASCADE;
     `)
@@ -242,12 +242,12 @@ async function seed() {
     for (const u of users) {
       await client.query(
         `
-        INSERT INTO users (id, zalo_id, display_name, avatar_url, verification_status, rating_avg, trip_count, role, preferred_mode, mode_selected_at, blocked_user_ids, created_at)
+        INSERT INTO users (id, mauid, display_name, avatar_url, verification_status, rating_avg, trip_count, role, preferred_mode, mode_selected_at, blocked_user_ids, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       `,
         [
           u.id,
-          u.zaloId,
+          u.mauid,
           u.displayName,
           u.avatarUrl,
           u.verificationStatus,

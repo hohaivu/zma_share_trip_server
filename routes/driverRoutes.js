@@ -1,66 +1,44 @@
 const { Router } = require('express')
 const store = require('../store')
+const { asyncHandler, requireParam } = require('./helpers')
 
 const router = Router()
 
 // POST /api/driver/routes — create a driver route
-router.post('/routes', async (req, res) => {
-  try {
-    const { driverId, driverName, driverAvatar, ...data } = req.body || {}
-    if (!driverId) {
-      return res.status(400).json({ message: 'driverId is required' })
-    }
+router.post('/routes', asyncHandler(async (req, res) => {
+  const { driverId, ...data } = req.body || {}
+  requireParam(driverId, 'driverId is required')
 
-    // Ensure the driver exists in the users table (upsert)
-    await store.findOrCreateUser(driverId, driverName, driverAvatar)
-
-    const route = await store.createRoute(driverId, data)
-    res.status(201).json(route)
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
+  const route = await store.createRoute(driverId, data)
+  res.status(201).json(route)
+}))
 
 // GET /api/driver/routes?driverId= — list by driver
-router.get('/routes', async (req, res) => {
-  try {
-    const { driverId } = req.query
-    if (!driverId) {
-      return res.status(400).json({ message: 'driverId query is required' })
-    }
+router.get('/routes', asyncHandler(async (req, res) => {
+  const { driverId } = req.query
+  requireParam(driverId, 'driverId query is required')
 
-    res.status(200).json(await store.listRoutesByDriver(driverId))
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
+  res.status(200).json(await store.listRoutesByDriver(driverId))
+}))
 
 // GET /api/driver/routes/:id — detail
-router.get('/routes/:id', async (req, res) => {
-  try {
-    const route = await store.getRoute(req.params.id)
-    if (!route) {
-      return res.status(404).json({ message: 'Route not found' })
-    }
-
-    res.status(200).json(route)
-  } catch (err) {
-    res.status(500).json({ message: err.message })
+router.get('/routes/:id', asyncHandler(async (req, res) => {
+  const route = await store.getRoute(req.params.id)
+  if (!route) {
+    return res.status(404).json({ message: 'Route not found' })
   }
-})
+
+  res.status(200).json(route)
+}))
 
 // PUT /api/driver/routes/:id — update
-router.put('/routes/:id', async (req, res) => {
-  try {
-    const route = await store.updateRoute(req.params.id, req.body || {})
-    if (!route) {
-      return res.status(404).json({ message: 'Route not found' })
-    }
-
-    res.status(200).json(route)
-  } catch (err) {
-    res.status(500).json({ message: err.message })
+router.put('/routes/:id', asyncHandler(async (req, res) => {
+  const route = await store.updateRoute(req.params.id, req.body || {})
+  if (!route) {
+    return res.status(404).json({ message: 'Route not found' })
   }
-})
+
+  res.status(200).json(route)
+}))
 
 module.exports = router

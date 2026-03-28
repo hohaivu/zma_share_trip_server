@@ -110,16 +110,11 @@ function blocksOverlap(routeDepartureTime, blockStart, blockEnd) {
 // ─── Hard Filters ─────────────────────────────────────────────────────────────
 
 /**
- * Reject candidates that fail any hard constraint.
- * route: { serviceDate, departureTime, origin, destination, driverId }
- * planLike: { serviceDate, departureBlockStart, departureBlockEnd, pickup, dropoff }
- * driver: { blockedUserIds } | null
- * clientIds: string[] — all client IDs to check for bidirectional block
+ * Core hard-filter logic with pre-computed bearings.
  */
-async function passesHardFilters(route, planLike, driver, clientIds) {
+async function passesHardFiltersWithBearings(route, planLike, driver, clientIds, routeBearing, planBearing) {
   if (route.serviceDate !== planLike.serviceDate) return false
 
-  // Departure block overlap
   if (
     !blocksOverlap(
       route.departureTime,
@@ -129,7 +124,6 @@ async function passesHardFilters(route, planLike, driver, clientIds) {
   )
     return false
 
-  // Bidirectional blocked-user check
   if (driver) {
     const ids = Array.isArray(clientIds) ? clientIds : []
     for (const clientId of ids) {
@@ -144,34 +138,39 @@ async function passesHardFilters(route, planLike, driver, clientIds) {
     }
   }
 
-  // Direction
-  const routeBearing = computeBearing(route.origin, route.destination)
-  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
   if (bearingDifference(routeBearing, planBearing) > MAX_BEARING_DIFF)
     return false
 
-  // Pickup proximity
   if (haversineDistance(route.origin, planLike.pickup) > MAX_PICKUP_KM)
     return false
 
-  // Dropoff proximity
   if (haversineDistance(route.destination, planLike.dropoff) > MAX_DROPOFF_KM)
     return false
 
   return true
 }
 
+/**
+ * Reject candidates that fail any hard constraint.
+ * route: { serviceDate, departureTime, origin, destination, driverId }
+ * planLike: { serviceDate, departureBlockStart, departureBlockEnd, pickup, dropoff }
+ * driver: { blockedUserIds } | null
+ * clientIds: string[] — all client IDs to check for bidirectional block
+ */
+async function passesHardFilters(route, planLike, driver, clientIds) {
+  const routeBearing = computeBearing(route.origin, route.destination)
+  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
+  return passesHardFiltersWithBearings(route, planLike, driver, clientIds, routeBearing, planBearing)
+}
+
 // ─── Score computation ────────────────────────────────────────────────────────
 
 /**
- * Compute scoring fields for a route vs planLike pair.
- * Returns { matchScore, pickupFit, dropoffFit, timeFit, detourEstimate }.
+ * Core match-score logic with pre-computed bearings.
  */
-function computeMatchScore(route, planLike) {
+function computeMatchScoreWithBearings(route, planLike, routeBearing, planBearing) {
   const pickupDist = haversineDistance(route.origin, planLike.pickup)
   const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
-  const routeBearing = computeBearing(route.origin, route.destination)
-  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
 
   const dir = directionScore(routeBearing, planBearing)
   const pickup = proximityScore(pickupDist, MAX_PICKUP_KM)
@@ -198,6 +197,16 @@ function computeMatchScore(route, planLike) {
     timeFit: time,
     detourEstimate: detour,
   }
+}
+
+/**
+ * Compute scoring fields for a route vs planLike pair.
+ * Returns { matchScore, pickupFit, dropoffFit, timeFit, detourEstimate }.
+ */
+function computeMatchScore(route, planLike) {
+  const routeBearing = computeBearing(route.origin, route.destination)
+  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
+  return computeMatchScoreWithBearings(route, planLike, routeBearing, planBearing)
 }
 
 // ─── Tier classification ──────────────────────────────────────────────────────
@@ -284,21 +293,32 @@ async function computeMatchedDemandGroups(routeId) {
   const groups = await store.deriveDemandGroups()
   const results = []
 
+  const routeBearing = computeBearing(route.origin, route.destination)
+
   for (const group of groups) {
     const matchTier = classifyMatch(route, group)
     if (!matchTier) continue
 
+    const planBearing = computeBearing(group.pickup, group.dropoff)
+
     // Apply hard filters (includes blocked-user check)
-    const passed = await passesHardFilters(
+    const passed = await passesHardFiltersWithBearings(
       route,
       group,
       driver,
       group.clientIds,
+      routeBearing,
+      planBearing,
     )
     if (!passed) continue
 
     const visibilityMode = computeVisibilityMode(matchTier, group.memberCount)
-    const scores = computeMatchScore(route, group)
+    const scores = computeMatchScoreWithBearings(
+      route,
+      group,
+      routeBearing,
+      planBearing,
+    )
 
     results.push({
       demandGroupId: group.id,
@@ -340,20 +360,35 @@ async function computeMatchingRoutes(planId) {
   const allRoutes = await store.listAllRoutes()
   const results = []
 
+  const planBearing = computeBearing(tp.pickup, tp.dropoff)
+
   for (const route of allRoutes) {
     if (route.status !== 'published') continue
 
     const driver = await store.getUser(route.driverId)
+    const routeBearing = computeBearing(route.origin, route.destination)
 
     // Apply hard filters
-    const passed = await passesHardFilters(route, tp, driver, [tp.clientId])
+    const passed = await passesHardFiltersWithBearings(
+      route,
+      tp,
+      driver,
+      [tp.clientId],
+      routeBearing,
+      planBearing,
+    )
     if (!passed) continue
 
     // Tier classification
     const matchTier = classifyByAdminAndDistance(route, tp)
     if (!matchTier) continue
 
-    const scores = computeMatchScore(route, tp)
+    const scores = computeMatchScoreWithBearings(
+      route,
+      tp,
+      routeBearing,
+      planBearing,
+    )
     const routeAvailable = await store.isRouteAvailable(route.id)
 
     results.push({
