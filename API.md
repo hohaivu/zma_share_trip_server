@@ -55,6 +55,20 @@
 - `"grouped"` — joins a demand group for driver group requests
 - `"search_only"` — client searches for routes directly
 
+## User Bootstrap
+
+| Method | Path                | Description                                                       |
+| ------ | ------------------- | ----------------------------------------------------------------- |
+| POST   | `/users/bootstrap`  | Resolve or create an app user from MAUID. Body: `{ mauid, displayName, avatarUrl }` |
+
+**Response**: The canonical user profile with backend UUID `id`, external `mauid`, display fields, and any persisted mode/trust fields.
+
+- Returns `201` for first-time user creation
+- Returns `200` for existing user resolution (updates display fields)
+- Returns `400` if `mauid`, `displayName`, or `avatarUrl` is missing
+
+> **Identity model**: `users.id` is an internal UUID primary key. `users.mauid` is the external Zalo Mini App app-scoped identifier from `getUserID()`. All app-owned ownership fields (`ownerId`, `driverId`, `clientId`) reference backend UUID `id`, not `mauid`. `mauid` is preserved on user projections for Zalo-native actions like `openChat()`.
+
 ## User Mode Preference
 
 | Method | Path              | Description                                                          |
@@ -64,6 +78,7 @@
 
 **Response**: `{ preferredMode, modeSelectedAt }`
 
+> The `:id` parameter is the backend UUID returned by bootstrap, not the MAUID.
 ## Demand Groups
 
 | Method | Path                         | Description                                                                 |

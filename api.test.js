@@ -234,3 +234,103 @@ describe('preserved endpoints', () => {
     assert.ok(res.body.id)
   })
 })
+
+// ─── Bootstrap endpoint tests ─────────────────────────────────────────────────
+
+describe('POST /api/users/bootstrap', () => {
+  it('creates a new user on first bootstrap (201)', async () => {
+    const res = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-new-user-001',
+      displayName: 'New Test User',
+      avatarUrl: 'https://example.com/avatar.png',
+    })
+    assert.equal(res.status, 201)
+    assert.ok(res.body.id, 'should return a backend UUID id')
+    assert.notEqual(res.body.id, 'zalo-new-user-001', 'id !== mauid')
+    assert.equal(res.body.mauid, 'zalo-new-user-001')
+    assert.equal(res.body.displayName, 'New Test User')
+    assert.equal(res.body.avatarUrl, 'https://example.com/avatar.png')
+  })
+
+  it('resolves existing user on repeated bootstrap (200)', async () => {
+    // First bootstrap
+    const first = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-repeat-user-001',
+      displayName: 'Repeat User',
+      avatarUrl: '',
+    })
+    assert.equal(first.status, 201)
+
+    // Repeated bootstrap with same mauid
+    const second = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-repeat-user-001',
+      displayName: 'Repeat User Updated',
+      avatarUrl: 'https://example.com/new-avatar.png',
+    })
+    assert.equal(second.status, 200)
+    assert.equal(second.body.id, first.body.id, 'backend id should be stable')
+    assert.equal(second.body.mauid, 'zalo-repeat-user-001')
+    assert.equal(second.body.displayName, 'Repeat User Updated')
+    assert.equal(second.body.avatarUrl, 'https://example.com/new-avatar.png')
+  })
+
+  it('returns 400 when mauid is missing', async () => {
+    const res = await request(server, 'POST', '/api/users/bootstrap', {
+      displayName: 'No Mauid',
+      avatarUrl: '',
+    })
+    assert.equal(res.status, 400)
+    assert.ok(res.body.message.includes('mauid'))
+  })
+
+  it('returns 400 when displayName is missing', async () => {
+    const res = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-missing-name',
+      avatarUrl: '',
+    })
+    assert.equal(res.status, 400)
+    assert.ok(res.body.message.includes('displayName'))
+  })
+
+  it('returns 400 when avatarUrl is missing', async () => {
+    const res = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-missing-avatar',
+      displayName: 'Missing Avatar',
+    })
+    assert.equal(res.status, 400)
+    assert.ok(res.body.message.includes('avatarUrl'))
+  })
+})
+
+// ─── User mode endpoints with bootstrapped UUID user IDs ──────────────────────
+
+describe('user mode with bootstrapped users', () => {
+  it('saves and reads preferred mode using backend UUID', async () => {
+    // Bootstrap a user first
+    const bootstrap = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-mode-test-001',
+      displayName: 'Mode Test',
+      avatarUrl: '',
+    })
+    const userId = bootstrap.body.id
+
+    // Save mode
+    const saveRes = await request(
+      server,
+      'POST',
+      `/api/users/${userId}/mode`,
+      { preferredMode: 'driver' },
+    )
+    assert.equal(saveRes.status, 200)
+    assert.equal(saveRes.body.preferredMode, 'driver')
+
+    // Read mode
+    const readRes = await request(
+      server,
+      'GET',
+      `/api/users/${userId}/mode`,
+    )
+    assert.equal(readRes.status, 200)
+    assert.equal(readRes.body.preferredMode, 'driver')
+  })
+})
