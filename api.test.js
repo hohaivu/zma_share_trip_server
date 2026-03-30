@@ -103,6 +103,53 @@ describe('POST /api/driver/routes', () => {
     assert.ok(res.body.id)
     assert.equal(res.body.tripPrice, 150000)
   })
+
+  it('rejects create with unresolved 0/0 origin coordinates', async () => {
+    const res = await request(server, 'POST', '/api/driver/routes', {
+      driverId: 'driver-001',
+      carId: 'car-001',
+      origin: { lat: 0, lng: 0, label: '0,0' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-01',
+      departureTime: '2030-04-01T07:00:00.000Z',
+      tripPrice: 150000,
+    })
+    assert.equal(res.status, 400)
+    assert.ok(res.body.message.includes('Unresolved exact-point'))
+  })
+
+  it('rejects create without origin or destination payload', async () => {
+    const res = await request(server, 'POST', '/api/driver/routes', {
+      driverId: 'driver-001',
+      carId: 'car-001',
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-01',
+      departureTime: '2030-04-01T07:00:00.000Z',
+      tripPrice: 150000,
+    })
+    assert.equal(res.status, 400)
+    assert.ok(res.body.message.includes('required'))
+  })
+})
+
+describe('PUT /api/driver/routes/:id', () => {
+  it('updates route with valid resolved coordinates', async () => {
+    // Note: since test-db might 404 the update itself, it shouldn't 400.
+    const res = await request(server, 'PUT', '/api/driver/routes/route-123', {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+    })
+    if (res.status === 400) assert.fail('Should not fail validation for valid resolved coordinates')
+    assert.ok(res.status === 200 || res.status === 404)
+  })
+  it('rejects update with unresolved 0/0 destination coordinates', async () => {
+    const res = await request(server, 'PUT', '/api/driver/routes/route-123', {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 0, lng: 0, label: '0,0' },
+    })
+    assert.equal(res.status, 400)
+    assert.ok(res.body.message.includes('Unresolved exact-point'))
+  })
 })
 
 describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
