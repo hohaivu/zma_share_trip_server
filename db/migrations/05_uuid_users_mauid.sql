@@ -6,8 +6,28 @@
 -- Enable UUID generation (PG 13+ has gen_random_uuid() built-in)
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Rename the external identity column
-ALTER TABLE users RENAME COLUMN zalo_id TO mauid;
+-- Handle both legacy databases (still on zalo_id) and databases that were
+-- already created with mauid before this migration chain runs.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'zalo_id'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'mauid'
+  ) THEN
+    ALTER TABLE users RENAME COLUMN zalo_id TO mauid;
+  END IF;
 
--- Set default UUID generation for new user rows
-ALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid()::varchar(255);
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'id'
+  ) THEN
+    ALTER TABLE users
+    ALTER COLUMN id SET DEFAULT gen_random_uuid()::varchar(255);
+  END IF;
+END $$;
