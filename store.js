@@ -563,7 +563,7 @@ async function declineGroupOffer(offerId) {
   const offerRes = await query('SELECT * FROM group_offers WHERE id = $1', [
     offerId,
   ])
-  let offer = toCamelCase(offerRes.rows[0])
+  const offer = toCamelCase(offerRes.rows[0])
   if (!offer) throw new Error('Group offer not found')
   if (offer.status !== 'pending') {
     throw new Error(`Cannot decline offer in status: ${offer.status}`)
@@ -573,14 +573,14 @@ async function declineGroupOffer(offerId) {
     "UPDATE group_offers SET status = 'declined' WHERE id = $1 RETURNING *",
     [offerId],
   )
-  offer = toCamelCase(updatedRes.rows[0])
+  const updated = toCamelCase(updatedRes.rows[0])
 
-  emitNotification('group_offer_declined', offer.driverId, {
+  emitNotification('group_offer_declined', updated.driverId, {
     groupOfferId: offerId,
-    clientId: offer.clientId,
+    clientId: updated.clientId,
   })
 
-  return offer
+  return updated
 }
 
 async function cancelGroupRequest(requestId) {
@@ -729,7 +729,7 @@ async function declineSearchRequest(requestId) {
   const sreqRes = await query('SELECT * FROM search_requests WHERE id = $1', [
     requestId,
   ])
-  let sreq = toCamelCase(sreqRes.rows[0])
+  const sreq = toCamelCase(sreqRes.rows[0])
   if (!sreq) throw new Error('Search request not found')
   if (sreq.status !== 'pending') {
     throw new Error(`Cannot decline search request in status: ${sreq.status}`)
@@ -738,13 +738,13 @@ async function declineSearchRequest(requestId) {
     "UPDATE search_requests SET status = 'declined' WHERE id = $1 RETURNING *",
     [requestId],
   )
-  sreq = toCamelCase(updatedRes.rows[0])
+  const updated = toCamelCase(updatedRes.rows[0])
 
-  emitNotification('search_request_declined', sreq.clientId, {
+  emitNotification('search_request_declined', updated.clientId, {
     searchRequestId: requestId,
   })
 
-  return sreq
+  return updated
 }
 
 const listGroupRequestsByDriver = listByColumn('group_requests', 'driver_id')

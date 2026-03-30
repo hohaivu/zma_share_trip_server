@@ -41,6 +41,20 @@ const BASE_PLAN = {
   clientId: 'client-001',
 }
 
+const NORMALIZED_ROUTE_WITHOUT_GEOMETRY = {
+  ...BASE_ROUTE,
+  origin: { lat: 0, lng: 0, label: 'Quận 1' },
+  destination: { lat: 0, lng: 0, label: 'Thủ Đức' },
+  originWardKey: 'ward-q1_province-hcm',
+  destinationWardKey: 'ward-td_province-hcm',
+}
+
+const NORMALIZED_PLAN_WITH_GEOMETRY = {
+  ...BASE_PLAN,
+  pickupWardKey: 'ward-q1_province-hcm',
+  dropoffWardKey: 'ward-td_province-hcm',
+}
+
 // ─── 2.1 Geo helpers ──────────────────────────────────────────────────────────
 
 describe('haversineDistance', () => {
@@ -158,6 +172,17 @@ describe('passesHardFilters', () => {
     )
   })
 
+  it('passes normalized exact_3 without usable coordinates', async () => {
+    assert.ok(
+      await matching.passesHardFilters(
+        NORMALIZED_ROUTE_WITHOUT_GEOMETRY,
+        NORMALIZED_PLAN_WITH_GEOMETRY,
+        null,
+        [],
+      ),
+    )
+  })
+
   itDb('rejects when driver blocks client', async () => {
     const driver = { id: 'driver-001', blockedUserIds: ['client-001'] }
     assert.equal(
@@ -218,6 +243,19 @@ describe('computeMatchScore', () => {
   it('detourEstimate is an integer', () => {
     const { detourEstimate } = matching.computeMatchScore(BASE_ROUTE, BASE_PLAN)
     assert.equal(detourEstimate, Math.round(detourEstimate))
+  })
+
+  it('falls back to exact-admin scoring when geometry is omitted', () => {
+    const result = matching.computeMatchScore(
+      NORMALIZED_ROUTE_WITHOUT_GEOMETRY,
+      NORMALIZED_PLAN_WITH_GEOMETRY,
+    )
+
+    assert.equal(result.matchScore, 100)
+    assert.equal(result.pickupFit, 1)
+    assert.equal(result.dropoffFit, 1)
+    assert.equal(result.timeFit, 1)
+    assert.equal(result.detourEstimate, 0)
   })
 })
 

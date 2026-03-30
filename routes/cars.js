@@ -30,7 +30,7 @@ router.get('/cars', asyncHandler(async (req, res) => {
   const { ownerId } = req.query
   requireParam(ownerId, 'ownerId query is required')
 
-  res.status(200).json(await store.listCarsByOwner(ownerId))
+  res.json(await store.listCarsByOwner(ownerId))
 }))
 
 router.put('/cars/:id', asyncHandler(async (req, res) => {
@@ -44,7 +44,7 @@ router.put('/cars/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Car not found' })
   }
 
-  res.status(200).json(car)
+  res.json(car)
 }))
 
 router.delete('/cars/:id', asyncHandler(async (req, res) => {

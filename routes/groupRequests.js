@@ -1,52 +1,37 @@
 const { Router } = require('express')
 const store = require('../store')
+const { asyncHandler, requireParam } = require('./helpers')
 
 const router = Router()
 
 // POST /api/driver/group-requests — create group request + fan-out
-router.post('/group-requests', async (req, res) => {
+router.post('/group-requests', asyncHandler(async (req, res) => {
   const { driverId, routeId, demandGroupId, note } = req.body || {}
-  if (!driverId || !routeId || !demandGroupId) {
-    return res
-      .status(400)
-      .json({ message: 'driverId, routeId, and demandGroupId are required' })
-  }
+  requireParam(driverId, 'driverId is required')
+  requireParam(routeId, 'routeId is required')
+  requireParam(demandGroupId, 'demandGroupId is required')
 
-  try {
-    const result = await store.createGroupRequest(
-      driverId,
-      routeId,
-      demandGroupId,
-      note,
-    )
-    res.status(201).json(result)
-  } catch (error) {
-    res.status(400).json({ message: error.message })
-  }
-})
+  const result = await store.createGroupRequest(
+    driverId,
+    routeId,
+    demandGroupId,
+    note,
+  )
+  res.status(201).json(result)
+}))
 
 // GET /api/driver/group-requests?driverId= — driver's sent requests
-router.get('/group-requests', async (req, res) => {
-  try {
-    const { driverId } = req.query
-    if (!driverId) {
-      return res.status(400).json({ message: 'driverId query is required' })
-    }
+router.get('/group-requests', asyncHandler(async (req, res) => {
+  const { driverId } = req.query
+  requireParam(driverId, 'driverId query is required')
 
-    res.status(200).json(await store.listGroupRequestsByDriver(driverId))
-  } catch (error) {
-    res.status(500).json({ message: error.message })
-  }
-})
+  res.json(await store.listGroupRequestsByDriver(driverId))
+}))
 
 // POST /api/driver/group-requests/:id/cancel — cancel + close pending offers
-router.post('/group-requests/:id/cancel', async (req, res) => {
-  try {
-    const result = await store.cancelGroupRequest(req.params.id)
-    res.status(200).json(result)
-  } catch (error) {
-    res.status(400).json({ message: error.message })
-  }
-})
+router.post('/group-requests/:id/cancel', asyncHandler(async (req, res) => {
+  const result = await store.cancelGroupRequest(req.params.id)
+  res.json(result)
+}))
 
 module.exports = router

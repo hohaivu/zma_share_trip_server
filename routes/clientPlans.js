@@ -18,7 +18,7 @@ router.get('/trip-plans', asyncHandler(async (req, res) => {
   const { clientId } = req.query
   requireParam(clientId, 'clientId query is required')
 
-  res.status(200).json(await store.listPlansByClient(clientId))
+  res.json(await store.listPlansByClient(clientId))
 }))
 
 // GET /api/client/trip-plans/:id — detail
@@ -28,7 +28,7 @@ router.get('/trip-plans/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Plan not found' })
   }
 
-  res.status(200).json(plan)
+  res.json(plan)
 }))
 
 // PUT /api/client/trip-plans/:id — update
@@ -38,7 +38,7 @@ router.put('/trip-plans/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Plan not found' })
   }
 
-  res.status(200).json(plan)
+  res.json(plan)
 }))
 
 module.exports = router

@@ -18,7 +18,7 @@ router.get('/routes', asyncHandler(async (req, res) => {
   const { driverId } = req.query
   requireParam(driverId, 'driverId query is required')
 
-  res.status(200).json(await store.listRoutesByDriver(driverId))
+  res.json(await store.listRoutesByDriver(driverId))
 }))
 
 // GET /api/driver/routes/:id — detail
@@ -28,7 +28,7 @@ router.get('/routes/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Route not found' })
   }
 
-  res.status(200).json(route)
+  res.json(route)
 }))
 
 // PUT /api/driver/routes/:id — update
@@ -38,7 +38,7 @@ router.put('/routes/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Route not found' })
   }
 
-  res.status(200).json(route)
+  res.json(route)
 }))
 
 module.exports = router

@@ -60,6 +60,38 @@ const W_PICKUP = 0.25
 const W_DROPOFF = 0.25
 const W_TIME = 0.2
 
+function hasUsablePoint(point) {
+  if (!point) return false
+
+  const lat = Number(point.lat)
+  const lng = Number(point.lng)
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false
+
+  // 0/0 is the placeholder used when geometry is intentionally omitted.
+  return !(lat === 0 && lng === 0)
+}
+
+function hasUsableGeometry(routeLike, planLike) {
+  return (
+    hasUsablePoint(routeLike?.origin) &&
+    hasUsablePoint(routeLike?.destination) &&
+    hasUsablePoint(planLike?.pickup) &&
+    hasUsablePoint(planLike?.dropoff)
+  )
+}
+
+function hasExactAdminMatch(route, planLike) {
+  return (
+    !!route?.originWardKey &&
+    !!planLike?.pickupWardKey &&
+    route.originWardKey === planLike.pickupWardKey &&
+    !!route?.destinationWardKey &&
+    !!planLike?.dropoffWardKey &&
+    route.destinationWardKey === planLike.dropoffWardKey
+  )
+}
+
 // ─── Component score functions ────────────────────────────────────────────────
 
 function directionScore(routeBearing, planBearing) {
@@ -138,6 +170,10 @@ async function passesHardFiltersWithBearings(route, planLike, driver, clientIds,
     }
   }
 
+  if (hasExactAdminMatch(route, planLike)) return true
+
+  if (!hasUsableGeometry(route, planLike)) return false
+
   if (bearingDifference(routeBearing, planBearing) > MAX_BEARING_DIFF)
     return false
 
@@ -169,17 +205,37 @@ async function passesHardFilters(route, planLike, driver, clientIds) {
  * Core match-score logic with pre-computed bearings.
  */
 function computeMatchScoreWithBearings(route, planLike, routeBearing, planBearing) {
+  const time = timeOverlapScore(
+    route.departureTime,
+    planLike.departureBlockStart,
+    planLike.departureBlockEnd,
+  )
+
+  if (!hasUsableGeometry(route, planLike)) {
+    const fallbackFit = hasExactAdminMatch(route, planLike) ? 1 : 0
+    const matchScore = Math.round(
+      (fallbackFit * W_DIRECTION +
+        fallbackFit * W_PICKUP +
+        fallbackFit * W_DROPOFF +
+        time * W_TIME) *
+        100,
+    )
+
+    return {
+      matchScore,
+      pickupFit: fallbackFit,
+      dropoffFit: fallbackFit,
+      timeFit: time,
+      detourEstimate: 0,
+    }
+  }
+
   const pickupDist = haversineDistance(route.origin, planLike.pickup)
   const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
 
   const dir = directionScore(routeBearing, planBearing)
   const pickup = proximityScore(pickupDist, MAX_PICKUP_KM)
   const dropoff = proximityScore(dropoffDist, MAX_DROPOFF_KM)
-  const time = timeOverlapScore(
-    route.departureTime,
-    planLike.departureBlockStart,
-    planLike.departureBlockEnd,
-  )
   const detour = estimateDetour(pickupDist, dropoffDist)
 
   const matchScore = Math.round(
@@ -217,22 +273,26 @@ function computeMatchScore(route, planLike) {
  * Returns 'exact_3', 'near_3', or null.
  */
 function classifyByAdminAndDistance(route, planLike) {
-  const pickupDist = haversineDistance(route.origin, planLike.pickup)
-  const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
-
   // Primary: VNMap normalized administrative identity
-  const hasAdminMatch = 
-    route.originWardKey && 
+  const hasAdminMatch =
+    route.originWardKey &&
     planLike.pickupWardKey &&
     route.originWardKey === planLike.pickupWardKey &&
-    route.destinationWardKey && 
+    route.destinationWardKey &&
     planLike.dropoffWardKey &&
     route.destinationWardKey === planLike.dropoffWardKey
+
+  if (hasAdminMatch) return 'exact_3'
+
+  if (!hasUsableGeometry(route, planLike)) return null
+
+  const pickupDist = haversineDistance(route.origin, planLike.pickup)
+  const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
 
   // Fallback: strict distance (for legacy records)
   const hasDistanceExact = pickupDist < 1.0 && dropoffDist < 1.0
 
-  if (hasAdminMatch || hasDistanceExact) return 'exact_3'
+  if (hasDistanceExact) return 'exact_3'
 
   if (
     pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM &&

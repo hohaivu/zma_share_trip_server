@@ -2,10 +2,7 @@ require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
 
-const authorizeRoute = require('./routes/authorize')
-const userInfoRoute = require('./routes/userInfo')
-const phoneNumberRoute = require('./routes/phoneNumber')
-const locationRoute = require('./routes/location')
+const zaloRoutesRoute = require('./routes/zaloRoutes')
 const carsRoute = require('./routes/cars')
 const driverRoutesRoute = require('./routes/driverRoutes')
 const clientPlansRoute = require('./routes/clientPlans')
@@ -34,10 +31,7 @@ app.use(
 )
 
 const sharedRoutes = [
-  authorizeRoute,
-  userInfoRoute,
-  phoneNumberRoute,
-  locationRoute,
+  zaloRoutesRoute,
   journeysRoute,
   usersRoute,
   bootstrapRoute,
