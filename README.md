@@ -47,7 +47,7 @@ yarn build
 yarn build
 yarn db:migrate:dist   # run schema setup from the built artifact
 yarn db:seed:dist      # seed demo data from the built artifact
-yarn start             # serves dist/index.js
+yarn start:dist        # serves dist/index.js
 ```
 
 The build copies SQL migrations into `dist/db/migrations` so the compiled migration command stays runnable outside the source tree.
@@ -67,10 +67,20 @@ The build copies SQL migrations into `dist/db/migrations` so the compiled migrat
 1. Push to GitHub/GitLab
 2. Render Dashboard → **New** → **Blueprint**
 3. Connect repo → Render reads `render.yaml`
-4. Render installs with `yarn install --frozen-lockfile`, builds with `yarn build`, then runs `yarn db:migrate:dist` and `yarn db:seed:dist`
-5. The web service starts from `node dist/index.js`
+4. Render installs with `npm install`, then runs `npm run db:migrate` and `npm run db:seed`
+5. The web service starts from `npm start`
 6. Set `ZALO_APP_ID` and `ZALO_APP_SECRET` in dashboard (Postgres connects automatically via Blueprint)
 7. Deploy 🚀
+
+This deploy path runs the TypeScript source directly through `tsx`, so it does not require a separate build step on Render.
+
+If you create a manual Node service instead of a Blueprint, use the same commands:
+
+```bash
+npm install && npm run db:migrate && npm run db:seed
+```
+
+and keep the start command as `npm start`. The package `start` script runs via `tsx`, so it does not require a separate build step.
 
 ## Test
 

@@ -4,7 +4,8 @@
   "description": "Cùng Tuyến — Zalo Mini App token exchange proxy server",
   "main": "dist/index.js",
   "scripts": {
-    "start": "node dist/index.js",
+    "start": "tsx src/index.ts",
+    "start:dist": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "build": "tsc && node scripts/copy-migrations.mjs",
     "typecheck": "tsc --noEmit",
@@ -18,7 +19,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -26,7 +28,6 @@
     "@types/node": "^25.5.0",
     "@types/pg": "^8.20.0",
     "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   }
 }

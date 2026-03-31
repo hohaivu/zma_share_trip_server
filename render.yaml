@@ -3,8 +3,8 @@ services:
     name: cung-tuyen-api
     runtime: node
     plan: free
-    buildCommand: yarn install --frozen-lockfile && yarn build && yarn db:migrate:dist && yarn db:seed:dist
-    startCommand: node dist/index.js
+    buildCommand: npm install && npm run db:migrate && npm run db:seed
+    startCommand: npm start
     envVars:
       - key: ZALO_APP_ID
         sync: false
