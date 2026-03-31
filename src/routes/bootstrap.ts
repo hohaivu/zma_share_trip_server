@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as store from '../store';
 import { asyncHandler, requireParam } from './helpers';
+import { HttpError } from '../http-error';
 import { BootstrapPayload } from '../types/payloads';
 
 const router = Router();
@@ -13,7 +14,7 @@ router.post('/users/bootstrap', asyncHandler(async (
   const { mauid, displayName, avatarUrl } = req.body;
   requireParam(mauid, 'mauid is required');
   requireParam(displayName, 'displayName is required');
-  if (avatarUrl === undefined) requireParam(null, 'avatarUrl is required');
+  if (avatarUrl === undefined) throw new HttpError(400, 'avatarUrl is required');
 
   const { user, wasCreated } = await store.bootstrapUser(
     mauid,

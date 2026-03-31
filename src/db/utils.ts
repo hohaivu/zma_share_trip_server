@@ -42,3 +42,11 @@ export function toCamelCase<T>(row: Record<string, unknown> | null | undefined):
   if (!row) return null;
   return toCamelCaseRecord(row) as unknown as T;
 }
+
+/**
+ * Map an array of pg rows through toCamelCase, filtering out nulls.
+ * Replaces the repeated `.map(row => toCamelCase<T>(row)).filter(Boolean) as T[]` pattern.
+ */
+export function mapRows<T>(rows: Record<string, unknown>[]): T[] {
+  return rows.map((row) => toCamelCase<T>(row)).filter(Boolean) as T[];
+}

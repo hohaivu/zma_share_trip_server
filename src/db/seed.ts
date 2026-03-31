@@ -1,4 +1,5 @@
 import { initPool, closePool } from './connection';
+import { Location, User, Route, Plan } from '../types/entities';
 
 // --- Named constants ---
 
@@ -23,9 +24,56 @@ const WARD_KEY_Q1 = 'ward-q1-bennghe_79'
 const WARD_KEY_TD = 'ward-td-binhtho_79'
 const PROVINCE_HCM = '79'
 
+interface SeedUser extends Omit<User, 'createdAt' | 'modeSelectedAt'> {
+  createdAt: string;
+  modeSelectedAt: string;
+}
+
+interface SeedRoute {
+  id: string;
+  driverId: string;
+  carId: string;
+  origin: Location;
+  destination: Location;
+  originWardId: string;
+  originWardKey: string;
+  originProvinceId: string;
+  destinationWardId: string;
+  destinationWardKey: string;
+  destinationProvinceId: string;
+  serviceDate: string;
+  departureTime: string;
+  windowStart: string;
+  windowEnd: string;
+  tripPrice: number;
+  notes: string;
+  status: string;
+  createdAt: string;
+}
+
+interface SeedPlan {
+  id: string;
+  clientId: string;
+  pickup: Location;
+  dropoff: Location;
+  pickupWardId: string;
+  pickupWardKey: string;
+  pickupProvinceId: string;
+  dropoffWardId: string;
+  dropoffWardKey: string;
+  dropoffProvinceId: string;
+  serviceDate: string;
+  departureBlockStart: string;
+  departureBlockEnd: string;
+  passengerCount: number;
+  notes: string;
+  status: string;
+  createdAt: string;
+}
+
 // --- Factory helpers ---
 
-function makeUser(overrides: any) {
+function makeUser(overrides: Partial<SeedUser> & Pick<SeedUser, 'id' | 'mauid' | 'displayName' | 'role' | 'preferredMode' | 'modeSelectedAt' | 'createdAt'>): SeedUser {
   return {
     avatarUrl: '',
     verificationStatus: 'verified',
@@ -33,10 +81,10 @@ function makeUser(overrides: any) {
     tripCount: 0,
     blockedUserIds: [],
     ...overrides,
-  }
+  } as SeedUser;
 }
 
-function makeRoute(overrides: any) {
+function makeRoute(overrides: Partial<SeedRoute> & Pick<SeedRoute, 'id' | 'driverId' | 'carId' | 'serviceDate' | 'departureTime' | 'windowStart' | 'windowEnd' | 'tripPrice' | 'createdAt'>): SeedRoute {
   return {
     origin: COORD_Q1,
     destination: COORD_TD,
@@ -49,10 +97,10 @@ function makeRoute(overrides: any) {
     notes: '',
     status: 'published',
     ...overrides,
-  }
+  };
 }
 
-function makePlan(overrides: any) {
+function makePlan(overrides: Partial<SeedPlan> & Pick<SeedPlan, 'id' | 'clientId' | 'serviceDate' | 'departureBlockStart' | 'departureBlockEnd' | 'createdAt'>): SeedPlan {
   return {
     pickup: COORD_Q1,
     dropoff: COORD_TD,
@@ -63,11 +111,10 @@ function makePlan(overrides: any) {
     pickupProvinceId: PROVINCE_HCM,
     dropoffProvinceId: PROVINCE_HCM,
     passengerCount: 1,
-    publishMode: 'grouped',
     notes: '',
     status: 'published',
     ...overrides,
-  }
+  };
 }
 
 // --- Seed data ---
@@ -215,7 +262,6 @@ const plans = [
     serviceDate: SERVICE_DATE_MAR21,
     departureBlockStart: '2030-03-21T00:00:00.000Z',
     departureBlockEnd: '2030-03-21T00:30:00.000Z',
-    publishMode: 'search_only',
     notes: 'Tìm tài xế trực tiếp',
     createdAt: '2026-01-05T03:00:00.000Z',
   }),
@@ -321,8 +367,8 @@ export async function seed() {
     for (const t of plans) {
       await client.query(
         `
-        INSERT INTO plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        INSERT INTO plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, notes, status, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       `,
         [
           t.id,
@@ -339,7 +385,6 @@ export async function seed() {
           t.departureBlockStart,
           t.departureBlockEnd,
           t.passengerCount,
-          t.publishMode,
           t.notes,
           t.status,
           t.createdAt,

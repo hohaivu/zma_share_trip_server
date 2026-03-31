@@ -17,6 +17,7 @@ import groupOffersRoute from './routes/groupOffers';
 import driverSearchRequestsRoute from './routes/driverSearchRequests';
 import clientSearchRequestsRoute from './routes/clientSearchRequests';
 import { checkConnection } from './db/connection';
+import { HttpError } from './http-error';
 
 const app: Express = express();
 const PORT = process.env.PORT || 3010;
@@ -62,8 +63,10 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[server error]', err);
-  res.status(500).json({ error: -1, message: 'Internal server error' });
+  const status = err instanceof HttpError ? err.statusCode : 500;
+  const message = status === 500 ? 'Internal server error' : err.message;
+  if (status === 500) console.error('[server error]', err);
+  res.status(status).json({ error: -1, message });
 });
 
 async function start() {

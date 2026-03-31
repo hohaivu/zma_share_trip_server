@@ -68,7 +68,6 @@ export interface CreatePlanPayload {
   departureBlockStart: string;
   departureBlockEnd: string;
   passengerCount: number;
-  publishMode: string;
   notes?: string;
   status?: string;
 }
@@ -90,7 +89,6 @@ export interface UpdatePlanPayload {
   departureBlockStart?: string;
   departureBlockEnd?: string;
   passengerCount?: number;
-  publishMode?: string;
   notes?: string;
   status?: string;
 }
@@ -225,4 +223,29 @@ export type JourneyAcceptedState =
 
 export type JourneySummary = (Route | Plan) & {
   accepted: JourneyAcceptedState | null;
+}
+
+// -- Car Payloads --
+export interface CreateCarPayload {
+  nickname?: string;
+  plateNumberMasked?: string;
+  plateNumberFull: string;
+  brand: string;
+  model: string;
+  color?: string;
+  seatCapacity?: number;
+  verificationStatus?: string;
+  photos?: unknown[];
+}
+
+export interface UpdateCarPayload {
+  nickname?: string;
+  plateNumberMasked?: string;
+  plateNumberFull?: string;
+  brand?: string;
+  model?: string;
+  color?: string;
+  seatCapacity?: number;
+  verificationStatus?: string;
+  photos?: unknown[];
 }

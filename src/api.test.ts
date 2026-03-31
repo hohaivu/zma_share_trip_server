@@ -77,12 +77,12 @@ describe('POST /api/client/trip-plans', () => {
       departureBlockStart: '2030-04-01T08:00:00.000Z',
       departureBlockEnd: '2030-04-01T08:30:00.000Z',
       passengerCount: 1,
-      publishMode: 'grouped',
+
     })
     assert.equal(res.status, 201)
     assert.ok(res.body.id)
     assert.equal(res.body.clientId, CLIENT_001_ID)
-    assert.equal(res.body.publishMode, 'grouped')
+
   })
 
   it('rejects without clientId', async () => {
@@ -203,7 +203,7 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
 })
 
 describe('POST /api/client/search-requests', () => {
-  it('creates a search request for search_only plan', async () => {
+  it('creates a search request with an optional linked plan', async () => {
     // Create a fresh route so it's available
     const routeRes = await request(server, 'POST', '/api/driver/routes', {
       driverId: DRIVER_001_ID,
@@ -215,7 +215,7 @@ describe('POST /api/client/search-requests', () => {
       tripPrice: 100000,
     })
 
-    // Create a search_only trip plan
+    // Create a persisted plan to link as context
     const tpRes = await request(server, 'POST', '/api/client/trip-plans', {
       clientId: CLIENT_001_ID,
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
@@ -226,7 +226,7 @@ describe('POST /api/client/search-requests', () => {
       departureBlockStart: '2030-04-02T07:00:00.000Z',
       departureBlockEnd: '2030-04-02T07:30:00.000Z',
       passengerCount: 1,
-      publishMode: 'search_only',
+
     })
 
     const res = await request(server, 'POST', '/api/client/search-requests', {

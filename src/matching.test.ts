@@ -311,33 +311,7 @@ describe('computeMatchedDemandGroups', () => {
   })
 })
 
-// ─── 2.5 computeMatchingRoutes ────────────────────────────────────────────────
-
-describe('computeMatchingRoutes', () => {
-  itDb('returns enriched score fields for search_only plan', async () => {
-    // plan-004 is search_only, date 2030-03-21 — route-001/002 are 2030-03-20
-    // so results may be empty for the seed data; test non-null return
-    const results = await matching.computeMatchingRoutes('plan-004')
-    assert.ok(Array.isArray(results), 'Should return an array')
-    for (const r of results) {
-      assert.ok('matchScore' in r, 'Missing matchScore')
-      assert.ok('pickupFit' in r, 'Missing pickupFit')
-      assert.ok('dropoffFit' in r, 'Missing dropoffFit')
-      assert.ok('timeFit' in r, 'Missing timeFit')
-      assert.ok('detourEstimate' in r, 'Missing detourEstimate')
-      assert.ok('routeAvailable' in r, 'Missing routeAvailable')
-    }
-  })
-
-  itDb('throws for non-search_only plan', async () => {
-    await assert.rejects(
-      () => matching.computeMatchingRoutes('plan-001'),
-      /search_only/,
-    )
-  })
-})
-
-// ─── 2.6 computeMatchingRoutesFromCriteria ────────────────────────────────────
+// ─── 2.5 computeMatchingRoutesFromCriteria ────────────────────────────────────
 
 describe('computeMatchingRoutesFromCriteria', () => {
   itDb('treats criteria as a plan and returns matches', async () => {

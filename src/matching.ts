@@ -460,30 +460,4 @@ export async function computeMatchingRoutesFromCriteria(
   return results;
 }
 
-/**
- * For a search_only plan, find eligible routes with scores.
- */
-export async function computeMatchingRoutes(planId: string): Promise<MatchingRouteResult[] | null> {
-  const tp = await store.getPlan(planId);
-  if (!tp) return null;
-  if (tp.publishMode !== 'search_only') {
-    throw new Error('Only search_only plans can search for matching routes');
-  }
 
-  return computeMatchingRoutesFromCriteria({
-    clientId: tp.clientId,
-    pickup: tp.pickup,
-    dropoff: tp.dropoff,
-    pickupWardId: tp.pickupWardId,
-    pickupWardKey: tp.pickupWardKey,
-    pickupProvinceId: tp.pickupProvinceId,
-    dropoffWardId: tp.dropoffWardId,
-    dropoffWardKey: tp.dropoffWardKey,
-    dropoffProvinceId: tp.dropoffProvinceId,
-    serviceDate: tp.serviceDate,
-    departureBlockStart: tp.departureBlockStart,
-    departureBlockEnd: tp.departureBlockEnd,
-    passengerCount: tp.passengerCount,
-    notes: tp.notes ?? undefined,
-  });
-}

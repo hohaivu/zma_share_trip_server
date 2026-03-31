@@ -55,7 +55,6 @@ CREATE TABLE IF NOT EXISTS trip_plans (
   departure_block_start TIMESTAMP WITH TIME ZONE NOT NULL,
   departure_block_end TIMESTAMP WITH TIME ZONE NOT NULL,
   passenger_count INTEGER NOT NULL,
-  publish_mode VARCHAR(50) NOT NULL,
   notes TEXT,
   status VARCHAR(50) DEFAULT 'published',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

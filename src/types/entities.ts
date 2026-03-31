@@ -38,7 +38,7 @@ export interface Car {
   color?: string | null;
   seatCapacity?: number | null;
   verificationStatus?: string;
-  photos?: any[];
+  photos?: unknown[];
   createdAt?: Date | string;
 }
 
@@ -81,7 +81,6 @@ export interface Plan {
   departureBlockStart: string;
   departureBlockEnd: string;
   passengerCount: number;
-  publishMode: string;
   notes?: string | null;
   status: string;
   createdAt?: string;

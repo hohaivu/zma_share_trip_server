@@ -49,7 +49,6 @@ describe('deriveDemandGroups', () => {
       departureBlockStart: '2030-05-05T14:00:00.000+07:00', // mapped to 07:00Z
       departureBlockEnd: '2030-05-05T14:30:00.000+07:00',
       passengerCount: 1,
-      publishMode: 'grouped',
     })
     const planB = await store.createPlan(CLIENT_002_ID, {
       pickup: { lat: 10, lng: 106, label: 'A' },
@@ -60,7 +59,6 @@ describe('deriveDemandGroups', () => {
       departureBlockStart: '2030-05-05T07:00:00.000Z',
       departureBlockEnd: '2030-05-05T07:30:00.000Z',
       passengerCount: 2,
-      publishMode: 'grouped',
     })
 
     const groups = await store.deriveDemandGroups()
@@ -78,15 +76,7 @@ describe('deriveDemandGroups', () => {
     )
   })
 
-  it('excludes search_only plans from grouped demand', async () => {
-    const groups = await store.deriveDemandGroups()
-    for (const g of groups) {
-      assert.ok(
-        !g.memberPlanIds.includes('plan-004'),
-        'search_only plan should not be in any demand group',
-      )
-    }
-  })
+
 
   it('creates single-member group for unique ward pair', async () => {
     const groups = await store.deriveDemandGroups()
@@ -276,15 +266,6 @@ describe('search request plan linkage', () => {
     assert.equal(sreq.planId, null)
   })
 
-  it('search_only plans do not appear in demand groups', async () => {
-    const groups = await store.deriveDemandGroups()
-    for (const g of groups) {
-      assert.ok(
-        !g.memberPlanIds.includes('plan-004'),
-        'search_only plan should not be in demand groups',
-      )
-    }
-  })
 })
 
 // ─── 6.7 CRUD coverage ────────────────────────────────────────────────────────

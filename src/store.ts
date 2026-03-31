@@ -1,12 +1,14 @@
 import { query, withTransaction } from './db/connection';
-import { toCamelCase, normalizeUtc } from './db/utils';
+import { toCamelCase, mapRows, normalizeUtc } from './db/utils';
 import { HttpError } from './http-error';
-import { User, Car, Route, Plan, GroupRequest, GroupOffer, SearchRequest, SavedLocation } from './types/entities';
+import { Location, User, Car, Route, Plan, GroupRequest, GroupOffer, SearchRequest, SavedLocation } from './types/entities';
 import {
   BootstrapResult,
+  CreateCarPayload,
   CreatePlanPayload,
   CreateRoutePayload,
   DemandGroupSummary,
+  UpdateCarPayload,
   UpdatePlanPayload,
   UpdateRoutePayload,
 } from './types/payloads';
@@ -56,7 +58,7 @@ export function mapCar(row: Record<string, unknown>): Car & { colorHex?: string 
 export async function dynamicUpdate<T>(
   table: string,
   id: string,
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   jsonFields: string[] = []
 ): Promise<T | null> {
   const keys = Object.keys(data).filter((k) => data[k] !== undefined);
@@ -74,9 +76,10 @@ export async function dynamicUpdate<T>(
     'departureBlockEnd',
   ];
   const vals = keys.map((k) => {
-    if (jsonFields.includes(k)) return JSON.stringify(data[k]);
-    if (timeFields.includes(k) && data[k]) return new Date(data[k]).toISOString();
-    return data[k];
+    const val = data[k];
+    if (jsonFields.includes(k)) return JSON.stringify(val);
+    if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString();
+    return val;
   });
 
   const result = await query(
@@ -165,7 +168,7 @@ export async function bootstrapUser(mauid: string, displayName?: string, avatarU
 
 // --- Car ---
 
-export async function createCar(ownerId: string, data: Record<string, any>): Promise<Car & { colorHex?: string }> {
+export async function createCar(ownerId: string, data: CreateCarPayload): Promise<Car & { colorHex?: string }> {
   const result = await query(
     `
     INSERT INTO cars (id, owner_id, nickname, plate_number_masked, plate_number_full, brand, model, color, seat_capacity, verification_status, photos, created_at)
@@ -194,8 +197,8 @@ export async function listCarsByOwner(ownerId: string): Promise<(Car & { colorHe
   return result.rows.map(mapCar);
 }
 
-export async function updateCar(id: string, data: Record<string, any>): Promise<(Car & { colorHex?: string }) | null> {
-  const result = await dynamicUpdate<Car & { colorHex?: string }>('cars', id, data, ['photos']);
+export async function updateCar(id: string, data: UpdateCarPayload): Promise<(Car & { colorHex?: string }) | null> {
+  const result = await dynamicUpdate<Car & { colorHex?: string }>('cars', id, data as unknown as Record<string, unknown>, ['photos']);
   if (result && result.color) {
     result.colorHex = CAR_COLORS[result.color] || result.color;
   }
@@ -209,16 +212,17 @@ export async function deleteCar(id: string): Promise<boolean> {
 
 // --- Route ---
 
-function extractWardFields(data: Record<string, any>, prefix: string, geoObj?: Record<string, any>) {
-  const wardId = data[`${prefix}WardId`] || geoObj?.ward_id || '';
-  const provinceId = data[`${prefix}ProvinceId`] || geoObj?.province_id || '';
-  const wardKey = data[`${prefix}WardKey`] || (wardId && provinceId ? `${wardId}_${provinceId}` : '');
+function extractWardFields(data: Record<string, unknown>, prefix: string, geoObj?: Location) {
+  const wardId = (data[`${prefix}WardId`] as string) || geoObj?.wardId || '';
+  const provinceId = (data[`${prefix}ProvinceId`] as string) || geoObj?.provinceId || '';
+  const wardKey = (data[`${prefix}WardKey`] as string) || (wardId && provinceId ? `${wardId}_${provinceId}` : '');
   return { wardId, provinceId, wardKey };
 }
 
 export async function createRoute(driverId: string, data: CreateRoutePayload): Promise<Route> {
-  const origin = extractWardFields(data, 'origin', data.origin);
-  const dest = extractWardFields(data, 'destination', data.destination);
+  const fields = data as unknown as Record<string, unknown>;
+  const origin = extractWardFields(fields, 'origin', data.origin);
+  const dest = extractWardFields(fields, 'destination', data.destination);
   const departureWindow = computeDepartureBlock(data.departureTime);
 
   const res = await query(
@@ -271,12 +275,12 @@ export async function getRoute(id: string): Promise<Route | null> {
 }
 
 export async function updateRoute(id: string, data: UpdateRoutePayload): Promise<Route | null> {
-  return dynamicUpdate<Route>('routes', id, data, ['origin', 'destination']);
+  return dynamicUpdate<Route>('routes', id, data as unknown as Record<string, unknown>, ['origin', 'destination']);
 }
 
 export async function listAllRoutes(): Promise<Route[]> {
   const result = await query('SELECT * FROM routes');
-  return result.rows.map((row: Record<string, unknown>) => toCamelCase<Route>(row)).filter(Boolean) as Route[];
+  return mapRows<Route>(result.rows);
 }
 
 // --- Plan ---
@@ -284,8 +288,8 @@ export async function listAllRoutes(): Promise<Route[]> {
 export async function createPlan(clientId: string, data: CreatePlanPayload): Promise<Plan> {
   const res = await query(
     `
-    INSERT INTO plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
+    INSERT INTO plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, notes, status, created_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
     RETURNING *
   `,
     [
@@ -303,7 +307,6 @@ export async function createPlan(clientId: string, data: CreatePlanPayload): Pro
       normalizeUtc(data.departureBlockStart),
       normalizeUtc(data.departureBlockEnd),
       data.passengerCount,
-      data.publishMode,
       data.notes || '',
       data.status || 'published',
     ]
@@ -320,7 +323,7 @@ export async function getPlan(id?: string): Promise<Plan | null> {
 }
 
 export async function updatePlan(id: string, data: UpdatePlanPayload): Promise<Plan | null> {
-  return dynamicUpdate<Plan>('plans', id, data, ['pickup', 'dropoff']);
+  return dynamicUpdate<Plan>('plans', id, data as unknown as Record<string, unknown>, ['pickup', 'dropoff']);
 }
 
 export const listPlansByClient = listByColumn<Plan>('plans', 'client_id');
@@ -360,10 +363,10 @@ export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
   const grouped = new Map<string, DemandGroupSummary>();
 
   const result = await query(
-    'SELECT * FROM plans WHERE publish_mode = $1 AND status = $2',
-    ['grouped', 'published']
+    'SELECT * FROM plans WHERE status = $1',
+    ['published']
   );
-  const activePlans = result.rows.map((row: Record<string, unknown>) => toCamelCase<Plan>(row)).filter(Boolean) as Plan[];
+  const activePlans = mapRows<Plan>(result.rows);
 
   for (const tp of activePlans) {
     const key = buildGroupKey(tp);
@@ -413,7 +416,7 @@ export async function getDemandGroupMembers(groupId: string): Promise<Plan[] | n
     'SELECT * FROM plans WHERE id = ANY($1::varchar[])',
     [group.memberPlanIds]
   );
-  return result.rows.map((row: Record<string, unknown>) => toCamelCase<Plan>(row)).filter(Boolean) as Plan[];
+  return mapRows<Plan>(result.rows);
 }
 
 // --- Route Availability ---
@@ -440,14 +443,14 @@ export async function createGroupRequest(driverId: string, routeId: string, dema
     // Acquire a lock on the route so concurrent requests won't conflict
     const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [routeId]);
     const route = toCamelCase<Route>(routeRes.rows[0]);
-    if (!route) throw new Error('Route not found');
+    if (!route) throw new HttpError(404, 'Route not found');
 
     if (!(await checkRouteAvailability(tx, routeId))) {
-      throw new Error('Route is not available — already has an accepted client');
+      throw new HttpError(409, 'Route is not available — already has an accepted client');
     }
 
     const group = await getDemandGroup(demandGroupId);
-    if (!group) throw new Error('Demand group not found');
+    if (!group) throw new HttpError(404, 'Demand group not found');
 
     const greqId = generateId('greq');
 
@@ -523,7 +526,7 @@ export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
       "UPDATE group_offers SET status = 'closed' WHERE group_request_id = $1 AND id != $2 AND status = 'pending' RETURNING *",
       [offer.groupRequestId, offerId]
     );
-    const siblings = siblingsRes.rows.map((row: Record<string, unknown>) => toCamelCase<GroupOffer>(row)).filter(Boolean) as GroupOffer[];
+    const siblings = mapRows<GroupOffer>(siblingsRes.rows);
 
     await tx.query("UPDATE search_requests SET status = 'closed' WHERE route_id = $1 AND status = 'pending'", [offer.routeId]);
 
@@ -583,7 +586,7 @@ export async function cancelGroupRequest(requestId: string): Promise<GroupReques
       "UPDATE group_offers SET status = 'closed' WHERE group_request_id = $1 AND status = 'pending' RETURNING *",
       [requestId]
     );
-    const offers = offersRes.rows.map((row: Record<string, unknown>) => toCamelCase<GroupOffer>(row)).filter(Boolean) as GroupOffer[];
+    const offers = mapRows<GroupOffer>(offersRes.rows);
     return { greq, offers };
   });
 
@@ -613,10 +616,10 @@ export async function createSearchRequest(clientId: string, planId: string | nul
 
     const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [routeId]);
     const route = toCamelCase<Route>(routeRes.rows[0]);
-    if (!route) throw new Error('Route not found');
+    if (!route) throw new HttpError(404, 'Route not found');
 
     if (!(await checkRouteAvailability(tx, routeId))) {
-      throw new Error('Route is not available — already has an accepted client');
+      throw new HttpError(409, 'Route is not available — already has an accepted client');
     }
 
     const sreqId = generateId('sreq');

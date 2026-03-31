@@ -44,17 +44,11 @@
 
 | Method | Path                              | Description                                                                                                                                                              |
 | ------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| POST   | `/trip-plans`                     | Create client plan. Body: `{ clientId, pickup, dropoff, pickupWardId, dropoffWardId, serviceDate, departureBlockStart, departureBlockEnd, passengerCount, publishMode }` |
+| POST   | `/trip-plans`                     | Create client plan. Body: `{ clientId, pickup, dropoff, pickupWardId, dropoffWardId, serviceDate, departureBlockStart, departureBlockEnd, passengerCount }` |
 | GET    | `/trip-plans?clientId=`           | List client plans by client                                                                                                                                              |
 | GET    | `/trip-plans/:id`                 | Client plan detail                                                                                                                                                       |
 | PUT    | `/trip-plans/:id`                 | Update client plan                                                                                                                                                       |
-| GET    | `/trip-plans/:id/matching-routes` | Matching routes for `search_only` plans                                                                                                                                  |
-| POST   | `/search-routes`                  | Transient direct-route search. Body: `{ clientId, pickup, dropoff, serviceDate, departureBlockStart, departureBlockEnd, ... }`                                           |
 
-### publishMode Values
-
-- `"grouped"` — joins a demand group for driver group requests
-- `"search_only"` — client searches for routes directly
 
 ## User Bootstrap
 
@@ -156,7 +150,7 @@
 | `POST /trips/routes`           | `POST /routes`                                                                   |
 | `GET /trips/routes?driverId=`  | `GET /routes?driverId=`                                                          |
 | `PUT /trips/routes/:id`        | `PUT /routes/:id`                                                                |
-| `GET /matches?tripId=`         | `GET /routes/:id/matched-demand-groups` or `GET /trip-plans/:id/matching-routes` |
+| `GET /matches?tripId=`         | `GET /routes/:id/matched-demand-groups` or `POST /client/search-routes` |
 | `POST /offers`                 | `POST /group-requests` or `POST /search-requests`                                |
 | `POST /offers/:id/accept`      | `POST /group-offers/:id/accept` or `POST /search-requests/:id/accept`            |
 | `POST /offers/:id/decline`     | `POST /group-offers/:id/decline` or `POST /search-requests/:id/decline`          |
@@ -181,4 +175,3 @@
 2. **Sibling closure**: When a group offer is accepted, all other pending offers from the same group request are auto-closed.
 3. **Route exclusivity**: One route can have only one accepted client (via group offer OR search request).
 4. **Cross-flow blocking**: An accepted group offer blocks pending search requests for that route, and vice versa.
-5. **Mode isolation**: Grouped plans stay in grouped demand flow for matching/group offers; direct search requests may omit `planId` or optionally link an existing plan.

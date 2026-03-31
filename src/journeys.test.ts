@@ -47,7 +47,7 @@ const BASE_PLAN: Plan = {
   departureBlockStart: '2030-04-01T07:00:00.000Z',
   departureBlockEnd: '2030-04-01T07:30:00.000Z',
   passengerCount: 1,
-  publishMode: 'search_only',
+
   status: 'published',
 };
 
