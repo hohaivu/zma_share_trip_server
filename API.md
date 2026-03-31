@@ -49,6 +49,7 @@
 | GET    | `/trip-plans/:id`                 | Client plan detail                                                                                                                                                       |
 | PUT    | `/trip-plans/:id`                 | Update client plan                                                                                                                                                       |
 | GET    | `/trip-plans/:id/matching-routes` | Matching routes for `search_only` plans                                                                                                                                  |
+| POST   | `/search-routes`                  | Transient direct-route search. Body: `{ clientId, pickup, dropoff, serviceDate, departureBlockStart, departureBlockEnd, ... }`                                           |
 
 ### publishMode Values
 
@@ -118,13 +119,13 @@
 
 | Method | Path                           | Description                                                         |
 | ------ | ------------------------------ | ------------------------------------------------------------------- |
-| POST   | `/search-requests`             | Create search request. Body: `{ clientId, planId, routeId, note? }` |
+| POST   | `/search-requests`             | Create search request. Body: `{ clientId, planId?, routeId, note? }` |
 | GET    | `/search-requests?driverId=`   | Driver's inbound search requests                                    |
 | GET    | `/search-requests?clientId=`   | Client's sent search requests                                       |
 | POST   | `/search-requests/:id/accept`  | Driver accepts search request                                       |
 | POST   | `/search-requests/:id/decline` | Driver declines search request                                      |
 
-> Only `search_only` client plans can create search requests.
+> Search requests can optionally reference an existing client plan, but planId is not required for ad hoc requests.
 
 ## Journey Summary & Completion
 
@@ -180,4 +181,4 @@
 2. **Sibling closure**: When a group offer is accepted, all other pending offers from the same group request are auto-closed.
 3. **Route exclusivity**: One route can have only one accepted client (via group offer OR search request).
 4. **Cross-flow blocking**: An accepted group offer blocks pending search requests for that route, and vice versa.
-5. **Mode isolation**: Only `search_only` client plans can create search requests; `grouped` plans stay in grouped demand flow.
+5. **Mode isolation**: Grouped plans stay in grouped demand flow for matching/group offers; direct search requests may omit `planId` or optionally link an existing plan.

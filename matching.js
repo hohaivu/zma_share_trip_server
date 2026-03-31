@@ -273,16 +273,7 @@ function computeMatchScore(route, planLike) {
  * Returns 'exact_3', 'near_3', or null.
  */
 function classifyByAdminAndDistance(route, planLike) {
-  // Primary: VNMap normalized administrative identity
-  const hasAdminMatch =
-    route.originWardKey &&
-    planLike.pickupWardKey &&
-    route.originWardKey === planLike.pickupWardKey &&
-    route.destinationWardKey &&
-    planLike.dropoffWardKey &&
-    route.destinationWardKey === planLike.dropoffWardKey
-
-  if (hasAdminMatch) return 'exact_3'
+  if (hasExactAdminMatch(route, planLike)) return 'exact_3'
 
   if (!hasUsableGeometry(route, planLike)) return null
 
@@ -408,19 +399,14 @@ async function computeMatchedDemandGroups(routeId) {
 }
 
 /**
- * For a search_only plan, find eligible routes with scores.
+ * For a set of search criteria, find eligible routes with scores.
+ * criteria is expected to have: { clientId, pickup, dropoff, serviceDate, ... }
  */
-async function computeMatchingRoutes(planId) {
-  const tp = await store.getPlan(planId)
-  if (!tp) return null
-  if (tp.publishMode !== 'search_only') {
-    throw new Error('Only search_only plans can search for matching routes')
-  }
-
+async function computeMatchingRoutesFromCriteria(criteria) {
   const allRoutes = await store.listAllRoutes()
   const results = []
 
-  const planBearing = computeBearing(tp.pickup, tp.dropoff)
+  const planBearing = computeBearing(criteria.pickup, criteria.dropoff)
 
   for (const route of allRoutes) {
     if (route.status !== 'published') continue
@@ -431,21 +417,21 @@ async function computeMatchingRoutes(planId) {
     // Apply hard filters
     const passed = await passesHardFiltersWithBearings(
       route,
-      tp,
+      criteria,
       driver,
-      [tp.clientId],
+      [criteria.clientId],
       routeBearing,
       planBearing,
     )
     if (!passed) continue
 
     // Tier classification
-    const matchTier = classifyByAdminAndDistance(route, tp)
+    const matchTier = classifyByAdminAndDistance(route, criteria)
     if (!matchTier) continue
 
     const scores = computeMatchScoreWithBearings(
       route,
-      tp,
+      criteria,
       routeBearing,
       planBearing,
     )
@@ -479,11 +465,25 @@ async function computeMatchingRoutes(planId) {
   return results
 }
 
+/**
+ * For a search_only plan, find eligible routes with scores.
+ */
+async function computeMatchingRoutes(planId) {
+  const tp = await store.getPlan(planId)
+  if (!tp) return null
+  if (tp.publishMode !== 'search_only') {
+    throw new Error('Only search_only plans can search for matching routes')
+  }
+
+  return computeMatchingRoutesFromCriteria(tp)
+}
+
 module.exports = {
   // Geo helpers (exported for tests)
   haversineDistance,
   computeBearing,
   bearingDifference,
+  hasUsablePoint,
   // Scoring helpers (exported for tests)
   directionScore,
   proximityScore,
@@ -499,4 +499,5 @@ module.exports = {
   computeVisibilityMode,
   computeMatchedDemandGroups,
   computeMatchingRoutes,
+  computeMatchingRoutesFromCriteria,
 }

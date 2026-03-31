@@ -88,6 +88,32 @@ describe('POST /api/client/trip-plans', () => {
   })
 })
 
+describe('POST /api/client/search-routes', () => {
+  it('returns matched routes from submitted criteria', async () => {
+    const res = await request(server, 'POST', '/api/client/search-routes', {
+      clientId: 'client-001',
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-test',
+      dropoffWardId: 'ward-test2',
+      serviceDate: '2030-04-01',
+      departureBlockStart: '2030-04-01T08:00:00.000Z',
+      departureBlockEnd: '2030-04-01T08:30:00.000Z',
+    })
+    assert.equal(res.status, 200)
+    assert.ok(Array.isArray(res.body))
+  })
+
+  it('rejects without required criteria', async () => {
+    const res = await request(server, 'POST', '/api/client/search-routes', {
+      clientId: 'client-001',
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+    })
+    assert.equal(res.status, 400)
+    assert.ok(res.body.message.includes('required'))
+  })
+})
+
 describe('POST /api/driver/routes', () => {
   it('creates a driver route', async () => {
     const res = await request(server, 'POST', '/api/driver/routes', {
@@ -208,15 +234,65 @@ describe('POST /api/client/search-requests', () => {
     assert.equal(res.status, 201)
     assert.equal(res.body.status, 'pending')
   })
+  it('creates a search request without a planId', async () => {
+    // Create a fresh route so it's available
+    const routeRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: 'driver-001',
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-03',
+      departureTime: '2030-04-03T07:00:00.000Z',
+      tripPrice: 100000,
+    })
 
-  it('rejects for grouped plan', async () => {
+    const res = await request(server, 'POST', '/api/client/search-requests', {
+      clientId: 'client-001',
+      routeId: routeRes.body.id,
+      note: 'Hello without plan',
+    })
+    assert.equal(res.status, 201)
+    assert.equal(res.body.status, 'pending')
+    assert.equal(res.body.planId, null)
+  })
+  it('accepts a grouped plan as optional linked context', async () => {
+    const routeRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: 'driver-001',
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-04',
+      departureTime: '2030-04-04T07:00:00.000Z',
+      tripPrice: 100000,
+    })
+
     const res = await request(server, 'POST', '/api/client/search-requests', {
       clientId: 'client-001',
       planId: 'plan-001',
-      routeId: 'route-001',
+      routeId: routeRes.body.id,
+    })
+    assert.equal(res.status, 201)
+    assert.equal(res.body.planId, 'plan-001')
+  })
+
+  it('rejects when planId does not exist', async () => {
+    const routeRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: 'driver-001',
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-05',
+      departureTime: '2030-04-05T07:00:00.000Z',
+      tripPrice: 100000,
+    })
+
+    const res = await request(server, 'POST', '/api/client/search-requests', {
+      clientId: 'client-001',
+      planId: 'plan-missing',
+      routeId: routeRes.body.id,
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('search_only'))
+    assert.ok(res.body.message.includes('Plan not found'))
   })
 })
 

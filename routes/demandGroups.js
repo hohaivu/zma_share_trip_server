@@ -16,12 +16,10 @@ router.get('/demand-groups/:id', asyncHandler(async (req, res) => {
 
 // GET /api/driver/demand-groups/:id/members — member list
 router.get('/demand-groups/:id/members', asyncHandler(async (req, res) => {
-  const group = await store.getDemandGroup(req.params.id)
-  if (!group) {
+  const members = await store.getDemandGroupMembers(req.params.id)
+  if (!members) {
     return res.status(404).json({ message: 'Demand group not found' })
   }
-
-  const members = await store.getDemandGroupMembers(req.params.id)
   res.json(members)
 }))
 

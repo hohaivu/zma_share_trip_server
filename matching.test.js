@@ -333,3 +333,16 @@ describe('computeMatchingRoutes', () => {
     )
   })
 })
+
+// ─── 2.6 computeMatchingRoutesFromCriteria ────────────────────────────────────
+
+describe('computeMatchingRoutesFromCriteria', () => {
+  itDb('treats criteria as a plan and returns matches', async () => {
+    const criteria = {
+      ...BASE_PLAN,
+      clientId: 'client-001',
+    }
+    const results = await matching.computeMatchingRoutesFromCriteria(criteria)
+    assert.ok(Array.isArray(results))
+  })
+})

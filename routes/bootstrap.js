@@ -9,11 +9,7 @@ router.post('/users/bootstrap', asyncHandler(async (req, res) => {
   const { mauid, displayName, avatarUrl } = req.body || {}
   requireParam(mauid, 'mauid is required')
   requireParam(displayName, 'displayName is required')
-  if (avatarUrl === undefined) {
-    const err = new Error('avatarUrl is required')
-    err.statusCode = 400
-    throw err
-  }
+  if (avatarUrl === undefined) requireParam(null, 'avatarUrl is required')
 
   const { user, wasCreated } = await store.bootstrapUser(
     mauid,

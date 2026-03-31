@@ -303,6 +303,7 @@ async function createPlan(clientId, data) {
 }
 
 async function getPlan(id) {
+  if (!id) return null
   const result = await query('SELECT * FROM plans WHERE id = $1', [id])
   return toCamelCase(result.rows[0])
 }
@@ -625,11 +626,10 @@ async function cancelGroupRequest(requestId) {
 
 async function createSearchRequest(clientId, planId, routeId, note) {
   const resData = await withTransaction(async (tx) => {
-    const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [planId])
-    const tp = toCamelCase(tpRes.rows[0])
-    if (!tp) throw new Error('Plan not found')
-    if (tp.publishMode !== 'search_only') {
-      throw new Error('Only search_only plans can create search requests')
+    if (planId) {
+      const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [planId])
+      const tp = toCamelCase(tpRes.rows[0])
+      if (!tp) throw new Error('Plan not found')
     }
 
     const routeRes = await tx.query(
@@ -654,7 +654,7 @@ async function createSearchRequest(clientId, planId, routeId, note) {
       [
         sreqId,
         clientId,
-        planId,
+        planId || null,
         routeId,
         route.driverId,
         route.tripPrice,

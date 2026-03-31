@@ -8,7 +8,6 @@ const router = Router()
 router.post('/search-requests', asyncHandler(async (req, res) => {
   const { clientId, planId, routeId, note } = req.body || {}
   requireParam(clientId, 'clientId is required')
-  requireParam(planId, 'planId is required')
   requireParam(routeId, 'routeId is required')
 
   const result = await store.createSearchRequest(

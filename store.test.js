@@ -218,16 +218,40 @@ describe('route exclusivity', () => {
   })
 })
 
-// ─── 6.6 search request isolation ─────────────────────────────────────────────
+// ─── 6.6 search request plan linkage ──────────────────────────────────────────
 
-describe('search request isolation', () => {
-  it('rejects search request for grouped plan', async () => {
+describe('search request plan linkage', () => {
+  it('accepts grouped plan linkage when provided', async () => {
+    const sreq = await store.createSearchRequest(
+      'client-001',
+      'plan-001',
+      'route-002',
+    )
+    assert.equal(sreq.status, 'pending')
+    assert.equal(sreq.planId, 'plan-001')
+  })
+
+  it('rejects unknown plan linkage', async () => {
     await assert.rejects(
       async () =>
-        await store.createSearchRequest('client-001', 'plan-001', 'route-001'),
-      /search_only/,
-      'Grouped plan should not create search requests',
+        await store.createSearchRequest(
+          'client-001',
+          'plan-missing',
+          'route-002',
+        ),
+      /Plan not found/,
+      'Unknown planId should fail validation',
     )
+  })
+
+  it('accepts ad hoc search requests without plan linkage', async () => {
+    const sreq = await store.createSearchRequest(
+      'client-001',
+      null,
+      'route-002',
+    )
+    assert.equal(sreq.status, 'pending')
+    assert.equal(sreq.planId, null)
   })
 
   it('search_only plans do not appear in demand groups', async () => {

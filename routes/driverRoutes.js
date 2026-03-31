@@ -1,22 +1,9 @@
 const { Router } = require('express')
 const store = require('../store')
 const { asyncHandler, requireParam } = require('./helpers')
+const { hasUsablePoint } = require('../matching')
 
 const router = Router()
-
-function hasResolvedExactPoint(loc) {
-  if (!loc) return false
-
-  const lat = Number(loc.lat)
-  const lng = Number(loc.lng)
-  return (
-    loc.lat != null &&
-    loc.lng != null &&
-    Number.isFinite(lat) &&
-    Number.isFinite(lng) &&
-    !(lat === 0 && lng === 0)
-  )
-}
 
 function validateRouteLocations(method, body) {
   const { origin, destination } = body || {}
@@ -27,7 +14,7 @@ function validateRouteLocations(method, body) {
 
   const locs = [origin, destination].filter(Boolean)
   for (const loc of locs) {
-    if (!hasResolvedExactPoint(loc)) {
+    if (!hasUsablePoint(loc)) {
       return 'Validation Error: Unresolved exact-point coordinates are not allowed'
     }
   }
@@ -81,5 +68,4 @@ router.put('/routes/:id', rejectUnresolvedCoordinates, asyncHandler(async (req, 
 }))
 
 module.exports = router
-module.exports.hasResolvedExactPoint = hasResolvedExactPoint
 module.exports.validateRouteLocations = validateRouteLocations
