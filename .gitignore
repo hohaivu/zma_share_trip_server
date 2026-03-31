@@ -1,3 +1,15 @@
 node_modules/
 .env
+dist/
+
+# Optional: Yarn v2+ specific files (only if you're NOT using Zero-Installs)
+# If using Zero-Installs, these should be committed
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+
+# Agent files — keep tracked
+# !.agent/
 .gitnexus

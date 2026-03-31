@@ -1,6 +1,6 @@
 # Cùng Tuyến — API Server
 
-Stateless proxy that exchanges Zalo Mini App tokens for user data via the Zalo Open API.
+TypeScript-authored Express API backed by Postgres for bootstrap, matching, trip lifecycle, and Zalo exchange flows.
 
 ## Endpoints
 
@@ -25,13 +25,32 @@ The trip matching capabilities are split across three distinct API namespaces ba
 ```bash
 cd zma_share_trip_server
 cp .env.example .env   # fill in ZALO_APP_ID, ZALO_APP_SECRET, DATABASE_URL
-npm install
-npm run db:migrate     # initialize Postgres schema
-npm run db:seed        # insert demo data
-npm run dev
+yarn install
+yarn db:migrate        # initialize Postgres schema
+yarn db:seed           # insert demo data
+yarn dev
 ```
 
 Server starts at `http://localhost:3010`.
+
+## Validation
+
+```bash
+yarn typecheck
+yarn test
+yarn build
+```
+
+## Production-Style Artifact Workflow
+
+```bash
+yarn build
+yarn db:migrate:dist   # run schema setup from the built artifact
+yarn db:seed:dist      # seed demo data from the built artifact
+yarn start             # serves dist/index.js
+```
+
+The build copies SQL migrations into `dist/db/migrations` so the compiled migration command stays runnable outside the source tree.
 
 ## Environment Variables
 
@@ -48,17 +67,17 @@ Server starts at `http://localhost:3010`.
 1. Push to GitHub/GitLab
 2. Render Dashboard → **New** → **Blueprint**
 3. Connect repo → Render reads `render.yaml`
-4. Set `ZALO_APP_ID` and `ZALO_APP_SECRET` in dashboard (Postgres connects automatically via Blueprint)
-5. Deploy 🚀
+4. Render installs with `yarn install --frozen-lockfile`, builds with `yarn build`, then runs `yarn db:migrate:dist` and `yarn db:seed:dist`
+5. The web service starts from `node dist/index.js`
+6. Set `ZALO_APP_ID` and `ZALO_APP_SECRET` in dashboard (Postgres connects automatically via Blueprint)
+7. Deploy 🚀
 
 ## Test
 
 ```bash
 # Health check
-curl http://localhost:3000/health
+curl http://localhost:3010/health
 
-# Authorize (requires real token)
-curl -X POST http://localhost:3000/api/authorize \
-  -H "Content-Type: application/json" \
-  -d '{"accessToken": "YOUR_TOKEN"}'
+# Shared route smoke test
+curl http://localhost:3010/api/users/a1b2c3d4-0001-4000-8000-000000000001/mode
 ```

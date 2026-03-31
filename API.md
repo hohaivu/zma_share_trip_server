@@ -1,6 +1,6 @@
 # Cùng Tuyến — Phase 2 Server API
 
-> Express.js demo server backed by Postgres. Data is durable across restarts. Requires a `DATABASE_URL` during startup. Run `npm run db:migrate` and `npm run db:seed` before starting the development server.
+> Express.js API server backed by Postgres. Data is durable across restarts and requires a `DATABASE_URL` during startup. Development uses `yarn db:migrate`, `yarn db:seed`, and `yarn dev`; the production-style artifact flow uses `yarn build`, `yarn db:migrate:dist`, `yarn db:seed:dist`, and `yarn start`.
 
 **Base URL**: `http://localhost:3010/api`
 
