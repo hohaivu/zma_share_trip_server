@@ -303,10 +303,15 @@ describe('POST /api/client/search-requests', () => {
         initialRequest.body.id,
       ])
 
-      const resend = await request(server, 'POST', '/api/client/search-requests', {
-        clientId: CLIENT_001_ID,
-        routeId,
-      })
+      const resend = await request(
+        server,
+        'POST',
+        '/api/client/search-requests',
+        {
+          clientId: CLIENT_001_ID,
+          routeId,
+        },
+      )
 
       assert.equal(resend.status, 201)
       assert.notEqual(resend.body.id, initialRequest.body.id)

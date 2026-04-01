@@ -18,7 +18,11 @@ const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
 const CLIENT_002_ID = 'a1b2c3d4-0004-4000-8000-000000000004'
-const TERMINAL_SEARCH_REQUEST_STATUSES = ['declined', 'closed', 'expired'] as const
+const TERMINAL_SEARCH_REQUEST_STATUSES = [
+  'declined',
+  'closed',
+  'expired',
+] as const
 
 // Note: require resets are not trivial in CJS, so we test against the shared
 // store instance. Tests should not depend on ordering within a describe block.
@@ -349,14 +353,23 @@ describe('single active search request invariant', () => {
     )
 
     const migrationSql = fs.readFileSync(
-      path.join(__dirname, 'db', 'migrations', '06_single_active_search_request.sql'),
+      path.join(
+        __dirname,
+        'db',
+        'migrations',
+        '06_single_active_search_request.sql',
+      ),
       'utf8',
     )
     await query(migrationSql)
 
     const requests = await store.listSearchRequestsByRoute(route.id)
-    const olderRequest = requests.find((request) => request.id === 'sreq-mig-old')
-    const newestRequest = requests.find((request) => request.id === 'sreq-mig-new')
+    const olderRequest = requests.find(
+      (request) => request.id === 'sreq-mig-old',
+    )
+    const newestRequest = requests.find(
+      (request) => request.id === 'sreq-mig-new',
+    )
     const terminalRequest = requests.find(
       (request) => request.id === 'sreq-mig-terminal',
     )

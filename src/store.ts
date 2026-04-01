@@ -818,9 +818,7 @@ export async function createSearchRequest(
 
       return { sreq: toCamelCase<SearchRequest>(sreqRes.rows[0]), route }
     } catch (e: unknown) {
-      if (
-        isPgUniqueViolation(e, 'search_requests_active_client_route_idx')
-      ) {
+      if (isPgUniqueViolation(e, 'search_requests_active_client_route_idx')) {
         const raceRes = await tx.query(
           `SELECT * FROM search_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
           [clientId, routeId],
