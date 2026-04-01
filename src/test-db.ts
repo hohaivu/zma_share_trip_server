@@ -1,12 +1,13 @@
-import { it as nodeIt, TestContext } from 'node:test';
-import { Pool } from 'pg';
-import { initPool, query, closePool } from './db/connection';
-import fs from 'fs';
-import path from 'path';
-import { seed } from './db/seed';
+import fs from 'fs'
+import { TestContext, it as nodeIt } from 'node:test'
+import path from 'path'
+import { Pool } from 'pg'
 
-let pool: Pool | undefined;
-let dbAvailable = false;
+import { closePool, initPool, query } from './db/connection'
+import { seed } from './db/seed'
+
+let pool: Pool | undefined
+let dbAvailable = false
 
 const UNAVAILABLE_CODES = new Set([
   'ECONNREFUSED',
@@ -14,8 +15,9 @@ const UNAVAILABLE_CODES = new Set([
   'ETIMEDOUT',
   'EACCES',
   'EPERM',
-]);
-const UNAVAILABLE_MESSAGES = ['permission denied', 'operation not permitted'];
+  '28000',
+])
+const UNAVAILABLE_MESSAGES = ['permission denied', 'operation not permitted']
 
 const TRUNCATE_ALL_SQL = `
   DO $$ DECLARE
@@ -25,80 +27,82 @@ const TRUNCATE_ALL_SQL = `
           EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
       END LOOP;
   END $$;
-`;
+`
 
 function isUnavailableDatabaseError(error: unknown): boolean {
-  const errors = [error, (error as Record<string, unknown>)?.cause].filter(Boolean);
+  const errors = [error, (error as Record<string, unknown>)?.cause].filter(
+    Boolean,
+  )
 
   for (const current of errors) {
-    const obj = current as Record<string, unknown>;
-    const code = typeof obj.code === 'string' ? obj.code : '';
-    if (UNAVAILABLE_CODES.has(code)) return true;
+    const obj = current as Record<string, unknown>
+    const code = typeof obj.code === 'string' ? obj.code : ''
+    if (UNAVAILABLE_CODES.has(code)) return true
 
     const message =
-      typeof obj.message === 'string' ? obj.message : String(current);
+      typeof obj.message === 'string' ? obj.message : String(current)
     for (const keyword of UNAVAILABLE_CODES) {
-      if (message.includes(keyword)) return true;
+      if (message.includes(keyword)) return true
     }
-    const lower = message.toLowerCase();
+    const lower = message.toLowerCase()
     for (const keyword of UNAVAILABLE_MESSAGES) {
-      if (lower.includes(keyword)) return true;
+      if (lower.includes(keyword)) return true
     }
   }
 
-  return false;
+  return false
 }
 
 export async function setupTestDb() {
   process.env.DATABASE_URL =
     process.env.DATABASE_URL ||
-    'postgres://postgres:postgres@localhost:5432/zma_share_trip';
+    'postgres://postgres:postgres@localhost:5432/zma_share_trip'
   try {
-    pool = initPool();
-    await query(TRUNCATE_ALL_SQL);
+    pool = initPool()
+    await query(TRUNCATE_ALL_SQL)
 
-    const migrationsDir = path.join(__dirname, 'db', 'migrations');
+    const migrationsDir = path.join(__dirname, 'db', 'migrations')
     const migrationFiles = fs
       .readdirSync(migrationsDir)
       .filter((file) => file.endsWith('.sql'))
-      .sort();
+      .sort()
 
     for (const migrationFile of migrationFiles) {
       const migrationSql = fs.readFileSync(
         path.join(migrationsDir, migrationFile),
-        'utf8'
-      );
-      await query(migrationSql);
+        'utf8',
+      )
+      await query(migrationSql)
     }
-    await query(TRUNCATE_ALL_SQL);
+    await query(TRUNCATE_ALL_SQL)
 
-    await seed();
-    pool = initPool();
-    dbAvailable = true;
-    return true;
+    await seed()
+    pool = initPool()
+    dbAvailable = true
+    return true
   } catch (error: unknown) {
-    await closePool().catch(() => {});
-    pool = undefined;
-    dbAvailable = false;
+    await closePool().catch(() => {})
+    pool = undefined
+    dbAvailable = false
 
     if (isUnavailableDatabaseError(error)) {
-      const err = error as Record<string, unknown>;
+      const err = error as Record<string, unknown>
       const detail =
         [err.name, err.code, err.message].filter(Boolean).join(': ') ||
-        String(error);
+        String(error)
       console.warn(
         '[test-db] Skipping DB-backed tests — Postgres unavailable:',
-        detail
-      );
-      return false;
+        detail,
+      )
+      return false
     }
 
-    throw error;
+    throw error
   }
 }
 
 export async function teardownTestDb() {
-  await closePool().catch(() => {});
+  await closePool().catch(() => {})
 }
 
 /**
@@ -110,13 +114,13 @@ export function createDbTest(skipReason: string) {
   return (name: string, fn: (t: TestContext) => Promise<void> | void) =>
     nodeIt(name, async (t: TestContext) => {
       if (!dbAvailable) {
-        t.skip(skipReason);
-        return;
+        t.skip(skipReason)
+        return
       }
-      return fn(t);
-    });
+      return fn(t)
+    })
 }
 
 export function isDbAvailable() {
-  return dbAvailable;
+  return dbAvailable
 }

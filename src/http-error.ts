@@ -1,8 +1,9 @@
-export class HttpError extends Error {
+export class HttpError<T = unknown> extends Error {
   constructor(
     public statusCode: number,
-    message: string
+    message: string,
+    public payload?: T,
   ) {
-    super(message);
+    super(message)
   }
 }

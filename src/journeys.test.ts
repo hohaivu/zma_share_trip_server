@@ -1,16 +1,16 @@
-import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
 
-import { buildJourneySummary } from './routes/journeys';
-import { Plan, Route, User } from './types/entities';
-import { JourneyAcceptedState } from './types/payloads';
+import { buildJourneySummary } from './routes/journeys'
+import { Plan, Route, User } from './types/entities'
+import { JourneyAcceptedState } from './types/payloads'
 
 const BASE_USER: User = {
   id: 'user-001',
   mauid: 'zalo-user-001',
   displayName: 'User 001',
   avatarUrl: 'https://example.com/avatar.png',
-};
+}
 
 const BASE_ROUTE: Route = {
   id: 'route-001',
@@ -30,7 +30,7 @@ const BASE_ROUTE: Route = {
   windowEnd: '2030-04-01T07:15:00.000Z',
   tripPrice: 150000,
   status: 'published',
-};
+}
 
 const BASE_PLAN: Plan = {
   id: 'plan-001',
@@ -49,7 +49,7 @@ const BASE_PLAN: Plan = {
   passengerCount: 1,
 
   status: 'published',
-};
+}
 
 describe('buildJourneySummary', () => {
   it('preserves a route payload and adds accepted search-request state', () => {
@@ -60,23 +60,23 @@ describe('buildJourneySummary', () => {
       status: 'accepted',
       matchedUser: BASE_USER,
       plan: BASE_PLAN,
-    };
+    }
 
-    const summary = buildJourneySummary(BASE_ROUTE, accepted);
+    const summary = buildJourneySummary(BASE_ROUTE, accepted)
 
-    assert.equal(summary.id, BASE_ROUTE.id);
-    assert.equal(summary.departureTime, BASE_ROUTE.departureTime);
-    assert.equal(summary.accepted?.type, 'search_request');
-    assert.equal(summary.accepted?.requestId, 'sreq-001');
-    assert.equal(summary.accepted?.plan?.id, BASE_PLAN.id);
-  });
+    assert.equal(summary.id, BASE_ROUTE.id)
+    assert.equal(summary.departureTime, BASE_ROUTE.departureTime)
+    assert.equal(summary.accepted?.type, 'search_request')
+    assert.equal(summary.accepted?.requestId, 'sreq-001')
+    assert.equal(summary.accepted?.plan?.id, BASE_PLAN.id)
+  })
 
   it('preserves a plan payload and allows a null accepted state', () => {
-    const summary = buildJourneySummary(BASE_PLAN, null);
+    const summary = buildJourneySummary(BASE_PLAN, null)
 
-    assert.equal(summary.id, BASE_PLAN.id);
-    assert.equal(summary.departureBlockStart, BASE_PLAN.departureBlockStart);
-    assert.equal(summary.pickup.label, BASE_PLAN.pickup.label);
-    assert.equal(summary.accepted, null);
-  });
-});
+    assert.equal(summary.id, BASE_PLAN.id)
+    assert.equal(summary.departureBlockStart, BASE_PLAN.departureBlockStart)
+    assert.equal(summary.pickup.label, BASE_PLAN.pickup.label)
+    assert.equal(summary.accepted, null)
+  })
+})

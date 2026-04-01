@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction, RequestHandler } from 'express';
+import { NextFunction, Request, RequestHandler, Response } from 'express'
 
 /**
  * Factory that returns middleware requiring specific body fields.
@@ -10,10 +10,10 @@ export default function validate(...requiredFields: string[]): RequestHandler {
       if (!req.body[field]) {
         res
           .status(400)
-          .json({ error: -1, message: `Missing required field: ${field}` });
-        return;
+          .json({ error: -1, message: `Missing required field: ${field}` })
+        return
       }
     }
-    next();
-  };
+    next()
+  }
 }

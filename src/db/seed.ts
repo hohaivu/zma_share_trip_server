@@ -1,5 +1,5 @@
-import { initPool, closePool } from './connection';
-import { Location, User, Route, Plan } from '../types/entities';
+import { Location, Plan, Route, User } from '../types/entities'
+import { closePool, initPool } from './connection'
 
 // --- Named constants ---
 
@@ -25,55 +25,67 @@ const WARD_KEY_TD = 'ward-td-binhtho_79'
 const PROVINCE_HCM = '79'
 
 interface SeedUser extends Omit<User, 'createdAt' | 'modeSelectedAt'> {
-  createdAt: string;
-  modeSelectedAt: string;
+  createdAt: string
+  modeSelectedAt: string
 }
 
 interface SeedRoute {
-  id: string;
-  driverId: string;
-  carId: string;
-  origin: Location;
-  destination: Location;
-  originWardId: string;
-  originWardKey: string;
-  originProvinceId: string;
-  destinationWardId: string;
-  destinationWardKey: string;
-  destinationProvinceId: string;
-  serviceDate: string;
-  departureTime: string;
-  windowStart: string;
-  windowEnd: string;
-  tripPrice: number;
-  notes: string;
-  status: string;
-  createdAt: string;
+  id: string
+  driverId: string
+  carId: string
+  origin: Location
+  destination: Location
+  originWardId: string
+  originWardKey: string
+  originProvinceId: string
+  destinationWardId: string
+  destinationWardKey: string
+  destinationProvinceId: string
+  serviceDate: string
+  departureTime: string
+  windowStart: string
+  windowEnd: string
+  tripPrice: number
+  notes: string
+  status: string
+  createdAt: string
 }
 
 interface SeedPlan {
-  id: string;
-  clientId: string;
-  pickup: Location;
-  dropoff: Location;
-  pickupWardId: string;
-  pickupWardKey: string;
-  pickupProvinceId: string;
-  dropoffWardId: string;
-  dropoffWardKey: string;
-  dropoffProvinceId: string;
-  serviceDate: string;
-  departureBlockStart: string;
-  departureBlockEnd: string;
-  passengerCount: number;
-  notes: string;
-  status: string;
-  createdAt: string;
+  id: string
+  clientId: string
+  pickup: Location
+  dropoff: Location
+  pickupWardId: string
+  pickupWardKey: string
+  pickupProvinceId: string
+  dropoffWardId: string
+  dropoffWardKey: string
+  dropoffProvinceId: string
+  serviceDate: string
+  departureBlockStart: string
+  departureBlockEnd: string
+  passengerCount: number
+  notes: string
+  status: string
+  createdAt: string
 }
 
 // --- Factory helpers ---
 
-function makeUser(overrides: Partial<SeedUser> & Pick<SeedUser, 'id' | 'mauid' | 'displayName' | 'role' | 'preferredMode' | 'modeSelectedAt' | 'createdAt'>): SeedUser {
+function makeUser(
+  overrides: Partial<SeedUser> &
+    Pick<
+      SeedUser,
+      | 'id'
+      | 'mauid'
+      | 'displayName'
+      | 'role'
+      | 'preferredMode'
+      | 'modeSelectedAt'
+      | 'createdAt'
+    >,
+): SeedUser {
   return {
     avatarUrl: '',
     verificationStatus: 'verified',
@@ -81,10 +93,24 @@ function makeUser(overrides: Partial<SeedUser> & Pick<SeedUser, 'id' | 'mauid' |
     tripCount: 0,
     blockedUserIds: [],
     ...overrides,
-  } as SeedUser;
+  } as SeedUser
 }
 
-function makeRoute(overrides: Partial<SeedRoute> & Pick<SeedRoute, 'id' | 'driverId' | 'carId' | 'serviceDate' | 'departureTime' | 'windowStart' | 'windowEnd' | 'tripPrice' | 'createdAt'>): SeedRoute {
+function makeRoute(
+  overrides: Partial<SeedRoute> &
+    Pick<
+      SeedRoute,
+      | 'id'
+      | 'driverId'
+      | 'carId'
+      | 'serviceDate'
+      | 'departureTime'
+      | 'windowStart'
+      | 'windowEnd'
+      | 'tripPrice'
+      | 'createdAt'
+    >,
+): SeedRoute {
   return {
     origin: COORD_Q1,
     destination: COORD_TD,
@@ -97,10 +123,21 @@ function makeRoute(overrides: Partial<SeedRoute> & Pick<SeedRoute, 'id' | 'drive
     notes: '',
     status: 'published',
     ...overrides,
-  };
+  }
 }
 
-function makePlan(overrides: Partial<SeedPlan> & Pick<SeedPlan, 'id' | 'clientId' | 'serviceDate' | 'departureBlockStart' | 'departureBlockEnd' | 'createdAt'>): SeedPlan {
+function makePlan(
+  overrides: Partial<SeedPlan> &
+    Pick<
+      SeedPlan,
+      | 'id'
+      | 'clientId'
+      | 'serviceDate'
+      | 'departureBlockStart'
+      | 'departureBlockEnd'
+      | 'createdAt'
+    >,
+): SeedPlan {
   return {
     pickup: COORD_Q1,
     dropoff: COORD_TD,
@@ -114,7 +151,7 @@ function makePlan(overrides: Partial<SeedPlan> & Pick<SeedPlan, 'id' | 'clientId
     notes: '',
     status: 'published',
     ...overrides,
-  };
+  }
 }
 
 // --- Seed data ---
@@ -416,9 +453,9 @@ export async function seed() {
 }
 
 if (require.main === module) {
-  require('dotenv').config();
+  require('dotenv').config()
   seed().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+    console.error(err)
+    process.exit(1)
+  })
 }

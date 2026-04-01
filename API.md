@@ -42,19 +42,18 @@
 
 ## Client Trip Plans
 
-| Method | Path                              | Description                                                                                                                                                              |
-| ------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| POST   | `/trip-plans`                     | Create client plan. Body: `{ clientId, pickup, dropoff, pickupWardId, dropoffWardId, serviceDate, departureBlockStart, departureBlockEnd, passengerCount }` |
-| GET    | `/trip-plans?clientId=`           | List client plans by client                                                                                                                                              |
-| GET    | `/trip-plans/:id`                 | Client plan detail                                                                                                                                                       |
-| PUT    | `/trip-plans/:id`                 | Update client plan                                                                                                                                                       |
-
+| Method | Path                    | Description                                                                                                                                                 |
+| ------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/trip-plans`           | Create client plan. Body: `{ clientId, pickup, dropoff, pickupWardId, dropoffWardId, serviceDate, departureBlockStart, departureBlockEnd, passengerCount }` |
+| GET    | `/trip-plans?clientId=` | List client plans by client                                                                                                                                 |
+| GET    | `/trip-plans/:id`       | Client plan detail                                                                                                                                          |
+| PUT    | `/trip-plans/:id`       | Update client plan                                                                                                                                          |
 
 ## User Bootstrap
 
-| Method | Path                | Description                                                       |
-| ------ | ------------------- | ----------------------------------------------------------------- |
-| POST   | `/users/bootstrap`  | Resolve or create an app user from MAUID. Body: `{ mauid, displayName, avatarUrl }` |
+| Method | Path               | Description                                                                         |
+| ------ | ------------------ | ----------------------------------------------------------------------------------- |
+| POST   | `/users/bootstrap` | Resolve or create an app user from MAUID. Body: `{ mauid, displayName, avatarUrl }` |
 
 **Response**: The canonical user profile with backend UUID `id`, external `mauid`, display fields, and any persisted mode/trust fields.
 
@@ -74,6 +73,7 @@
 **Response**: `{ preferredMode, modeSelectedAt }`
 
 > The `:id` parameter is the backend UUID returned by bootstrap, not the MAUID.
+
 ## Demand Groups
 
 | Method | Path                         | Description                                                                 |
@@ -111,13 +111,13 @@
 
 ## Search Requests (Client → Route)
 
-| Method | Path                           | Description                                                         |
-| ------ | ------------------------------ | ------------------------------------------------------------------- |
+| Method | Path                           | Description                                                          |
+| ------ | ------------------------------ | -------------------------------------------------------------------- |
 | POST   | `/search-requests`             | Create search request. Body: `{ clientId, planId?, routeId, note? }` |
-| GET    | `/search-requests?driverId=`   | Driver's inbound search requests                                    |
-| GET    | `/search-requests?clientId=`   | Client's sent search requests                                       |
-| POST   | `/search-requests/:id/accept`  | Driver accepts search request                                       |
-| POST   | `/search-requests/:id/decline` | Driver declines search request                                      |
+| GET    | `/search-requests?driverId=`   | Driver's inbound search requests                                     |
+| GET    | `/search-requests?clientId=`   | Client's sent search requests                                        |
+| POST   | `/search-requests/:id/accept`  | Driver accepts search request                                        |
+| POST   | `/search-requests/:id/decline` | Driver declines search request                                       |
 
 > Search requests can optionally reference an existing client plan, but planId is not required for ad hoc requests.
 
@@ -142,20 +142,20 @@
 
 ## Removed Legacy Endpoints
 
-| Legacy Path                    | Replacement                                                                      |
-| ------------------------------ | -------------------------------------------------------------------------------- |
-| `POST /trips/demands`          | `POST /trip-plans`                                                               |
-| `GET /trips/demands?clientId=` | `GET /trip-plans?clientId=`                                                      |
-| `PUT /trips/demands/:id`       | `PUT /trip-plans/:id`                                                            |
-| `POST /trips/routes`           | `POST /routes`                                                                   |
-| `GET /trips/routes?driverId=`  | `GET /routes?driverId=`                                                          |
-| `PUT /trips/routes/:id`        | `PUT /routes/:id`                                                                |
+| Legacy Path                    | Replacement                                                             |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `POST /trips/demands`          | `POST /trip-plans`                                                      |
+| `GET /trips/demands?clientId=` | `GET /trip-plans?clientId=`                                             |
+| `PUT /trips/demands/:id`       | `PUT /trip-plans/:id`                                                   |
+| `POST /trips/routes`           | `POST /routes`                                                          |
+| `GET /trips/routes?driverId=`  | `GET /routes?driverId=`                                                 |
+| `PUT /trips/routes/:id`        | `PUT /routes/:id`                                                       |
 | `GET /matches?tripId=`         | `GET /routes/:id/matched-demand-groups` or `POST /client/search-routes` |
-| `POST /offers`                 | `POST /group-requests` or `POST /search-requests`                                |
-| `POST /offers/:id/accept`      | `POST /group-offers/:id/accept` or `POST /search-requests/:id/accept`            |
-| `POST /offers/:id/decline`     | `POST /group-offers/:id/decline` or `POST /search-requests/:id/decline`          |
-| `GET /offers?driverId=`        | `GET /group-requests?driverId=` or `GET /search-requests?driverId=`              |
-| `GET /offers?clientId=`        | `GET /group-offers?clientId=` or `GET /search-requests?clientId=`                |
+| `POST /offers`                 | `POST /group-requests` or `POST /search-requests`                       |
+| `POST /offers/:id/accept`      | `POST /group-offers/:id/accept` or `POST /search-requests/:id/accept`   |
+| `POST /offers/:id/decline`     | `POST /group-offers/:id/decline` or `POST /search-requests/:id/decline` |
+| `GET /offers?driverId=`        | `GET /group-requests?driverId=` or `GET /search-requests?driverId=`     |
+| `GET /offers?clientId=`        | `GET /group-offers?clientId=` or `GET /search-requests?clientId=`       |
 
 ## Removed Fields
 

@@ -1,11 +1,11 @@
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert/strict';
+import assert from 'node:assert/strict'
+import { after, before, describe, it } from 'node:test'
 
-import * as matching from './matching';
-import { setupTestDb, teardownTestDb, createDbTest } from './test-db';
-import { User } from './types/entities';
+import * as matching from './matching'
+import { createDbTest, setupTestDb, teardownTestDb } from './test-db'
+import { User } from './types/entities'
 
-const itDb = createDbTest('Postgres unavailable for DB-backed matching tests');
+const itDb = createDbTest('Postgres unavailable for DB-backed matching tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
 
@@ -187,7 +187,10 @@ describe('passesHardFilters', () => {
   })
 
   itDb('rejects when driver blocks client', async () => {
-    const driver = { id: DRIVER_001_ID, blockedUserIds: [CLIENT_001_ID] } as unknown as User;
+    const driver = {
+      id: DRIVER_001_ID,
+      blockedUserIds: [CLIENT_001_ID],
+    } as unknown as User
     assert.equal(
       await matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, driver, [
         CLIENT_001_ID,
@@ -200,7 +203,10 @@ describe('passesHardFilters', () => {
     // We need the store client to have driver-001 blocked.
     // We test this indirectly: if the stored client-001 doesn't block driver-001
     // we skip. This test covers the code path with a synthetic driver object.
-    const driver = { id: 'driver-blocked', blockedUserIds: [] } as unknown as User;
+    const driver = {
+      id: 'driver-blocked',
+      blockedUserIds: [],
+    } as unknown as User
     // client-001 doesn't block driver-blocked in seed, so passes
     assert.ok(
       await matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, driver, [

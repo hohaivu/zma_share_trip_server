@@ -1,13 +1,15 @@
-import { describe, before, after } from 'node:test';
-import assert from 'node:assert/strict';
-import http from 'node:http';
-import app from './index';
+import assert from 'node:assert/strict'
+import http from 'node:http'
+import { after, before, describe } from 'node:test'
+
+import { query } from './db/connection'
+import app from './index'
 import {
-  setupTestDb,
-  teardownTestDb,
   createDbTest,
   isDbAvailable,
-} from './test-db';
+  setupTestDb,
+  teardownTestDb,
+} from './test-db'
 
 const it = createDbTest('Postgres unavailable for DB-backed API tests')
 
@@ -15,7 +17,12 @@ const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
 
 // Simple fetch helper
-function request(server: any, method: string, path: string, body?: any): Promise<any> {
+function request(
+  server: any,
+  method: string,
+  path: string,
+  body?: any,
+): Promise<any> {
   return new Promise((resolve, reject) => {
     const addr = server.address()
     const options = {
@@ -27,7 +34,7 @@ function request(server: any, method: string, path: string, body?: any): Promise
     }
     const req = http.request(options, (res: any) => {
       let data = ''
-      res.on('data', (chunk: any) => (data += chunk));
+      res.on('data', (chunk: any) => (data += chunk))
       res.on('end', () => {
         try {
           resolve({
@@ -45,7 +52,7 @@ function request(server: any, method: string, path: string, body?: any): Promise
   })
 }
 
-let server: any;
+let server: any
 
 before(async () => {
   await setupTestDb()
@@ -77,12 +84,10 @@ describe('POST /api/client/trip-plans', () => {
       departureBlockStart: '2030-04-01T08:00:00.000Z',
       departureBlockEnd: '2030-04-01T08:30:00.000Z',
       passengerCount: 1,
-
     })
     assert.equal(res.status, 201)
     assert.ok(res.body.id)
     assert.equal(res.body.clientId, CLIENT_001_ID)
-
   })
 
   it('rejects without clientId', async () => {
@@ -168,7 +173,8 @@ describe('PUT /api/driver/routes/:id', () => {
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
     })
-    if (res.status === 400) assert.fail('Should not fail validation for valid resolved coordinates')
+    if (res.status === 400)
+      assert.fail('Should not fail validation for valid resolved coordinates')
     assert.ok(res.status === 200 || res.status === 404)
   })
   it('rejects update with unresolved 0/0 destination coordinates', async () => {
@@ -226,7 +232,6 @@ describe('POST /api/client/search-requests', () => {
       departureBlockStart: '2030-04-02T07:00:00.000Z',
       departureBlockEnd: '2030-04-02T07:30:00.000Z',
       passengerCount: 1,
-
     })
 
     const res = await request(server, 'POST', '/api/client/search-requests', {
@@ -237,6 +242,77 @@ describe('POST /api/client/search-requests', () => {
     assert.equal(res.status, 201)
     assert.equal(res.body.status, 'pending')
   })
+
+  it('rejects duplicate active requests with 409 conflict and existingRequest payload', async () => {
+    const routeRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: DRIVER_001_ID,
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-10',
+      departureTime: '2030-04-10T07:00:00.000Z',
+      tripPrice: 100000,
+    })
+    const routeId = routeRes.body.id
+
+    const req1 = await request(server, 'POST', '/api/client/search-requests', {
+      clientId: CLIENT_001_ID,
+      routeId,
+    })
+    assert.equal(req1.status, 201)
+    assert.equal(req1.body.status, 'pending')
+
+    const req2 = await request(server, 'POST', '/api/client/search-requests', {
+      clientId: CLIENT_001_ID,
+      routeId,
+    })
+    assert.equal(req2.status, 409)
+    assert.ok(
+      req2.body.existingRequest,
+      'Should include existingRequest in 409 response payload',
+    )
+    assert.equal(req2.body.existingRequest.id, req1.body.id)
+  })
+
+  for (const terminalStatus of ['declined', 'closed', 'expired'] as const) {
+    it(`allows resend after ${terminalStatus}`, async () => {
+      const routeRes = await request(server, 'POST', '/api/driver/routes', {
+        driverId: DRIVER_001_ID,
+        carId: 'car-001',
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+        serviceDate: `2030-04-1${terminalStatus.length}`,
+        departureTime: `2030-04-1${terminalStatus.length}T07:00:00.000Z`,
+        tripPrice: 100000,
+      })
+      const routeId = routeRes.body.id
+
+      const initialRequest = await request(
+        server,
+        'POST',
+        '/api/client/search-requests',
+        {
+          clientId: CLIENT_001_ID,
+          routeId,
+        },
+      )
+      assert.equal(initialRequest.status, 201)
+
+      await query('UPDATE search_requests SET status = $1 WHERE id = $2', [
+        terminalStatus,
+        initialRequest.body.id,
+      ])
+
+      const resend = await request(server, 'POST', '/api/client/search-requests', {
+        clientId: CLIENT_001_ID,
+        routeId,
+      })
+
+      assert.equal(resend.status, 201)
+      assert.notEqual(resend.body.id, initialRequest.body.id)
+      assert.equal(resend.body.status, 'pending')
+    })
+  }
   it('creates a search request without a planId', async () => {
     // Create a fresh route so it's available
     const routeRes = await request(server, 'POST', '/api/driver/routes', {
@@ -441,21 +517,14 @@ describe('user mode with bootstrapped users', () => {
     const userId = bootstrap.body.id
 
     // Save mode
-    const saveRes = await request(
-      server,
-      'POST',
-      `/api/users/${userId}/mode`,
-      { preferredMode: 'driver' },
-    )
+    const saveRes = await request(server, 'POST', `/api/users/${userId}/mode`, {
+      preferredMode: 'driver',
+    })
     assert.equal(saveRes.status, 200)
     assert.equal(saveRes.body.preferredMode, 'driver')
 
     // Read mode
-    const readRes = await request(
-      server,
-      'GET',
-      `/api/users/${userId}/mode`,
-    )
+    const readRes = await request(server, 'GET', `/api/users/${userId}/mode`)
     assert.equal(readRes.status, 200)
     assert.equal(readRes.body.preferredMode, 'driver')
   })

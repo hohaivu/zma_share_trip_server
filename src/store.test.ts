@@ -1,21 +1,31 @@
-import { describe, before, after, it as nodeIt } from 'node:test';
-import assert from 'node:assert/strict';
-import { setupTestDb, teardownTestDb, createDbTest } from './test-db';
-import * as store from './store';
-import * as matching from './matching';
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { after, before, describe, it as nodeIt } from 'node:test'
 
-const it = createDbTest('Postgres unavailable for DB-backed store tests');
+import { query } from './db/connection'
+import * as matching from './matching'
+import * as store from './store'
+import {
+  createDbTest,
+  isDbAvailable,
+  setupTestDb,
+  teardownTestDb,
+} from './test-db'
+
+const it = createDbTest('Postgres unavailable for DB-backed store tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
 const CLIENT_002_ID = 'a1b2c3d4-0004-4000-8000-000000000004'
+const TERMINAL_SEARCH_REQUEST_STATUSES = ['declined', 'closed', 'expired'] as const
 
 // Note: require resets are not trivial in CJS, so we test against the shared
 // store instance. Tests should not depend on ordering within a describe block.
 
 before(async () => {
-  await setupTestDb();
-});
+  await setupTestDb()
+})
 
 after(async () => {
   await teardownTestDb()
@@ -75,8 +85,6 @@ describe('deriveDemandGroups', () => {
       'Should use explicit canonical UTC Z-time on reads',
     )
   })
-
-
 
   it('creates single-member group for unique ward pair', async () => {
     const groups = await store.deriveDemandGroups()
@@ -180,9 +188,14 @@ describe('first-accept-wins', () => {
 describe('route exclusivity', () => {
   before(async () => {
     await setupTestDb()
+    if (!isDbAvailable()) return
+
     const groups = await store.deriveDemandGroups()
     const multiMemberGroup = groups.find((g) => g.memberCount > 1)
-    assert.ok(multiMemberGroup, 'Need a multi-member group for exclusivity tests')
+    assert.ok(
+      multiMemberGroup,
+      'Need a multi-member group for exclusivity tests',
+    )
 
     const result = await store.createGroupRequest(
       DRIVER_001_ID,
@@ -231,6 +244,7 @@ describe('route exclusivity', () => {
 describe('search request plan linkage', () => {
   before(async () => {
     await setupTestDb()
+    if (!isDbAvailable()) return
   })
 
   it('accepts grouped plan linkage when provided', async () => {
@@ -265,10 +279,157 @@ describe('search request plan linkage', () => {
     assert.equal(sreq.status, 'pending')
     assert.equal(sreq.planId, null)
   })
-
 })
 
-// ─── 6.7 CRUD coverage ────────────────────────────────────────────────────────
+// ─── 6.7 Single active search requests ──────────────────────────────────────────
+describe('single active search request invariant', () => {
+  before(async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+  })
+
+  it('migration closes older active duplicates and preserves terminal rows', async () => {
+    const route = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-20',
+      departureTime: '2030-04-20T07:00:00.000Z',
+      tripPrice: 100000,
+    })
+
+    await query('DROP INDEX IF EXISTS search_requests_active_client_route_idx')
+    await query(
+      `
+        INSERT INTO search_requests (
+          id,
+          client_id,
+          plan_id,
+          route_id,
+          driver_id,
+          trip_price,
+          note,
+          status,
+          created_at
+        )
+        VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9),
+          ($10, $11, $12, $13, $14, $15, $16, $17, $18),
+          ($19, $20, $21, $22, $23, $24, $25, $26, $27)
+      `,
+      [
+        'sreq-mig-old',
+        CLIENT_001_ID,
+        null,
+        route.id,
+        route.driverId,
+        route.tripPrice,
+        'older active request',
+        'pending',
+        '2030-04-20T06:00:00.000Z',
+        'sreq-mig-new',
+        CLIENT_001_ID,
+        null,
+        route.id,
+        route.driverId,
+        route.tripPrice,
+        'newest active request',
+        'accepted',
+        '2030-04-20T07:00:00.000Z',
+        'sreq-mig-terminal',
+        CLIENT_001_ID,
+        null,
+        route.id,
+        route.driverId,
+        route.tripPrice,
+        'terminal request',
+        'declined',
+        '2030-04-20T05:00:00.000Z',
+      ],
+    )
+
+    const migrationSql = fs.readFileSync(
+      path.join(__dirname, 'db', 'migrations', '06_single_active_search_request.sql'),
+      'utf8',
+    )
+    await query(migrationSql)
+
+    const requests = await store.listSearchRequestsByRoute(route.id)
+    const olderRequest = requests.find((request) => request.id === 'sreq-mig-old')
+    const newestRequest = requests.find((request) => request.id === 'sreq-mig-new')
+    const terminalRequest = requests.find(
+      (request) => request.id === 'sreq-mig-terminal',
+    )
+
+    assert.equal(olderRequest?.status, 'closed')
+    assert.equal(newestRequest?.status, 'accepted')
+    assert.equal(terminalRequest?.status, 'declined')
+  })
+
+  it('rejects duplicate active search requests for same route and client', async () => {
+    const sreq1 = await store.createSearchRequest(
+      CLIENT_001_ID,
+      null,
+      'route-002',
+    )
+    assert.equal(sreq1.status, 'pending')
+
+    await assert.rejects(
+      async () =>
+        await store.createSearchRequest(CLIENT_001_ID, null, 'route-002'),
+      (err: unknown) => {
+        assert.ok(err && typeof err === 'object')
+        const conflictError = err as {
+          statusCode?: number
+          payload?: { existingRequest?: { id?: string } }
+        }
+        assert.equal(conflictError.statusCode, 409)
+        assert.ok(conflictError.payload?.existingRequest)
+        assert.equal(conflictError.payload?.existingRequest?.id, sreq1.id)
+        return true
+      },
+      'Should throw 409 conflict and expose existing request payload',
+    )
+  })
+
+  for (const terminalStatus of TERMINAL_SEARCH_REQUEST_STATUSES) {
+    it(`allows resend if the previous request is ${terminalStatus}`, async () => {
+      const route = await store.createRoute(DRIVER_001_ID, {
+        carId: 'car-001',
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+        serviceDate: `2030-04-2${terminalStatus.length}`,
+        departureTime: `2030-04-2${terminalStatus.length}T07:00:00.000Z`,
+        tripPrice: 100000,
+      })
+      const initialRequest = await store.createSearchRequest(
+        CLIENT_001_ID,
+        null,
+        route.id,
+      )
+
+      await query('UPDATE search_requests SET status = $1 WHERE id = $2', [
+        terminalStatus,
+        initialRequest.id,
+      ])
+
+      const resentRequest = await store.createSearchRequest(
+        CLIENT_001_ID,
+        null,
+        route.id,
+      )
+
+      assert.equal(resentRequest.status, 'pending')
+      assert.notEqual(
+        resentRequest.id,
+        initialRequest.id,
+        'Should create a new request record after a terminal state',
+      )
+    })
+  }
+})
+
+// ─── 6.8 CRUD coverage ────────────────────────────────────────────────────────
 
 describe('CRUD operations', () => {
   it('users CRUD behaves correctly', async () => {

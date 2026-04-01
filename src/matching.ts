@@ -1,5 +1,5 @@
-import * as store from './store';
-import { Location, Route, User } from './types/entities';
+import * as store from './store'
+import { Location, Route, User } from './types/entities'
 import {
   DemandGroupResult,
   DemandGroupSummary,
@@ -8,41 +8,47 @@ import {
   RouteLike,
   ScoreFields,
   SearchRoutesCriteriaPayload,
-} from './types/payloads';
+} from './types/payloads'
 
 // ─── Geo helpers ───────────────────────────────────────────────────────────────
 
-export const EARTH_RADIUS_KM = 6371;
+export const EARTH_RADIUS_KM = 6371
 
 export function toRad(deg: number): number {
-  return (deg * Math.PI) / 180;
+  return (deg * Math.PI) / 180
 }
 
-export function haversineDistance(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const sinLat = Math.sin(dLat / 2);
-  const sinLng = Math.sin(dLng / 2);
+export function haversineDistance(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const dLat = toRad(b.lat - a.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const sinLat = Math.sin(dLat / 2)
+  const sinLng = Math.sin(dLng / 2)
   const h =
     sinLat * sinLat +
-    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng;
-  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h))
 }
 
 /**
  * Calculate the initial bearing (compass direction) from point a to point b.
  * @returns Bearing in degrees (0–360).
  */
-export function computeBearing(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const y = Math.sin(dLng) * Math.cos(lat2);
+export function computeBearing(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const dLng = toRad(b.lng - a.lng)
+  const lat1 = toRad(a.lat)
+  const lat2 = toRad(b.lat)
+  const y = Math.sin(dLng) * Math.cos(lat2)
   const x =
     Math.cos(lat1) * Math.sin(lat2) -
-    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  const bearing = (Math.atan2(y, x) * 180) / Math.PI;
-  return (bearing + 360) % 360;
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI
+  return (bearing + 360) % 360
 }
 
 /**
@@ -50,36 +56,38 @@ export function computeBearing(a: { lat: number; lng: number }, b: { lat: number
  * @returns Difference in degrees (0–180).
  */
 export function bearingDifference(a: number, b: number): number {
-  const diff = Math.abs(a - b) % 360;
-  return diff > 180 ? 360 - diff : diff;
+  const diff = Math.abs(a - b) % 360
+  return diff > 180 ? 360 - diff : diff
 }
 
 // ─── Thresholds ────────────────────────────────────────────────────────────────
 
-export const MAX_BEARING_DIFF = 30; // degrees
-export const MAX_PICKUP_KM = 5;
-export const MAX_DROPOFF_KM = 5;
+export const MAX_BEARING_DIFF = 30 // degrees
+export const MAX_PICKUP_KM = 5
+export const MAX_DROPOFF_KM = 5
 
 // Near-3 threshold retained for tier classification heuristic
-const NEAR_3_MAX_WARD_DISTANCE_KM = 5;
+const NEAR_3_MAX_WARD_DISTANCE_KM = 5
 
 // ─── Scoring weights ──────────────────────────────────────────────────────────
 
-const W_DIRECTION = 0.3;
-const W_PICKUP = 0.25;
-const W_DROPOFF = 0.25;
-const W_TIME = 0.2;
+const W_DIRECTION = 0.3
+const W_PICKUP = 0.25
+const W_DROPOFF = 0.25
+const W_TIME = 0.2
 
-export function hasUsablePoint(point: Pick<Location, 'lat' | 'lng'> | null | undefined): boolean {
-  if (!point) return false;
+export function hasUsablePoint(
+  point: Pick<Location, 'lat' | 'lng'> | null | undefined,
+): boolean {
+  if (!point) return false
 
-  const lat = Number(point.lat);
-  const lng = Number(point.lng);
+  const lat = Number(point.lat)
+  const lng = Number(point.lng)
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false
 
   // 0/0 is the placeholder used when geometry is intentionally omitted.
-  return !(lat === 0 && lng === 0);
+  return !(lat === 0 && lng === 0)
 }
 
 function hasUsableGeometry(routeLike: RouteLike, planLike: PlanLike): boolean {
@@ -88,7 +96,7 @@ function hasUsableGeometry(routeLike: RouteLike, planLike: PlanLike): boolean {
     hasUsablePoint(routeLike?.destination) &&
     hasUsablePoint(planLike?.pickup) &&
     hasUsablePoint(planLike?.dropoff)
-  );
+  )
 }
 
 function hasExactAdminMatch(route: RouteLike, planLike: PlanLike): boolean {
@@ -99,40 +107,50 @@ function hasExactAdminMatch(route: RouteLike, planLike: PlanLike): boolean {
     !!route?.destinationWardKey &&
     !!planLike?.dropoffWardKey &&
     route.destinationWardKey === planLike.dropoffWardKey
-  );
+  )
 }
 
 // ─── Component score functions ────────────────────────────────────────────────
 
-export function directionScore(routeBearing: number, planBearing: number): number {
-  const diff = bearingDifference(routeBearing, planBearing);
+export function directionScore(
+  routeBearing: number,
+  planBearing: number,
+): number {
+  const diff = bearingDifference(routeBearing, planBearing)
   // Linear: 0° diff → 1.0, 30° diff → 0.0
-  return Math.max(0, 1 - diff / MAX_BEARING_DIFF);
+  return Math.max(0, 1 - diff / MAX_BEARING_DIFF)
 }
 
 export function proximityScore(distKm: number, maxKm: number): number {
-  return Math.max(0, 1 - distKm / maxKm);
+  return Math.max(0, 1 - distKm / maxKm)
 }
 
 /**
  * Time overlap score: 1.0 when departure is at block center, 0.0 at edges.
  * route has a single departureTime; group/plan exposes departureBlockStart/End.
  */
-export function timeOverlapScore(departureTime: string, blockStart: string, blockEnd: string): number {
-  const rTime = new Date(departureTime).getTime();
-  const dStart = new Date(blockStart).getTime();
-  const dEnd = new Date(blockEnd).getTime();
-  const blockDuration = dEnd - dStart;
-  if (blockDuration <= 0) return rTime === dStart ? 1 : 0;
-  const distToCenter = Math.abs(rTime - (dStart + blockDuration / 2));
-  return Math.max(0, 1 - distToCenter / (blockDuration / 2));
+export function timeOverlapScore(
+  departureTime: string,
+  blockStart: string,
+  blockEnd: string,
+): number {
+  const rTime = new Date(departureTime).getTime()
+  const dStart = new Date(blockStart).getTime()
+  const dEnd = new Date(blockEnd).getTime()
+  const blockDuration = dEnd - dStart
+  if (blockDuration <= 0) return rTime === dStart ? 1 : 0
+  const distToCenter = Math.abs(rTime - (dStart + blockDuration / 2))
+  return Math.max(0, 1 - distToCenter / (blockDuration / 2))
 }
 
 /**
  * Estimate detour in minutes at 30km/h city speed.
  */
-export function estimateDetour(pickupDist: number, dropoffDist: number): number {
-  return Math.round(((pickupDist + dropoffDist) / 30) * 60);
+export function estimateDetour(
+  pickupDist: number,
+  dropoffDist: number,
+): number {
+  return Math.round(((pickupDist + dropoffDist) / 30) * 60)
 }
 
 // ─── Block Overlap ────────────────────────────────────────────────────────────
@@ -140,13 +158,17 @@ export function estimateDetour(pickupDist: number, dropoffDist: number): number 
 /**
  * Check whether a route's departure block overlaps with a plan's departure block.
  */
-function blocksOverlap(routeDepartureTime: string, blockStart: string, blockEnd: string): boolean {
-  const routeBlock = store.computeDepartureBlock(routeDepartureTime);
-  const routeStartMs = new Date(routeBlock.start).getTime();
-  const routeEndMs = new Date(routeBlock.end).getTime();
-  const planStartMs = new Date(blockStart).getTime();
-  const planEndMs = new Date(blockEnd).getTime();
-  return routeStartMs < planEndMs && planStartMs < routeEndMs;
+function blocksOverlap(
+  routeDepartureTime: string,
+  blockStart: string,
+  blockEnd: string,
+): boolean {
+  const routeBlock = store.computeDepartureBlock(routeDepartureTime)
+  const routeStartMs = new Date(routeBlock.start).getTime()
+  const routeEndMs = new Date(routeBlock.end).getTime()
+  const planStartMs = new Date(blockStart).getTime()
+  const planEndMs = new Date(blockEnd).getTime()
+  return routeStartMs < planEndMs && planStartMs < routeEndMs
 }
 
 // ─── Hard Filters ─────────────────────────────────────────────────────────────
@@ -160,47 +182,47 @@ async function passesHardFiltersWithBearings(
   driver: User | null,
   clientIds: string[],
   routeBearing: number,
-  planBearing: number
+  planBearing: number,
 ): Promise<boolean> {
-  if (route.serviceDate !== planLike.serviceDate) return false;
+  if (route.serviceDate !== planLike.serviceDate) return false
 
   if (
     !blocksOverlap(
       route.departureTime,
       planLike.departureBlockStart,
-      planLike.departureBlockEnd
+      planLike.departureBlockEnd,
     )
   )
-    return false;
+    return false
 
   if (driver) {
-    const ids = Array.isArray(clientIds) ? clientIds : [];
+    const ids = Array.isArray(clientIds) ? clientIds : []
     for (const clientId of ids) {
-      const client = await store.getUser(clientId);
+      const client = await store.getUser(clientId)
       if (
         client &&
         (driver.blockedUserIds?.includes(clientId) ||
           client.blockedUserIds?.includes(driver.id))
       ) {
-        return false;
+        return false
       }
     }
   }
 
-  if (hasExactAdminMatch(route, planLike)) return true;
+  if (hasExactAdminMatch(route, planLike)) return true
 
-  if (!hasUsableGeometry(route, planLike)) return false;
+  if (!hasUsableGeometry(route, planLike)) return false
 
   if (bearingDifference(routeBearing, planBearing) > MAX_BEARING_DIFF)
-    return false;
+    return false
 
   if (haversineDistance(route.origin, planLike.pickup) > MAX_PICKUP_KM)
-    return false;
+    return false
 
   if (haversineDistance(route.destination, planLike.dropoff) > MAX_DROPOFF_KM)
-    return false;
+    return false
 
-  return true;
+  return true
 }
 
 /**
@@ -210,11 +232,18 @@ export async function passesHardFilters(
   route: RouteLike,
   planLike: PlanLike,
   driver: User | null,
-  clientIds: string[]
+  clientIds: string[],
 ): Promise<boolean> {
-  const routeBearing = computeBearing(route.origin, route.destination);
-  const planBearing = computeBearing(planLike.pickup, planLike.dropoff);
-  return passesHardFiltersWithBearings(route, planLike, driver, clientIds, routeBearing, planBearing);
+  const routeBearing = computeBearing(route.origin, route.destination)
+  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
+  return passesHardFiltersWithBearings(
+    route,
+    planLike,
+    driver,
+    clientIds,
+    routeBearing,
+    planBearing,
+  )
 }
 
 // ─── Score computation ────────────────────────────────────────────────────────
@@ -226,23 +255,23 @@ function computeMatchScoreWithBearings(
   route: RouteLike,
   planLike: PlanLike,
   routeBearing: number,
-  planBearing: number
+  planBearing: number,
 ): ScoreFields {
   const time = timeOverlapScore(
     route.departureTime,
     planLike.departureBlockStart,
-    planLike.departureBlockEnd
-  );
+    planLike.departureBlockEnd,
+  )
 
   if (!hasUsableGeometry(route, planLike)) {
-    const fallbackFit = hasExactAdminMatch(route, planLike) ? 1 : 0;
+    const fallbackFit = hasExactAdminMatch(route, planLike) ? 1 : 0
     const matchScore = Math.round(
       (fallbackFit * W_DIRECTION +
         fallbackFit * W_PICKUP +
         fallbackFit * W_DROPOFF +
         time * W_TIME) *
-        100
-    );
+        100,
+    )
 
     return {
       matchScore,
@@ -250,24 +279,24 @@ function computeMatchScoreWithBearings(
       dropoffFit: fallbackFit,
       timeFit: time,
       detourEstimate: 0,
-    };
+    }
   }
 
-  const pickupDist = haversineDistance(route.origin, planLike.pickup);
-  const dropoffDist = haversineDistance(route.destination, planLike.dropoff);
+  const pickupDist = haversineDistance(route.origin, planLike.pickup)
+  const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
 
-  const dir = directionScore(routeBearing, planBearing);
-  const pickup = proximityScore(pickupDist, MAX_PICKUP_KM);
-  const dropoff = proximityScore(dropoffDist, MAX_DROPOFF_KM);
-  const detour = estimateDetour(pickupDist, dropoffDist);
+  const dir = directionScore(routeBearing, planBearing)
+  const pickup = proximityScore(pickupDist, MAX_PICKUP_KM)
+  const dropoff = proximityScore(dropoffDist, MAX_DROPOFF_KM)
+  const detour = estimateDetour(pickupDist, dropoffDist)
 
   const matchScore = Math.round(
     (dir * W_DIRECTION +
       pickup * W_PICKUP +
       dropoff * W_DROPOFF +
       time * W_TIME) *
-      100
-  );
+      100,
+  )
 
   return {
     matchScore,
@@ -275,46 +304,54 @@ function computeMatchScoreWithBearings(
     dropoffFit: dropoff,
     timeFit: time,
     detourEstimate: detour,
-  };
+  }
 }
 
 /**
  * Compute scoring fields for a route vs planLike pair.
  */
-export function computeMatchScore(route: RouteLike, planLike: PlanLike): ScoreFields {
-  const routeBearing = computeBearing(route.origin, route.destination);
-  const planBearing = computeBearing(planLike.pickup, planLike.dropoff);
-  return computeMatchScoreWithBearings(route, planLike, routeBearing, planBearing);
+export function computeMatchScore(
+  route: RouteLike,
+  planLike: PlanLike,
+): ScoreFields {
+  const routeBearing = computeBearing(route.origin, route.destination)
+  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
+  return computeMatchScoreWithBearings(
+    route,
+    planLike,
+    routeBearing,
+    planBearing,
+  )
 }
 
 // ─── Tier classification ──────────────────────────────────────────────────────
 
 /**
- * Classify match tier using administrative identity as primary, 
+ * Classify match tier using administrative identity as primary,
  * with distance metrics as legacy fallback or near_3 classification.
  */
 function classifyByAdminAndDistance(
   route: RouteLike,
-  planLike: PlanLike
+  planLike: PlanLike,
 ): 'exact_3' | 'near_3' | null {
-  if (hasExactAdminMatch(route, planLike)) return 'exact_3';
+  if (hasExactAdminMatch(route, planLike)) return 'exact_3'
 
-  if (!hasUsableGeometry(route, planLike)) return null;
+  if (!hasUsableGeometry(route, planLike)) return null
 
-  const pickupDist = haversineDistance(route.origin, planLike.pickup);
-  const dropoffDist = haversineDistance(route.destination, planLike.dropoff);
+  const pickupDist = haversineDistance(route.origin, planLike.pickup)
+  const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
 
-  const hasDistanceExact = pickupDist < 1.0 && dropoffDist < 1.0;
+  const hasDistanceExact = pickupDist < 1.0 && dropoffDist < 1.0
 
-  if (hasDistanceExact) return 'exact_3';
+  if (hasDistanceExact) return 'exact_3'
 
   if (
     pickupDist < NEAR_3_MAX_WARD_DISTANCE_KM &&
     dropoffDist < NEAR_3_MAX_WARD_DISTANCE_KM
   ) {
-    return 'near_3';
+    return 'near_3'
   }
-  return null;
+  return null
 }
 
 /**
@@ -322,34 +359,43 @@ function classifyByAdminAndDistance(
  */
 function classifyMatch(
   route: RouteLike,
-  group: DemandGroupSummary
+  group: DemandGroupSummary,
 ): 'exact_3' | 'near_3' | null {
-  if (route.serviceDate !== group.serviceDate) return null;
-  if (!blocksOverlap(route.departureTime, group.departureBlockStart, group.departureBlockEnd))
-    return null;
+  if (route.serviceDate !== group.serviceDate) return null
+  if (
+    !blocksOverlap(
+      route.departureTime,
+      group.departureBlockStart,
+      group.departureBlockEnd,
+    )
+  )
+    return null
 
-  return classifyByAdminAndDistance(route, group);
+  return classifyByAdminAndDistance(route, group)
 }
 
 /**
  * Compute visibility mode based on match tier and member count.
  */
-export function computeVisibilityMode(matchTier: string, memberCount: number): 'single_client_card' | 'group_with_client_list' | 'group_summary_only' {
-  if (matchTier === 'exact_3' && memberCount === 1) return 'single_client_card';
-  if (matchTier === 'exact_3' && memberCount > 1) return 'group_with_client_list';
-  return 'group_summary_only';
+export function computeVisibilityMode(
+  matchTier: string,
+  memberCount: number,
+): 'single_client_card' | 'group_with_client_list' | 'group_summary_only' {
+  if (matchTier === 'exact_3' && memberCount === 1) return 'single_client_card'
+  if (matchTier === 'exact_3' && memberCount > 1)
+    return 'group_with_client_list'
+  return 'group_summary_only'
 }
 
 /**
  * Sort match results: exact_3 first, near_3 second; within tier sort by matchScore desc.
  */
-function sortByTierThenScore<T extends { matchTier: string; matchScore: number }>(
-  a: T,
-  b: T
-): number {
-  if (a.matchTier === 'exact_3' && b.matchTier !== 'exact_3') return -1;
-  if (a.matchTier !== 'exact_3' && b.matchTier === 'exact_3') return 1;
-  return b.matchScore - a.matchScore;
+function sortByTierThenScore<
+  T extends { matchTier: string; matchScore: number },
+>(a: T, b: T): number {
+  if (a.matchTier === 'exact_3' && b.matchTier !== 'exact_3') return -1
+  if (a.matchTier !== 'exact_3' && b.matchTier === 'exact_3') return 1
+  return b.matchScore - a.matchScore
 }
 
 // ─── Main matching functions ──────────────────────────────────────────────────
@@ -357,27 +403,41 @@ function sortByTierThenScore<T extends { matchTier: string; matchScore: number }
 /**
  * For a given route, compute all matched demand groups with tier/visibility/score.
  */
-export async function computeMatchedDemandGroups(routeId: string): Promise<DemandGroupResult[]> {
-  const route = await store.getRoute(routeId);
-  if (!route) return [];
+export async function computeMatchedDemandGroups(
+  routeId: string,
+): Promise<DemandGroupResult[]> {
+  const route = await store.getRoute(routeId)
+  if (!route) return []
 
-  const driver = await store.getUser(route.driverId);
-  const groups = await store.deriveDemandGroups();
-  const results: DemandGroupResult[] = [];
+  const driver = await store.getUser(route.driverId)
+  const groups = await store.deriveDemandGroups()
+  const results: DemandGroupResult[] = []
 
-  const routeBearing = computeBearing(route.origin, route.destination);
+  const routeBearing = computeBearing(route.origin, route.destination)
 
   for (const group of groups) {
-    const matchTier = classifyMatch(route, group);
-    if (!matchTier) continue;
+    const matchTier = classifyMatch(route, group)
+    if (!matchTier) continue
 
-    const planBearing = computeBearing(group.pickup, group.dropoff);
+    const planBearing = computeBearing(group.pickup, group.dropoff)
 
-    const passed = await passesHardFiltersWithBearings(route, group, driver, group.clientIds, routeBearing, planBearing);
-    if (!passed) continue;
+    const passed = await passesHardFiltersWithBearings(
+      route,
+      group,
+      driver,
+      group.clientIds,
+      routeBearing,
+      planBearing,
+    )
+    if (!passed) continue
 
-    const visibilityMode = computeVisibilityMode(matchTier, group.memberCount);
-    const scores = computeMatchScoreWithBearings(route, group, routeBearing, planBearing);
+    const visibilityMode = computeVisibilityMode(matchTier, group.memberCount)
+    const scores = computeMatchScoreWithBearings(
+      route,
+      group,
+      routeBearing,
+      planBearing,
+    )
 
     results.push({
       demandGroupId: group.id,
@@ -398,39 +458,51 @@ export async function computeMatchedDemandGroups(routeId: string): Promise<Deman
       memberCount: group.memberCount,
       totalPassengerCount: group.totalPassengerCount,
       ...scores,
-    });
+    })
   }
 
-  results.sort(sortByTierThenScore);
+  results.sort(sortByTierThenScore)
 
-  return results;
+  return results
 }
 
 /**
  * For a set of search criteria, find eligible routes with scores.
  */
 export async function computeMatchingRoutesFromCriteria(
-  criteria: SearchRoutesCriteriaPayload
+  criteria: SearchRoutesCriteriaPayload,
 ): Promise<MatchingRouteResult[]> {
-  const allRoutes = await store.listAllRoutes();
-  const results: MatchingRouteResult[] = [];
+  const allRoutes = await store.listAllRoutes()
+  const results: MatchingRouteResult[] = []
 
-  const planBearing = computeBearing(criteria.pickup, criteria.dropoff);
+  const planBearing = computeBearing(criteria.pickup, criteria.dropoff)
 
   for (const route of allRoutes) {
-    if (route.status !== 'published') continue;
+    if (route.status !== 'published') continue
 
-    const driver = await store.getUser(route.driverId);
-    const routeBearing = computeBearing(route.origin, route.destination);
+    const driver = await store.getUser(route.driverId)
+    const routeBearing = computeBearing(route.origin, route.destination)
 
-    const passed = await passesHardFiltersWithBearings(route, criteria, driver, [criteria.clientId], routeBearing, planBearing);
-    if (!passed) continue;
+    const passed = await passesHardFiltersWithBearings(
+      route,
+      criteria,
+      driver,
+      [criteria.clientId],
+      routeBearing,
+      planBearing,
+    )
+    if (!passed) continue
 
-    const matchTier = classifyByAdminAndDistance(route, criteria);
-    if (!matchTier) continue;
+    const matchTier = classifyByAdminAndDistance(route, criteria)
+    if (!matchTier) continue
 
-    const scores = computeMatchScoreWithBearings(route, criteria, routeBearing, planBearing);
-    const routeAvailable = await store.isRouteAvailable(route.id);
+    const scores = computeMatchScoreWithBearings(
+      route,
+      criteria,
+      routeBearing,
+      planBearing,
+    )
+    const routeAvailable = await store.isRouteAvailable(route.id)
 
     results.push({
       routeId: route.id,
@@ -452,12 +524,10 @@ export async function computeMatchingRoutesFromCriteria(
       carId: route.carId,
       routeAvailable,
       ...scores,
-    });
+    })
   }
 
-  results.sort(sortByTierThenScore);
+  results.sort(sortByTierThenScore)
 
-  return results;
+  return results
 }
-
-
