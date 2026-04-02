@@ -97,6 +97,25 @@ describe('deriveDemandGroups', () => {
     assert.equal(tbGroup.memberCount, 1, 'Single-member group')
     assert.equal(tbGroup.totalPassengerCount, 1)
   })
+
+  it('persists grouped publish mode for newly created plans', async () => {
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-persist',
+      dropoffWardId: 'ward-persist-dest',
+      serviceDate: '2030-05-06',
+      departureBlockStart: '2030-05-06T07:00:00.000Z',
+      departureBlockEnd: '2030-05-06T07:30:00.000Z',
+      passengerCount: 1,
+    })
+
+    const persisted = await query(
+      'SELECT publish_mode FROM plans WHERE id = $1',
+      [plan.id],
+    )
+    assert.equal(persisted.rows[0]?.publish_mode, 'grouped')
+  })
 })
 
 // ─── 6.2 exact-3 / near-3 classification ──────────────────────────────────────
