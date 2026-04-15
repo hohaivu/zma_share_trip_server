@@ -60,6 +60,9 @@ async function findAccepted(
 async function findAcceptedForRoute(
   route: Route,
 ): Promise<JourneyAcceptedState | null> {
+  if (route.status === 'canceled') {
+    return null
+  }
   return findAccepted(
     () => store.listSearchRequestsByRoute(route.id),
     () => store.listGroupOffersByRoute(route.id),
@@ -86,6 +89,9 @@ async function findAcceptedForRoute(
 async function findAcceptedForPlan(
   plan: Plan,
 ): Promise<JourneyAcceptedState | null> {
+  if (plan.status === 'canceled') {
+    return null
+  }
   return findAccepted(
     () => store.listSearchRequestsByClient(plan.clientId),
     () => store.listGroupOffersByClient(plan.clientId),
@@ -127,6 +133,16 @@ router.get(
       : await findAcceptedForPlan(plan!)
 
     res.json(buildJourneySummary(entity, counterpart))
+  }),
+)
+
+// POST /api/trips/:id/cancel
+router.post(
+  '/trips/:id/cancel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const tripId = req.params.id as string
+    const canceled = await store.cancelTrip(tripId)
+    res.json(canceled)
   }),
 )
 

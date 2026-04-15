@@ -4,6 +4,7 @@ import { after, before, describe } from 'node:test'
 
 import { query } from './db/connection'
 import app from './index'
+import * as store from './store'
 import {
   createDbTest,
   isDbAvailable,
@@ -184,6 +185,175 @@ describe('PUT /api/driver/routes/:id', () => {
     })
     assert.equal(res.status, 400)
     assert.ok(res.body.message.includes('Unresolved exact-point'))
+  })
+})
+
+describe('driver wallet routes', () => {
+  it('returns wallet summary with derived balances and fee configuration', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const wallet = await store.getOrCreateDriverWallet(DRIVER_001_ID)
+    await query(
+      `
+        UPDATE wallets
+        SET balance_vnd = $2,
+            reserved_balance_vnd = $3,
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [wallet.id, 250000, 50000],
+    )
+
+    const res = await request(
+      server,
+      'GET',
+      `/api/driver/wallet?driverId=${DRIVER_001_ID}`,
+    )
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.driverId, DRIVER_001_ID)
+    assert.equal(res.body.balanceVnd, 250000)
+    assert.equal(res.body.reservedBalanceVnd, 50000)
+    assert.equal(res.body.availableBalanceVnd, 200000)
+    assert.equal(res.body.feeRateVndPerKm, 500)
+    assert.equal(res.body.maxPublishableDistanceMeters, 400000)
+  })
+
+  it('lists wallet transactions in reverse chronological order after top-up activity', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const wallet = await store.getOrCreateDriverWallet(DRIVER_001_ID)
+    await query(
+      `
+        INSERT INTO wallet_transactions (
+          id,
+          wallet_id,
+          driver_id,
+          route_id,
+          type,
+          amount_vnd,
+          balance_after_vnd,
+          reserved_balance_after_vnd,
+          description,
+          metadata,
+          created_at
+        )
+        VALUES
+          ($1, $2, $3, NULL, 'topup', $4, $5, 0, $6, $7, $8),
+          ($9, $2, $3, NULL, 'reservation', $10, $11, $12, $13, $14, $15)
+      `,
+      [
+        'wtx-wallet-older',
+        wallet.id,
+        DRIVER_001_ID,
+        120000,
+        620000,
+        'Older top-up',
+        JSON.stringify({ source: 'manual_top_up' }),
+        '2030-04-01T08:00:00.000Z',
+        'wtx-wallet-newer',
+        -50000,
+        620000,
+        50000,
+        'Reserved route fee',
+        JSON.stringify({ routeId: 'route-001' }),
+        '2030-04-01T09:00:00.000Z',
+      ],
+    )
+
+    const res = await request(
+      server,
+      'GET',
+      `/api/driver/wallet/transactions?driverId=${DRIVER_001_ID}&limit=2`,
+    )
+
+    assert.equal(res.status, 200)
+    assert.ok(Array.isArray(res.body.items))
+    assert.equal(res.body.items.length, 2)
+    assert.equal(res.body.items[0].id, 'wtx-wallet-newer')
+    assert.equal(res.body.items[0].type, 'reservation')
+    assert.equal(res.body.items[0].amountVnd, -50000)
+    assert.equal(res.body.items[0].description, 'Reserved route fee')
+    assert.equal(res.body.items[1].id, 'wtx-wallet-older')
+    assert.equal(res.body.items[1].type, 'topup')
+    assert.equal(res.body.items[1].amountVnd, 120000)
+    assert.equal(res.body.items[1].description, 'Older top-up')
+  })
+
+  it('creates a manual top-up and returns refreshed wallet state plus ledger row', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const initialSummary = await store.getDriverWalletSummary(DRIVER_001_ID)
+
+    const res = await request(server, 'POST', '/api/driver/wallet/topups', {
+      driverId: DRIVER_001_ID,
+      amountVnd: 150000,
+      description: 'API manual top-up test',
+    })
+
+    assert.equal(res.status, 201)
+    assert.equal(res.body.summary.driverId, DRIVER_001_ID)
+    assert.equal(
+      res.body.summary.balanceVnd,
+      initialSummary.balanceVnd + 150000,
+    )
+    assert.equal(
+      res.body.summary.availableBalanceVnd,
+      initialSummary.availableBalanceVnd + 150000,
+    )
+    assert.equal(res.body.transaction.type, 'topup')
+    assert.equal(res.body.transaction.amountVnd, 150000)
+    assert.equal(res.body.transaction.description, 'API manual top-up test')
+
+    const summaryRes = await request(
+      server,
+      'GET',
+      `/api/driver/wallet?driverId=${DRIVER_001_ID}`,
+    )
+    assert.equal(summaryRes.status, 200)
+    assert.equal(
+      summaryRes.body.balanceVnd,
+      initialSummary.balanceVnd + 150000,
+    )
+  })
+})
+
+describe('POST /api/trips/:id/cancel', () => {
+  it('cancels a matched route and suppresses the accepted pairing in summary reads', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-04-03',
+          departureTime: '2030-04-03T07:00:00.000Z',
+          tripPrice: 155000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const searchRequest = await store.createSearchRequest(
+      CLIENT_001_ID,
+      null,
+      route.id,
+    )
+    await store.acceptSearchRequest(searchRequest.id)
+
+    const cancelRes = await request(server, 'POST', `/api/trips/${route.id}/cancel`)
+    assert.equal(cancelRes.status, 200)
+    assert.equal(cancelRes.body.status, 'canceled')
+    assert.equal(cancelRes.body.walletFeeStatus, 'refunded')
+
+    const summaryRes = await request(server, 'GET', `/api/trips/${route.id}/summary`)
+    assert.equal(summaryRes.status, 200)
+    assert.equal(summaryRes.body.accepted, null)
   })
 })
 

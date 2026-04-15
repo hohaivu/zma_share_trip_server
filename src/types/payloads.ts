@@ -1,4 +1,13 @@
-import { Location, Plan, Route, SearchRequest, User } from './entities'
+import {
+  Location,
+  Plan,
+  Route,
+  SearchRequest,
+  User,
+  Wallet,
+  WalletFeeStatus,
+  WalletTransaction,
+} from './entities'
 
 // -- Bootstrap --
 export interface BootstrapPayload {
@@ -28,6 +37,7 @@ export interface CreateRoutePayload {
   windowStart?: string
   windowEnd?: string
   tripPrice: number
+  distanceMeters?: number
   notes?: string
   status?: string
 }
@@ -51,6 +61,7 @@ export interface UpdateRoutePayload {
   windowStart?: string
   windowEnd?: string
   tripPrice?: number
+  distanceMeters?: number
   notes?: string
   status?: string
 }
@@ -223,6 +234,37 @@ export type JourneyAcceptedState =
 
 export type JourneySummary = (Route | Plan) & {
   accepted: JourneyAcceptedState | null
+}
+
+export interface WalletSummary extends Wallet {
+  availableBalanceVnd: number
+  feeRateVndPerKm: number
+  maxPublishableDistanceMeters: number
+}
+
+export interface WalletTransactionListPayload {
+  items: WalletTransaction[]
+}
+
+export interface ManualTopUpPayload {
+  amountVnd: number
+  description?: string
+}
+
+export interface ManualTopUpResult {
+  summary: WalletSummary
+  transaction: WalletTransaction
+}
+
+export interface RouteFeeSnapshot {
+  distanceMeters: number | null
+  feeRateVndPerKm: number
+  feeRequiredVnd: number
+  walletFeeStatus: WalletFeeStatus
+  walletReservedAt?: string | null
+  walletChargedAt?: string | null
+  walletReleasedAt?: string | null
+  walletRefundedAt?: string | null
 }
 
 // -- Conflicts --

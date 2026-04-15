@@ -90,7 +90,10 @@ router.put(
       req: Request<{ id: string }, unknown, UpdateRoutePayload>,
       res: Response,
     ) => {
-      const route = await store.updateRoute(req.params.id, req.body)
+      const route =
+        req.body.status === 'published'
+          ? await store.publishRoute(req.params.id, req.body)
+          : await store.updateRoute(req.params.id, req.body)
       if (!route) {
         return res.status(404).json({ message: 'Route not found' })
       }

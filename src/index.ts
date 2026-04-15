@@ -12,6 +12,7 @@ import clientSearchRequestsRoute from './routes/clientSearchRequests'
 import demandGroupsRoute from './routes/demandGroups'
 import driverMatchesRoute from './routes/driverMatches'
 import driverRoutesRoute from './routes/driverRoutes'
+import driverWalletRoute from './routes/driverWallet'
 import driverSearchRequestsRoute from './routes/driverSearchRequests'
 import groupOffersRoute from './routes/groupOffers'
 import groupRequestsRoute from './routes/groupRequests'
@@ -41,6 +42,7 @@ const sharedRoutes = [
 const driverRoutes = [
   carsRoute,
   driverRoutesRoute,
+  driverWalletRoute,
   groupRequestsRoute,
   demandGroupsRoute,
   driverMatchesRoute,

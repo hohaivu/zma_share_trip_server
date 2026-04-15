@@ -6,6 +6,7 @@ import { after, before, describe, it as nodeIt } from 'node:test'
 import { query } from './db/connection'
 import * as matching from './matching'
 import * as store from './store'
+import { Plan, Route } from './types/entities'
 import {
   createDbTest,
   isDbAvailable,
@@ -459,6 +460,293 @@ describe('single active search request invariant', () => {
       )
     })
   }
+})
+
+describe('wallet-gated route publish', () => {
+  it('publishing a draft reserves the route fee and appends a ledger entry', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-30',
+      departureTime: '2030-04-30T07:00:00.000Z',
+      tripPrice: 100000,
+      distanceMeters: 10000,
+    })
+
+    const published = await store.publishRoute(route.id)
+    const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
+    const transactions = await store.listDriverWalletTransactions(
+      DRIVER_001_ID,
+      10,
+    )
+
+    assert.equal(published.status, 'published')
+    assert.equal(published.distanceMeters, 10000)
+    assert.equal(published.walletFeeStatus, 'reserved')
+    assert.equal(published.feeRateVndPerKm, 500)
+    assert.equal(published.feeRequiredVnd, 5000)
+    assert.equal(wallet.balanceVnd, 500000)
+    assert.equal(wallet.reservedBalanceVnd, 5000)
+    assert.equal(wallet.availableBalanceVnd, 495000)
+    assert.equal(transactions[0]?.type, 'reservation')
+    assert.equal(transactions[0]?.routeId, route.id)
+    assert.equal(transactions[0]?.amountVnd, 5000)
+  })
+
+  it('rejects publish when the wallet balance is insufficient and keeps the route in draft', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    await query(
+      'UPDATE wallets SET balance_vnd = $1, reserved_balance_vnd = 0 WHERE driver_id = $2',
+      [100, DRIVER_001_ID],
+    )
+
+    const route = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-05-01',
+      departureTime: '2030-05-01T07:00:00.000Z',
+      tripPrice: 120000,
+      distanceMeters: 10000,
+    })
+
+    await assert.rejects(
+      async () => store.publishRoute(route.id),
+      /Insufficient wallet balance/,
+    )
+
+    const persisted = await store.getRoute(route.id)
+    const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
+
+    assert.equal(persisted?.status, 'draft')
+    assert.equal(persisted?.walletFeeStatus, 'none')
+    assert.equal(wallet.balanceVnd, 100)
+    assert.equal(wallet.reservedBalanceVnd, 0)
+  })
+
+  it('rejects in-place edits to fee-bearing fields after publish', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-05-02',
+      departureTime: '2030-05-02T07:00:00.000Z',
+      tripPrice: 130000,
+      distanceMeters: 12000,
+    })
+
+    await store.publishRoute(route.id)
+
+    await assert.rejects(
+      async () =>
+        store.updateRoute(route.id, {
+          distanceMeters: 14000,
+        }),
+      /Published fee-bearing route fields cannot be edited/,
+    )
+  })
+})
+
+describe('wallet-gated accept and cancel transitions', () => {
+  it('charges the route fee once when accepting a group offer and ignores retries', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-05-03',
+          departureTime: '2030-05-03T07:00:00.000Z',
+          tripPrice: 140000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const groups = await store.deriveDemandGroups()
+    const multiMemberGroup = groups.find((g) => g.memberCount > 1)
+    assert.ok(multiMemberGroup, 'Need a multi-member group for group-offer test')
+
+    const groupRequest = await store.createGroupRequest(
+      DRIVER_001_ID,
+      route.id,
+      multiMemberGroup!.id,
+    )
+
+    const winnerId = groupRequest.offers[0].id
+    const accepted = await store.acceptGroupOffer(winnerId)
+    const retry = await store.acceptGroupOffer(winnerId)
+    const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
+    const transactions = await store.listDriverWalletTransactions(
+      DRIVER_001_ID,
+      20,
+    )
+
+    assert.equal(accepted.status, 'accepted')
+    assert.equal(retry.status, 'accepted')
+    assert.equal(wallet.balanceVnd, 495000)
+    assert.equal(wallet.reservedBalanceVnd, 0)
+    assert.equal(
+      transactions.filter((tx) => tx.type === 'charge').length,
+      1,
+      'Route fee should be charged exactly once',
+    )
+    assert.equal(transactions[0]?.type, 'charge')
+    assert.equal(transactions[0]?.routeId, route.id)
+  })
+
+  it('charges the route fee once when accepting a search request and ignores retries', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-05-04',
+          departureTime: '2030-05-04T07:00:00.000Z',
+          tripPrice: 150000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const request = await store.createSearchRequest(
+      CLIENT_001_ID,
+      'plan-001',
+      route.id,
+    )
+
+    const accepted = await store.acceptSearchRequest(request.id)
+    const retry = await store.acceptSearchRequest(request.id)
+    const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
+    const transactions = await store.listDriverWalletTransactions(
+      DRIVER_001_ID,
+      20,
+    )
+
+    assert.equal(accepted.status, 'accepted')
+    assert.equal(retry.status, 'accepted')
+    assert.equal(wallet.balanceVnd, 495000)
+    assert.equal(wallet.reservedBalanceVnd, 0)
+    assert.equal(
+      transactions.filter((tx) => tx.type === 'charge').length,
+      1,
+      'Route fee should be charged exactly once',
+    )
+    assert.equal(transactions[0]?.type, 'charge')
+    assert.equal(transactions[0]?.routeId, route.id)
+  })
+
+  it('releases a reserved fee when canceling an unmatched route', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-05-05',
+          departureTime: '2030-05-05T07:00:00.000Z',
+          tripPrice: 160000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const canceled = await store.cancelTrip(route.id)
+    const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
+    const transactions = await store.listDriverWalletTransactions(
+      DRIVER_001_ID,
+      20,
+    )
+
+    assert.equal(canceled.status, 'canceled')
+    assert.equal((canceled as Route).walletFeeStatus, 'released')
+    assert.equal(wallet.balanceVnd, 500000)
+    assert.equal(wallet.reservedBalanceVnd, 0)
+    assert.equal(
+      transactions.filter((tx) => tx.type === 'release').length,
+      1,
+      'Route fee should be released exactly once',
+    )
+    assert.equal(transactions[0]?.type, 'release')
+    assert.equal(transactions[0]?.routeId, route.id)
+  })
+
+  it('refunds a charged fee and cancels the winning plan-side acceptance', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-cancel-plan',
+      dropoffWardId: 'ward-cancel-plan-dest',
+      serviceDate: '2030-05-06',
+      departureBlockStart: '2030-05-06T07:00:00.000Z',
+      departureBlockEnd: '2030-05-06T07:30:00.000Z',
+      passengerCount: 1,
+    })
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-05-06',
+          departureTime: '2030-05-06T07:00:00.000Z',
+          tripPrice: 170000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const request = await store.createSearchRequest(
+      CLIENT_001_ID,
+      plan.id,
+      route.id,
+    )
+    await store.acceptSearchRequest(request.id)
+
+    const canceled = await store.cancelTrip(plan.id)
+    const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
+    const requests = await store.listSearchRequestsByRoute(route.id)
+    const canceledRequest = requests.find((item) => item.id === request.id)
+    const transactions = await store.listDriverWalletTransactions(
+      DRIVER_001_ID,
+      20,
+    )
+
+    assert.equal(canceled.status, 'canceled')
+    assert.equal((canceled as Plan).status, 'canceled')
+    assert.equal(wallet.balanceVnd, 500000)
+    assert.equal(wallet.reservedBalanceVnd, 0)
+    assert.equal(canceledRequest?.status, 'canceled')
+    assert.equal(
+      transactions.filter((tx) => tx.type === 'refund').length,
+      1,
+      'Route fee should be refunded exactly once',
+    )
+    assert.equal(transactions[0]?.type, 'refund')
+    assert.equal(transactions[0]?.routeId, route.id)
+  })
 })
 
 // ─── 6.8 CRUD coverage ────────────────────────────────────────────────────────

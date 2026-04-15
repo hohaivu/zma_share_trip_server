@@ -46,9 +46,26 @@ interface SeedRoute {
   windowStart: string
   windowEnd: string
   tripPrice: number
+  distanceMeters?: number | null
+  feeRateVndPerKm?: number
+  feeRequiredVnd?: number
+  walletFeeStatus?: 'none' | 'reserved' | 'charged' | 'released' | 'refunded'
+  walletReservedAt?: string | null
+  walletChargedAt?: string | null
+  walletReleasedAt?: string | null
+  walletRefundedAt?: string | null
   notes: string
   status: string
   createdAt: string
+}
+
+interface SeedWallet {
+  id: string
+  driverId: string
+  balanceVnd: number
+  reservedBalanceVnd: number
+  createdAt: string
+  updatedAt: string
 }
 
 interface SeedPlan {
@@ -120,6 +137,14 @@ function makeRoute(
     destinationWardId: WARD_TD,
     destinationWardKey: WARD_KEY_TD,
     destinationProvinceId: PROVINCE_HCM,
+    distanceMeters: null,
+    feeRateVndPerKm: 0,
+    feeRequiredVnd: 0,
+    walletFeeStatus: 'none',
+    walletReservedAt: null,
+    walletChargedAt: null,
+    walletReleasedAt: null,
+    walletRefundedAt: null,
     notes: '',
     status: 'published',
     ...overrides,
@@ -236,6 +261,25 @@ const cars = [
   },
 ]
 
+const wallets: SeedWallet[] = [
+  {
+    id: 'wallet-001',
+    driverId: DRIVER_001_ID,
+    balanceVnd: 500000,
+    reservedBalanceVnd: 0,
+    createdAt: '2026-01-03T00:00:00.000Z',
+    updatedAt: '2026-01-03T00:00:00.000Z',
+  },
+  {
+    id: 'wallet-002',
+    driverId: DRIVER_002_ID,
+    balanceVnd: 250000,
+    reservedBalanceVnd: 0,
+    createdAt: '2026-01-04T00:00:00.000Z',
+    updatedAt: '2026-01-04T00:00:00.000Z',
+  },
+]
+
 const routes = [
   makeRoute({
     id: 'route-001',
@@ -318,7 +362,7 @@ export async function seed() {
     await client.query('BEGIN')
 
     await client.query(`
-      TRUNCATE TABLE group_offers, search_requests, group_requests, plans, routes, cars, users, saved_locations CASCADE;
+      TRUNCATE TABLE wallet_transactions, wallets, group_offers, search_requests, group_requests, plans, routes, cars, users, saved_locations CASCADE;
     `)
 
     // Insert users
@@ -373,8 +417,19 @@ export async function seed() {
     for (const r of routes) {
       await client.query(
         `
-        INSERT INTO routes (id, driver_id, car_id, origin, destination, origin_ward_id, origin_ward_key, origin_province_id, destination_ward_id, destination_ward_key, destination_province_id, service_date, departure_time, window_start, window_end, trip_price, notes, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        INSERT INTO routes (
+          id, driver_id, car_id, origin, destination,
+          origin_ward_id, origin_ward_key, origin_province_id,
+          destination_ward_id, destination_ward_key, destination_province_id,
+          service_date, departure_time, window_start, window_end,
+          trip_price, distance_meters, fee_rate_vnd_per_km, fee_required_vnd,
+          wallet_fee_status, wallet_reserved_at, wallet_charged_at,
+          wallet_released_at, wallet_refunded_at, notes, status, created_at
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+          $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27
+        )
       `,
         [
           r.id,
@@ -393,9 +448,37 @@ export async function seed() {
           r.windowStart,
           r.windowEnd,
           r.tripPrice,
+          r.distanceMeters,
+          r.feeRateVndPerKm,
+          r.feeRequiredVnd,
+          r.walletFeeStatus,
+          r.walletReservedAt,
+          r.walletChargedAt,
+          r.walletReleasedAt,
+          r.walletRefundedAt,
           r.notes,
           r.status,
           r.createdAt,
+        ],
+      )
+    }
+
+    // Insert wallets
+    for (const wallet of wallets) {
+      await client.query(
+        `
+        INSERT INTO wallets (
+          id, driver_id, balance_vnd, reserved_balance_vnd, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+        [
+          wallet.id,
+          wallet.driverId,
+          wallet.balanceVnd,
+          wallet.reservedBalanceVnd,
+          wallet.createdAt,
+          wallet.updatedAt,
         ],
       )
     }

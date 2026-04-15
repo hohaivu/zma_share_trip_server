@@ -1,5 +1,5 @@
 import { query, withTransaction } from './db/connection'
-import { mapRows, normalizeUtc, toCamelCase } from './db/utils'
+import { mapRows, normalizeUtc, parseNumeric, toCamelCase } from './db/utils'
 import { HttpError } from './http-error'
 import {
   Car,
@@ -10,6 +10,8 @@ import {
   Route,
   SavedLocation,
   SearchRequest,
+  Wallet,
+  WalletTransaction,
   User,
 } from './types/entities'
 import {
@@ -18,9 +20,12 @@ import {
   CreatePlanPayload,
   CreateRoutePayload,
   DemandGroupSummary,
+  ManualTopUpPayload,
+  ManualTopUpResult,
   UpdateCarPayload,
   UpdatePlanPayload,
   UpdateRoutePayload,
+  WalletSummary,
 } from './types/payloads'
 
 // --- Helpers ---
@@ -72,6 +77,548 @@ export function mapCar(
   if (!c) throw new Error('Cannot map null row to Car')
   if (c.color) c.colorHex = CAR_COLORS[c.color] || c.color
   return c
+}
+
+// --- Wallet ---
+
+const DEFAULT_WALLET_FEE_VND_PER_KM = 500
+const DEFAULT_WALLET_TRANSACTION_LIMIT = 20
+
+type DbQueryExecutor = {
+  query: (
+    sql: string,
+    params: unknown[],
+  ) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
+}
+
+function getWalletFeeRateVndPerKm(): number {
+  const raw = process.env.WALLET_FEE_VND_PER_KM
+  const parsed = raw ? Number(raw) : DEFAULT_WALLET_FEE_VND_PER_KM
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_WALLET_FEE_VND_PER_KM
+  }
+  return Math.floor(parsed)
+}
+
+function mapWallet(row: Record<string, unknown>): Wallet {
+  const wallet = toCamelCase<Wallet>(row)
+  if (!wallet) throw new Error('Cannot map null row to Wallet')
+  wallet.balanceVnd = parseNumeric(wallet.balanceVnd)
+  wallet.reservedBalanceVnd = parseNumeric(wallet.reservedBalanceVnd)
+  return wallet
+}
+
+function mapWalletTransaction(row: Record<string, unknown>): WalletTransaction {
+  const transaction = toCamelCase<WalletTransaction>(row)
+  if (!transaction) throw new Error('Cannot map null row to WalletTransaction')
+  transaction.amountVnd = parseNumeric(transaction.amountVnd)
+  transaction.balanceAfterVnd = parseNumeric(transaction.balanceAfterVnd)
+  transaction.reservedBalanceAfterVnd = parseNumeric(
+    transaction.reservedBalanceAfterVnd,
+  )
+  return transaction
+}
+
+function mapRoute(row: Record<string, unknown>): Route {
+  const route = toCamelCase<Route>(row)
+  if (!route) throw new Error('Cannot map null row to Route')
+  route.tripPrice = parseNumeric(route.tripPrice)
+  route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd)
+  return route
+}
+
+export function computeAvailableBalanceVnd(
+  wallet: Pick<Wallet, 'balanceVnd' | 'reservedBalanceVnd'>,
+): number {
+  return wallet.balanceVnd - wallet.reservedBalanceVnd
+}
+
+function computeMaxPublishableDistanceMeters(
+  availableBalanceVnd: number,
+  feeRateVndPerKm: number,
+): number {
+  if (feeRateVndPerKm <= 0) return 0
+  return (
+    Math.max(
+      0,
+      Math.floor(Math.max(availableBalanceVnd, 0) / feeRateVndPerKm),
+    ) * 1000
+  )
+}
+
+function buildWalletSummary(wallet: Wallet): WalletSummary {
+  const feeRateVndPerKm = getWalletFeeRateVndPerKm()
+  const availableBalanceVnd = computeAvailableBalanceVnd(wallet)
+  return {
+    ...wallet,
+    availableBalanceVnd,
+    feeRateVndPerKm,
+    maxPublishableDistanceMeters: computeMaxPublishableDistanceMeters(
+      availableBalanceVnd,
+      feeRateVndPerKm,
+    ),
+  }
+}
+
+async function getOrCreateDriverWalletTx(
+  executor: DbQueryExecutor,
+  driverId: string,
+): Promise<Wallet> {
+  const existing = await executor.query(
+    'SELECT * FROM wallets WHERE driver_id = $1 FOR UPDATE',
+    [driverId],
+  )
+  if (existing.rowCount && existing.rows[0]) {
+    return mapWallet(existing.rows[0])
+  }
+
+  try {
+    const inserted = await executor.query(
+      `
+      INSERT INTO wallets (
+        id, driver_id, balance_vnd, reserved_balance_vnd, created_at, updated_at
+      )
+      VALUES ($1, $2, 0, 0, NOW(), NOW())
+      RETURNING *
+    `,
+      [generateId('wallet'), driverId],
+    )
+    return mapWallet(inserted.rows[0])
+  } catch (error) {
+    if ((error as Record<string, unknown>)?.code === '23505') {
+      const retry = await executor.query(
+        'SELECT * FROM wallets WHERE driver_id = $1 FOR UPDATE',
+        [driverId],
+      )
+      if (retry.rowCount && retry.rows[0]) {
+        return mapWallet(retry.rows[0])
+      }
+    }
+    throw error
+  }
+}
+
+async function updateWalletRowTx(
+  executor: DbQueryExecutor,
+  walletId: string,
+  data: Partial<Pick<Wallet, 'balanceVnd' | 'reservedBalanceVnd'>>,
+): Promise<Wallet> {
+  const updated = await executor.query(
+    `
+    UPDATE wallets
+    SET balance_vnd = COALESCE($2, balance_vnd),
+        reserved_balance_vnd = COALESCE($3, reserved_balance_vnd),
+        updated_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `,
+    [walletId, data.balanceVnd ?? null, data.reservedBalanceVnd ?? null],
+  )
+  const wallet = mapWallet(updated.rows[0])
+  if (!wallet) throw new Error('Failed to update wallet')
+  return wallet
+}
+
+async function insertWalletTransactionTx(
+  executor: DbQueryExecutor,
+  data: {
+    walletId: string
+    driverId: string
+    routeId?: string | null
+    type: WalletTransaction['type']
+    amountVnd: number
+    balanceAfterVnd: number
+    reservedBalanceAfterVnd: number
+    description?: string | null
+    metadata?: Record<string, unknown>
+  },
+): Promise<WalletTransaction> {
+  const result = await executor.query(
+    `
+    INSERT INTO wallet_transactions (
+      id, wallet_id, driver_id, route_id, type, amount_vnd,
+      balance_after_vnd, reserved_balance_after_vnd, description, metadata, created_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+    RETURNING *
+  `,
+    [
+      generateId('wtx'),
+      data.walletId,
+      data.driverId,
+      data.routeId || null,
+      data.type,
+      data.amountVnd,
+      data.balanceAfterVnd,
+      data.reservedBalanceAfterVnd,
+      data.description ?? null,
+      JSON.stringify(data.metadata || {}),
+    ],
+  )
+  const transaction = mapWalletTransaction(result.rows[0])
+  if (!transaction) throw new Error('Failed to create wallet transaction')
+  return transaction
+}
+
+async function loadRouteForWalletTx(
+  executor: DbQueryExecutor,
+  routeId: string,
+): Promise<Route> {
+  const result = await executor.query(
+    'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
+    [routeId],
+  )
+  const route = mapRoute(result.rows[0])
+  if (!route) throw new HttpError(404, 'Route not found')
+  return route
+}
+
+function assertDriverOwnsRoute(route: Route, driverId: string): void {
+  if (route.driverId !== driverId) {
+    throw new HttpError(404, 'Route not found')
+  }
+}
+
+function computeRouteFeeRequiredVnd(distanceMeters: number): number {
+  if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) {
+    throw new HttpError(400, 'distanceMeters must be a positive integer')
+  }
+  if (!Number.isInteger(distanceMeters)) {
+    throw new HttpError(400, 'distanceMeters must be a whole number')
+  }
+
+  return Math.ceil((distanceMeters / 1000) * getWalletFeeRateVndPerKm())
+}
+
+async function reserveRouteFeeTx(
+  executor: DbQueryExecutor,
+  route: Route,
+  feeRequiredVnd: number,
+  meta?: { description?: string },
+): Promise<Route> {
+  if (!Number.isFinite(feeRequiredVnd) || feeRequiredVnd < 0) {
+    throw new HttpError(400, 'Route fee must be a non-negative number')
+  }
+  if (!Number.isInteger(feeRequiredVnd)) {
+    throw new HttpError(400, 'Route fee must be a whole number')
+  }
+  if (route.walletFeeStatus === 'reserved') {
+    return route
+  }
+  if (route.walletFeeStatus && route.walletFeeStatus !== 'none') {
+    throw new HttpError(
+      409,
+      `Cannot reserve fee in route fee state: ${route.walletFeeStatus}`,
+    )
+  }
+
+  const wallet = await getOrCreateDriverWalletTx(executor, route.driverId)
+  const availableBalanceVnd = computeAvailableBalanceVnd(wallet)
+  if (availableBalanceVnd < feeRequiredVnd) {
+    throw new HttpError(400, 'Insufficient wallet balance to reserve route fee')
+  }
+
+  const updatedWallet = await updateWalletRowTx(executor, wallet.id, {
+    reservedBalanceVnd: wallet.reservedBalanceVnd + feeRequiredVnd,
+  })
+
+  await insertWalletTransactionTx(executor, {
+    walletId: wallet.id,
+    driverId: route.driverId,
+    routeId: route.id,
+    type: 'reservation',
+    amountVnd: feeRequiredVnd,
+    balanceAfterVnd: updatedWallet.balanceVnd,
+    reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
+    description: meta?.description || 'Route fee reserved',
+    metadata: {
+      feeRequiredVnd,
+      feeRateVndPerKm: getWalletFeeRateVndPerKm(),
+    },
+  })
+
+  const feeRateVndPerKm = getWalletFeeRateVndPerKm()
+  const updatedRoute = await executor.query(
+    `
+    UPDATE routes
+    SET fee_rate_vnd_per_km = $1,
+        fee_required_vnd = $2,
+        wallet_fee_status = 'reserved',
+        wallet_reserved_at = NOW()
+    WHERE id = $3
+    RETURNING *
+  `,
+    [feeRateVndPerKm, feeRequiredVnd, route.id],
+  )
+  return mapRoute(updatedRoute.rows[0])
+}
+
+async function releaseRouteFeeTx(
+  executor: DbQueryExecutor,
+  route: Route,
+  meta?: { description?: string },
+): Promise<Route> {
+  if (route.walletFeeStatus === 'released') {
+    return route
+  }
+  if (route.walletFeeStatus !== 'reserved') {
+    throw new HttpError(
+      409,
+      `Cannot release fee in route fee state: ${route.walletFeeStatus}`,
+    )
+  }
+
+  const wallet = await getOrCreateDriverWalletTx(executor, route.driverId)
+  const feeRequiredVnd = route.feeRequiredVnd || 0
+  const updatedWallet = await updateWalletRowTx(executor, wallet.id, {
+    reservedBalanceVnd: wallet.reservedBalanceVnd - feeRequiredVnd,
+  })
+
+  await insertWalletTransactionTx(executor, {
+    walletId: wallet.id,
+    driverId: route.driverId,
+    routeId: route.id,
+    type: 'release',
+    amountVnd: feeRequiredVnd,
+    balanceAfterVnd: updatedWallet.balanceVnd,
+    reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
+    description: meta?.description || 'Route fee released',
+    metadata: {
+      feeRequiredVnd,
+    },
+  })
+
+  const updatedRoute = await executor.query(
+    `
+    UPDATE routes
+    SET wallet_fee_status = 'released',
+        wallet_released_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `,
+    [route.id],
+  )
+  return mapRoute(updatedRoute.rows[0])
+}
+
+async function chargeRouteFeeTx(
+  executor: DbQueryExecutor,
+  route: Route,
+  meta?: { description?: string },
+): Promise<Route> {
+  if (route.walletFeeStatus === 'charged') {
+    return route
+  }
+  if (route.walletFeeStatus !== 'reserved') {
+    throw new HttpError(
+      409,
+      `Cannot charge fee in route fee state: ${route.walletFeeStatus}`,
+    )
+  }
+
+  const wallet = await getOrCreateDriverWalletTx(executor, route.driverId)
+  const feeRequiredVnd = route.feeRequiredVnd || 0
+  const updatedWallet = await updateWalletRowTx(executor, wallet.id, {
+    balanceVnd: wallet.balanceVnd - feeRequiredVnd,
+    reservedBalanceVnd: wallet.reservedBalanceVnd - feeRequiredVnd,
+  })
+
+  await insertWalletTransactionTx(executor, {
+    walletId: wallet.id,
+    driverId: route.driverId,
+    routeId: route.id,
+    type: 'charge',
+    amountVnd: feeRequiredVnd,
+    balanceAfterVnd: updatedWallet.balanceVnd,
+    reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
+    description: meta?.description || 'Route fee charged',
+    metadata: {
+      feeRequiredVnd,
+    },
+  })
+
+  const updatedRoute = await executor.query(
+    `
+    UPDATE routes
+    SET wallet_fee_status = 'charged',
+        wallet_charged_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `,
+    [route.id],
+  )
+  return mapRoute(updatedRoute.rows[0])
+}
+
+async function refundRouteFeeTx(
+  executor: DbQueryExecutor,
+  route: Route,
+  meta?: { description?: string },
+): Promise<Route> {
+  if (route.walletFeeStatus === 'refunded') {
+    return route
+  }
+  if (route.walletFeeStatus !== 'charged') {
+    throw new HttpError(
+      409,
+      `Cannot refund fee in route fee state: ${route.walletFeeStatus}`,
+    )
+  }
+
+  const wallet = await getOrCreateDriverWalletTx(executor, route.driverId)
+  const feeRequiredVnd = route.feeRequiredVnd || 0
+  const updatedWallet = await updateWalletRowTx(executor, wallet.id, {
+    balanceVnd: wallet.balanceVnd + feeRequiredVnd,
+  })
+
+  await insertWalletTransactionTx(executor, {
+    walletId: wallet.id,
+    driverId: route.driverId,
+    routeId: route.id,
+    type: 'refund',
+    amountVnd: feeRequiredVnd,
+    balanceAfterVnd: updatedWallet.balanceVnd,
+    reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
+    description: meta?.description || 'Route fee refunded',
+    metadata: {
+      feeRequiredVnd,
+    },
+  })
+
+  const updatedRoute = await executor.query(
+    `
+    UPDATE routes
+    SET wallet_fee_status = 'refunded',
+        wallet_refunded_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `,
+    [route.id],
+  )
+  return mapRoute(updatedRoute.rows[0])
+}
+
+export async function getOrCreateDriverWallet(
+  driverId: string,
+): Promise<Wallet> {
+  return withTransaction((tx) => getOrCreateDriverWalletTx(tx, driverId))
+}
+
+export async function getDriverWalletSummary(
+  driverId: string,
+): Promise<WalletSummary> {
+  const wallet = await getOrCreateDriverWallet(driverId)
+  return buildWalletSummary(wallet)
+}
+
+export async function listDriverWalletTransactions(
+  driverId: string,
+  limit?: number,
+): Promise<WalletTransaction[]> {
+  const txLimit = Math.max(
+    1,
+    Math.min(100, Math.floor(limit ?? DEFAULT_WALLET_TRANSACTION_LIMIT)),
+  )
+  const result = await query(
+    `
+    SELECT *
+    FROM wallet_transactions
+    WHERE driver_id = $1
+    ORDER BY created_at DESC, id DESC
+    LIMIT $2
+  `,
+    [driverId, txLimit],
+  )
+  return result.rows.map(mapWalletTransaction)
+}
+
+export async function topUpDriverWallet(
+  driverId: string,
+  payload: ManualTopUpPayload,
+): Promise<ManualTopUpResult> {
+  if (!Number.isFinite(payload.amountVnd) || payload.amountVnd <= 0) {
+    throw new HttpError(400, 'Top-up amount must be greater than zero')
+  }
+  if (!Number.isInteger(payload.amountVnd)) {
+    throw new HttpError(400, 'Top-up amount must be a whole number')
+  }
+
+  const result = await withTransaction(async (tx) => {
+    const wallet = await getOrCreateDriverWalletTx(tx, driverId)
+    const updatedWallet = await updateWalletRowTx(tx, wallet.id, {
+      balanceVnd: wallet.balanceVnd + payload.amountVnd,
+    })
+    const transaction = await insertWalletTransactionTx(tx, {
+      walletId: wallet.id,
+      driverId,
+      type: 'topup',
+      amountVnd: payload.amountVnd,
+      balanceAfterVnd: updatedWallet.balanceVnd,
+      reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
+      description: payload.description || 'Manual top-up',
+      metadata: {
+        source: 'manual_top_up',
+      },
+    })
+    return { summary: buildWalletSummary(updatedWallet), transaction }
+  })
+
+  return result
+}
+
+export async function reserveRouteFee(
+  routeId: string,
+  driverId: string,
+  feeRequiredVnd: number,
+  meta?: { description?: string },
+): Promise<Route> {
+  return withTransaction(async (tx) => {
+    const route = await loadRouteForWalletTx(tx, routeId)
+    assertDriverOwnsRoute(route, driverId)
+    return reserveRouteFeeTx(tx, route, feeRequiredVnd, meta)
+  })
+}
+
+export async function releaseRouteFee(
+  routeId: string,
+  driverId: string,
+  meta?: { description?: string },
+): Promise<Route> {
+  return withTransaction(async (tx) => {
+    const route = await loadRouteForWalletTx(tx, routeId)
+    if (route.driverId !== driverId) {
+      throw new HttpError(404, 'Route not found')
+    }
+    return releaseRouteFeeTx(tx, route, meta)
+  })
+}
+
+export async function chargeRouteFee(
+  routeId: string,
+  driverId: string,
+  meta?: { description?: string },
+): Promise<Route> {
+  return withTransaction(async (tx) => {
+    const route = await loadRouteForWalletTx(tx, routeId)
+    if (route.driverId !== driverId) {
+      throw new HttpError(404, 'Route not found')
+    }
+    return chargeRouteFeeTx(tx, route, meta)
+  })
+}
+
+export async function refundRouteFee(
+  routeId: string,
+  driverId: string,
+  meta?: { description?: string },
+): Promise<Route> {
+  return withTransaction(async (tx) => {
+    const route = await loadRouteForWalletTx(tx, routeId)
+    if (route.driverId !== driverId) {
+      throw new HttpError(404, 'Route not found')
+    }
+    return refundRouteFeeTx(tx, route, meta)
+  })
 }
 
 /**
@@ -288,6 +835,81 @@ function extractWardFields(
   return { wardId, provinceId, wardKey }
 }
 
+const IMMUTABLE_PUBLISHED_ROUTE_FIELDS: Array<keyof UpdateRoutePayload> = [
+  'origin',
+  'destination',
+  'originWardKey',
+  'originWardId',
+  'originProvinceId',
+  'destinationWardKey',
+  'destinationWardId',
+  'destinationProvinceId',
+  'serviceDate',
+  'departureTime',
+  'windowStart',
+  'windowEnd',
+  'distanceMeters',
+]
+
+function hasImmutablePublishedRouteFieldUpdate(data: UpdateRoutePayload): boolean {
+  return IMMUTABLE_PUBLISHED_ROUTE_FIELDS.some((field) => data[field] !== undefined)
+}
+
+function buildRouteWriteValues(
+  route: Route,
+  data: UpdateRoutePayload,
+): {
+  carId: string
+  origin: Location
+  destination: Location
+  originWardKey: string
+  originWardId: string
+  originProvinceId: string
+  destinationWardKey: string
+  destinationWardId: string
+  destinationProvinceId: string
+  serviceDate: string
+  departureTime: string
+  windowStart: string
+  windowEnd: string
+  tripPrice: number
+  distanceMeters: number | null
+  notes: string
+} {
+  const departureTime = data.departureTime
+    ? (normalizeUtc(data.departureTime) as string)
+    : route.departureTime
+  const departureWindow = computeDepartureBlock(departureTime)
+
+  return {
+    carId: data.carId ?? route.carId,
+    origin: data.origin ?? route.origin,
+    destination: data.destination ?? route.destination,
+    originWardKey: data.originWardKey ?? route.originWardKey,
+    originWardId: data.originWardId ?? route.originWardId,
+    originProvinceId: data.originProvinceId ?? route.originProvinceId,
+    destinationWardKey: data.destinationWardKey ?? route.destinationWardKey,
+    destinationWardId: data.destinationWardId ?? route.destinationWardId,
+    destinationProvinceId:
+      data.destinationProvinceId ?? route.destinationProvinceId,
+    serviceDate: data.serviceDate ?? route.serviceDate,
+    departureTime,
+    windowStart: data.windowStart
+      ? (normalizeUtc(data.windowStart) as string)
+      : data.departureTime
+        ? departureWindow.start
+        : route.windowStart,
+    windowEnd: data.windowEnd
+      ? (normalizeUtc(data.windowEnd) as string)
+      : data.departureTime
+        ? departureWindow.end
+        : route.windowEnd,
+    tripPrice: data.tripPrice ?? route.tripPrice,
+    distanceMeters: data.distanceMeters ?? route.distanceMeters ?? null,
+    notes: data.notes ?? route.notes ?? '',
+  }
+}
+
 export async function createRoute(
   driverId: string,
   data: CreateRoutePayload,
@@ -304,9 +926,9 @@ export async function createRoute(
       origin_ward_key, origin_ward_id, origin_province_id,
       destination_ward_key, destination_ward_id, destination_province_id,
       service_date, departure_time, window_start, window_end, 
-      trip_price, notes, status, created_at
+      trip_price, distance_meters, notes, status, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
     RETURNING *
   `,
     [
@@ -326,11 +948,12 @@ export async function createRoute(
       data.windowStart ? normalizeUtc(data.windowStart) : departureWindow.start,
       data.windowEnd ? normalizeUtc(data.windowEnd) : departureWindow.end,
       data.tripPrice,
+      data.distanceMeters ?? null,
       data.notes || '',
       data.status || 'draft',
     ],
   )
-  const route = toCamelCase<Route>(res.rows[0])
+  const route = mapRoute(res.rows[0])
   if (!route) throw new Error('Failed to create route')
   return route
 }
@@ -339,24 +962,115 @@ export const listRoutesByDriver = listByColumn<Route>('routes', 'driver_id')
 
 export async function getRoute(id: string): Promise<Route | null> {
   const result = await query('SELECT * FROM routes WHERE id = $1', [id])
-  return toCamelCase<Route>(result.rows[0])
+  return result.rows[0] ? mapRoute(result.rows[0]) : null
 }
 
 export async function updateRoute(
   id: string,
   data: UpdateRoutePayload,
 ): Promise<Route | null> {
-  return dynamicUpdate<Route>(
+  const existing = await getRoute(id)
+  if (!existing) return null
+
+  if (
+    existing.status === 'published' &&
+    existing.walletFeeStatus &&
+    existing.walletFeeStatus !== 'none' &&
+    hasImmutablePublishedRouteFieldUpdate(data)
+  ) {
+    throw new HttpError(
+      409,
+      'Published fee-bearing route fields cannot be edited. Cancel and recreate the route instead.',
+    )
+  }
+
+  const updated = await dynamicUpdate<Route>(
     'routes',
     id,
     data as unknown as Record<string, unknown>,
     ['origin', 'destination'],
   )
+  return updated
+    ? mapRoute(updated as unknown as Record<string, unknown>)
+    : null
+}
+
+export async function publishRoute(
+  id: string,
+  data: UpdateRoutePayload = {},
+): Promise<Route> {
+  return withTransaction(async (tx) => {
+    const route = await loadRouteForWalletTx(tx, id)
+    if (route.status === 'published') {
+      return route
+    }
+    if (route.status !== 'draft') {
+      throw new HttpError(
+        409,
+        `Cannot publish route in status: ${route.status}`,
+      )
+    }
+
+    const nextValues = buildRouteWriteValues(route, data)
+    const feeRequiredVnd = computeRouteFeeRequiredVnd(
+      nextValues.distanceMeters ?? 0,
+    )
+
+    await reserveRouteFeeTx(tx, route, feeRequiredVnd, {
+      description: 'Route fee reserved on publish',
+    })
+
+    const updatedRoute = await tx.query(
+      `
+      UPDATE routes
+      SET car_id = $2,
+          origin = $3,
+          destination = $4,
+          origin_ward_key = $5,
+          origin_ward_id = $6,
+          origin_province_id = $7,
+          destination_ward_key = $8,
+          destination_ward_id = $9,
+          destination_province_id = $10,
+          service_date = $11,
+          departure_time = $12,
+          window_start = $13,
+          window_end = $14,
+          trip_price = $15,
+          distance_meters = $16,
+          notes = $17,
+          status = 'published'
+      WHERE id = $1
+      RETURNING *
+    `,
+      [
+        id,
+        nextValues.carId,
+        JSON.stringify(nextValues.origin),
+        JSON.stringify(nextValues.destination),
+        nextValues.originWardKey,
+        nextValues.originWardId,
+        nextValues.originProvinceId,
+        nextValues.destinationWardKey,
+        nextValues.destinationWardId,
+        nextValues.destinationProvinceId,
+        nextValues.serviceDate,
+        nextValues.departureTime,
+        nextValues.windowStart,
+        nextValues.windowEnd,
+        nextValues.tripPrice,
+        nextValues.distanceMeters,
+        nextValues.notes,
+      ],
+    )
+
+    return mapRoute(updatedRoute.rows[0])
+  })
 }
 
 export async function listAllRoutes(): Promise<Route[]> {
   const result = await query('SELECT * FROM routes')
-  return mapRows<Route>(result.rows)
+  return result.rows.map(mapRoute)
 }
 
 // --- Plan ---
@@ -552,7 +1266,7 @@ export async function createGroupRequest(
       'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
       [routeId],
     )
-    const route = toCamelCase<Route>(routeRes.rows[0])
+    const route = mapRoute(routeRes.rows[0])
     if (!route) throw new HttpError(404, 'Route not found')
 
     if (!(await checkRouteAvailability(tx, routeId))) {
@@ -631,18 +1345,28 @@ export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
       [offerId],
     )
     const offer = toCamelCase<GroupOffer>(offerRes.rows[0])
-    if (!offer) throw new Error('Group offer not found')
+    if (!offer) throw new HttpError(404, 'Group offer not found')
+    if (offer.status === 'accepted') {
+      return { updatedOffer: offer, siblings: [], offer }
+    }
     if (offer.status !== 'pending') {
-      throw new Error(`Cannot accept offer in status: ${offer.status}`)
+      throw new HttpError(
+        409,
+        `Cannot accept offer in status: ${offer.status}`,
+      )
     }
 
-    // Lock route
-    await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [
-      offer.routeId,
-    ])
+    const route = await loadRouteForWalletTx(tx, offer.routeId)
+    if (route.status !== 'published') {
+      throw new HttpError(
+        409,
+        `Cannot accept offer on route in status: ${route.status}`,
+      )
+    }
 
     if (!(await checkRouteAvailability(tx, offer.routeId))) {
-      throw new Error(
+      throw new HttpError(
+        409,
         'Route is no longer available — another client was accepted first',
       )
     }
@@ -653,6 +1377,10 @@ export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
     )
     const updatedOffer = toCamelCase<GroupOffer>(offerRes.rows[0])
     if (!updatedOffer) throw new Error('Failed to update group offer')
+
+    await chargeRouteFeeTx(tx, route, {
+      description: 'Route fee charged on accepted group offer',
+    })
 
     const siblingsRes = await tx.query(
       "UPDATE group_offers SET status = 'closed' WHERE group_request_id = $1 AND id != $2 AND status = 'pending' RETURNING *",
@@ -786,7 +1514,7 @@ export async function createSearchRequest(
       'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
       [routeId],
     )
-    const route = toCamelCase<Route>(routeRes.rows[0])
+    const route = mapRoute(routeRes.rows[0])
     if (!route) throw new HttpError(404, 'Route not found')
 
     if (!(await checkRouteAvailability(tx, routeId))) {
@@ -855,17 +1583,28 @@ export async function acceptSearchRequest(
       [requestId],
     )
     let sreq = toCamelCase<SearchRequest>(sreqRes.rows[0])
-    if (!sreq) throw new Error('Search request not found')
+    if (!sreq) throw new HttpError(404, 'Search request not found')
+    if (sreq.status === 'accepted') {
+      return sreq
+    }
     if (sreq.status !== 'pending') {
-      throw new Error(`Cannot accept search request in status: ${sreq.status}`)
+      throw new HttpError(
+        409,
+        `Cannot accept search request in status: ${sreq.status}`,
+      )
     }
 
-    await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [
-      sreq.routeId,
-    ])
+    const route = await loadRouteForWalletTx(tx, sreq.routeId)
+    if (route.status !== 'published') {
+      throw new HttpError(
+        409,
+        `Cannot accept search request on route in status: ${route.status}`,
+      )
+    }
 
     if (!(await checkRouteAvailability(tx, sreq.routeId))) {
-      throw new Error(
+      throw new HttpError(
+        409,
         'Route is no longer available — another client was accepted first',
       )
     }
@@ -876,6 +1615,10 @@ export async function acceptSearchRequest(
     )
     sreq = toCamelCase<SearchRequest>(updatedRes.rows[0])
     if (!sreq) throw new Error('Failed to accept search request')
+
+    await chargeRouteFeeTx(tx, route, {
+      description: 'Route fee charged on accepted search request',
+    })
 
     await tx.query(
       "UPDATE group_offers SET status = 'closed' WHERE route_id = $1 AND status = 'pending'",
@@ -896,6 +1639,216 @@ export async function acceptSearchRequest(
   })
 
   return sreq
+}
+
+type AcceptedJourneyMatch =
+  | { kind: 'search_request'; request: SearchRequest }
+  | { kind: 'group_offer'; offer: GroupOffer }
+
+async function findAcceptedRouteMatchTx(
+  executor: DbQueryExecutor,
+  routeId: string,
+): Promise<AcceptedJourneyMatch | null> {
+  const searchRes = await executor.query(
+    `
+    SELECT *
+    FROM search_requests
+    WHERE route_id = $1 AND status = 'accepted'
+    FOR UPDATE
+  `,
+    [routeId],
+  )
+  const acceptedSearch = mapRows<SearchRequest>(searchRes.rows)[0]
+  if (acceptedSearch) {
+    return { kind: 'search_request', request: acceptedSearch }
+  }
+
+  const offerRes = await executor.query(
+    `
+    SELECT *
+    FROM group_offers
+    WHERE route_id = $1 AND status = 'accepted'
+    FOR UPDATE
+  `,
+    [routeId],
+  )
+  const acceptedOffer = mapRows<GroupOffer>(offerRes.rows)[0]
+  if (acceptedOffer) {
+    return { kind: 'group_offer', offer: acceptedOffer }
+  }
+
+  return null
+}
+
+async function findAcceptedPlanMatchTx(
+  executor: DbQueryExecutor,
+  plan: Plan,
+): Promise<AcceptedJourneyMatch | null> {
+  const searchRes = await executor.query(
+    `
+    SELECT *
+    FROM search_requests
+    WHERE client_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted')
+    FOR UPDATE
+  `,
+    [plan.clientId, plan.id],
+  )
+  const acceptedSearch = mapRows<SearchRequest>(searchRes.rows).find(
+    (request) => request.status === 'accepted',
+  )
+  if (acceptedSearch) {
+    return { kind: 'search_request', request: acceptedSearch }
+  }
+
+  const offerRes = await executor.query(
+    `
+    SELECT *
+    FROM group_offers
+    WHERE client_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted')
+    FOR UPDATE
+  `,
+    [plan.clientId, plan.id],
+  )
+  const acceptedOffer = mapRows<GroupOffer>(offerRes.rows).find(
+    (offer) => offer.status === 'accepted',
+  )
+  if (acceptedOffer) {
+    return { kind: 'group_offer', offer: acceptedOffer }
+  }
+
+  return null
+}
+
+async function cancelRouteTripTx(
+  executor: DbQueryExecutor,
+  route: Route,
+): Promise<Route> {
+  if (route.status === 'canceled') {
+    return route
+  }
+
+  const accepted = await findAcceptedRouteMatchTx(executor, route.id)
+  if (accepted) {
+    if (route.walletFeeStatus === 'charged') {
+      route = await refundRouteFeeTx(executor, route, {
+        description: 'Route fee refunded on trip cancel',
+      })
+    } else if (route.walletFeeStatus === 'reserved') {
+      route = await releaseRouteFeeTx(executor, route, {
+        description: 'Route fee released on trip cancel',
+      })
+    } else if (
+      route.walletFeeStatus !== 'refunded' &&
+      route.walletFeeStatus !== 'released' &&
+      route.walletFeeStatus !== 'none'
+    ) {
+      throw new HttpError(
+        409,
+        `Cannot cancel matched route in fee state: ${route.walletFeeStatus}`,
+      )
+    }
+
+    if (accepted.kind === 'search_request') {
+      await executor.query(
+        "UPDATE search_requests SET status = 'canceled' WHERE id = $1",
+        [accepted.request.id],
+      )
+    } else {
+      await executor.query(
+        "UPDATE group_offers SET status = 'canceled' WHERE id = $1",
+        [accepted.offer.id],
+      )
+    }
+  } else if (route.walletFeeStatus === 'reserved') {
+    route = await releaseRouteFeeTx(executor, route, {
+      description: 'Route fee released on route cancel',
+    })
+  } else if (route.walletFeeStatus === 'charged') {
+    throw new HttpError(
+      409,
+      'Cannot cancel an unmatched route after the fee has already been charged',
+    )
+  }
+
+  const updatedRoute = await executor.query(
+    "UPDATE routes SET status = 'canceled' WHERE id = $1 RETURNING *",
+    [route.id],
+  )
+  return mapRoute(updatedRoute.rows[0])
+}
+
+async function cancelPlanTripTx(
+  executor: DbQueryExecutor,
+  plan: Plan,
+): Promise<Plan> {
+  if (plan.status === 'canceled') {
+    return plan
+  }
+
+  const accepted = await findAcceptedPlanMatchTx(executor, plan)
+  if (accepted) {
+    const route = await loadRouteForWalletTx(executor, accepted.kind === 'search_request' ? accepted.request.routeId : accepted.offer.routeId)
+    if (route.walletFeeStatus === 'charged') {
+      await refundRouteFeeTx(executor, route, {
+        description: 'Route fee refunded on trip cancel',
+      })
+    } else if (route.walletFeeStatus === 'reserved') {
+      await releaseRouteFeeTx(executor, route, {
+        description: 'Route fee released on trip cancel',
+      })
+    } else if (
+      route.walletFeeStatus !== 'refunded' &&
+      route.walletFeeStatus !== 'released' &&
+      route.walletFeeStatus !== 'none'
+    ) {
+      throw new HttpError(
+        409,
+        `Cannot cancel matched route in fee state: ${route.walletFeeStatus}`,
+      )
+    }
+
+    if (accepted.kind === 'search_request') {
+      await executor.query(
+        "UPDATE search_requests SET status = 'canceled' WHERE id = $1",
+        [accepted.request.id],
+      )
+    } else {
+      await executor.query(
+        "UPDATE group_offers SET status = 'canceled' WHERE id = $1",
+        [accepted.offer.id],
+      )
+    }
+  }
+
+  const updatedPlan = await executor.query(
+    "UPDATE plans SET status = 'canceled' WHERE id = $1 RETURNING *",
+    [plan.id],
+  )
+  const canceledPlan = toCamelCase<Plan>(updatedPlan.rows[0])
+  if (!canceledPlan) throw new Error('Failed to cancel plan')
+  return canceledPlan
+}
+
+export async function cancelTrip(tripId: string): Promise<Route | Plan> {
+  return withTransaction(async (tx) => {
+    const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [
+      tripId,
+    ])
+    if (routeRes.rows[0]) {
+      const route = mapRoute(routeRes.rows[0])
+      return cancelRouteTripTx(tx, route)
+    }
+
+    const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [
+      tripId,
+    ])
+    const plan = toCamelCase<Plan>(planRes.rows[0])
+    if (plan) {
+      return cancelPlanTripTx(tx, plan)
+    }
+
+    throw new HttpError(404, 'Trip not found')
+  })
 }
 
 export async function declineSearchRequest(
