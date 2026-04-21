@@ -376,6 +376,108 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
     )
     assert.equal(res.status, 404)
   })
+
+  it('suppresses cross-route accepted plans and restores them after cancellation', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const targetRouteRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: DRIVER_001_ID,
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-11',
+      departureTime: '2030-04-11T07:00:00.000Z',
+      tripPrice: 120000,
+    })
+    assert.equal(targetRouteRes.status, 201)
+
+    const planRes = await request(server, 'POST', '/api/client/trip-plans', {
+      clientId: CLIENT_001_ID,
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-api-exclusive',
+      dropoffWardId: 'ward-api-exclusive-dest',
+      serviceDate: '2030-04-11',
+      departureBlockStart: '2030-04-11T07:00:00.000Z',
+      departureBlockEnd: '2030-04-11T07:30:00.000Z',
+      passengerCount: 1,
+    })
+    assert.equal(planRes.status, 201)
+
+    const otherRouteRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: DRIVER_002_ID,
+      carId: 'car-002',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: '2030-04-11',
+      departureTime: '2030-04-11T07:00:00.000Z',
+      tripPrice: 130000,
+    })
+    assert.equal(otherRouteRes.status, 201)
+
+    const before = await request(
+      server,
+      'GET',
+      `/api/driver/routes/${targetRouteRes.body.id}/matched-demand-groups`,
+    )
+    assert.equal(before.status, 200)
+    assert.equal(
+      before.body.some(
+        (group: { pickupWardId: string }) =>
+          group.pickupWardId === 'ward-api-exclusive',
+      ),
+      true,
+    )
+
+    const searchRequestRes = await request(
+      server,
+      'POST',
+      '/api/client/search-requests',
+      {
+        clientId: CLIENT_001_ID,
+        planId: planRes.body.id,
+        routeId: otherRouteRes.body.id,
+      },
+    )
+    assert.equal(searchRequestRes.status, 201)
+    await store.acceptSearchRequest(searchRequestRes.body.id)
+
+    const suppressed = await request(
+      server,
+      'GET',
+      `/api/driver/routes/${targetRouteRes.body.id}/matched-demand-groups`,
+    )
+    assert.equal(suppressed.status, 200)
+    assert.equal(
+      suppressed.body.some(
+        (group: { pickupWardId: string }) =>
+          group.pickupWardId === 'ward-api-exclusive',
+      ),
+      false,
+    )
+
+    const cancel = await request(
+      server,
+      'POST',
+      `/api/trips/${otherRouteRes.body.id}/cancel`,
+    )
+    assert.equal(cancel.status, 200)
+
+    const restored = await request(
+      server,
+      'GET',
+      `/api/driver/routes/${targetRouteRes.body.id}/matched-demand-groups`,
+    )
+    assert.equal(restored.status, 200)
+    assert.equal(
+      restored.body.some(
+        (group: { pickupWardId: string }) =>
+          group.pickupWardId === 'ward-api-exclusive',
+      ),
+      true,
+    )
+  })
 })
 
 describe('POST /api/client/search-requests', () => {

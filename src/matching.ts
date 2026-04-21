@@ -66,8 +66,8 @@ export const MAX_BEARING_DIFF = 30 // degrees
 export const MAX_PICKUP_KM = 5
 export const MAX_DROPOFF_KM = 5
 
-// Near-3 threshold retained for tier classification heuristic
-const NEAR_3_MAX_WARD_DISTANCE_KM = 5
+// Near-3 canonical ward-distance threshold from spec
+const NEAR_3_MAX_WARD_DISTANCE_KM = 20
 
 // ─── Scoring weights ──────────────────────────────────────────────────────────
 

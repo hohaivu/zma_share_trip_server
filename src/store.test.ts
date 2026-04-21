@@ -99,6 +99,95 @@ describe('deriveDemandGroups', () => {
     assert.equal(tbGroup.totalPassengerCount, 1)
   })
 
+  it('excludes accepted plans from other routes and recalculates group counts', async () => {
+    await setupTestDb()
+
+    const before = await store.deriveDemandGroups()
+    const target = before.find(
+      (group) =>
+        group.pickupWardId === 'ward-q1-bennghe' &&
+        group.dropoffWardId === 'ward-td-binhtho' &&
+        group.serviceDate === '2030-03-20',
+    )
+    assert.ok(target)
+    assert.equal(target.memberCount, 2)
+    assert.equal(target.totalPassengerCount, 3)
+
+    const request = await store.createSearchRequest(
+      CLIENT_001_ID,
+      'plan-001',
+      'route-002',
+    )
+    await store.acceptSearchRequest(request.id)
+
+    const after = await store.deriveDemandGroups()
+    const recalculated = after.find((group) => group.id === target.id)
+    assert.ok(recalculated)
+    assert.equal(recalculated.memberCount, 1)
+    assert.equal(recalculated.totalPassengerCount, 2)
+    assert.deepEqual(recalculated.memberPlanIds, ['plan-002'])
+  })
+
+  it('omits emptied groups from matched-demand results', async () => {
+    await setupTestDb()
+
+    const targetRoute = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-03-21',
+          departureTime: '2030-03-21T07:00:00.000Z',
+          tripPrice: 120000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const acceptedElsewhereRoute = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_002_ID, {
+          carId: 'car-002',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-03-21',
+          departureTime: '2030-03-21T07:00:00.000Z',
+          tripPrice: 120000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-exclusive',
+      dropoffWardId: 'ward-exclusive-dest',
+      serviceDate: '2030-03-21',
+      departureBlockStart: '2030-03-21T07:00:00.000Z',
+      departureBlockEnd: '2030-03-21T07:30:00.000Z',
+      passengerCount: 1,
+    })
+
+    const before = await matching.computeMatchedDemandGroups(targetRoute.id)
+    assert.equal(
+      before.some((group) => group.pickupWardId === 'ward-exclusive'),
+      true,
+    )
+
+    const request = await store.createSearchRequest(
+      CLIENT_001_ID,
+      plan.id,
+      acceptedElsewhereRoute.id,
+    )
+    await store.acceptSearchRequest(request.id)
+
+    const after = await matching.computeMatchedDemandGroups(targetRoute.id)
+    assert.equal(
+      after.some((group) => group.pickupWardId === 'ward-exclusive'),
+      false,
+    )
+  })
+
   it('persists grouped publish mode for newly created plans', async () => {
     const plan = await store.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
@@ -116,6 +205,54 @@ describe('deriveDemandGroups', () => {
       [plan.id],
     )
     assert.equal(persisted.rows[0]?.publish_mode, 'grouped')
+  })
+
+  it('restores plan eligibility after accepted state ends by cancellation', async () => {
+    await setupTestDb()
+
+    const initial = await store.deriveDemandGroups()
+    const target = initial.find(
+      (group) =>
+        group.pickupWardId === 'ward-q1-bennghe' &&
+        group.dropoffWardId === 'ward-td-binhtho' &&
+        group.serviceDate === '2030-03-20',
+    )
+    assert.ok(target)
+    assert.equal(target.memberCount, 2)
+
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_002_ID, {
+          carId: 'car-002',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-03-20',
+          departureTime: '2030-03-20T07:00:00.000Z',
+          tripPrice: 99000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const request = await store.createSearchRequest(
+      CLIENT_001_ID,
+      'plan-001',
+      route.id,
+    )
+    await store.acceptSearchRequest(request.id)
+
+    const suppressed = await store.deriveDemandGroups()
+    const suppressedTarget = suppressed.find((group) => group.id === target.id)
+    assert.ok(suppressedTarget)
+    assert.equal(suppressedTarget.memberCount, 1)
+
+    await store.cancelTrip(route.id)
+
+    const restored = await store.deriveDemandGroups()
+    const restoredTarget = restored.find((group) => group.id === target.id)
+    assert.ok(restoredTarget)
+    assert.equal(restoredTarget.memberCount, 2)
+    assert.equal(restoredTarget.totalPassengerCount, 3)
   })
 })
 

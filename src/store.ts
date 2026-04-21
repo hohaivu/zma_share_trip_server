@@ -1164,13 +1164,35 @@ function buildGroupKey(tp: Plan): string {
   return `${svcDate}|${pickupKey}|${dropoffKey}|${dbs}`
 }
 
+async function listEligiblePublishedPlans(
+  executor: DbQueryExecutor = { query },
+): Promise<Plan[]> {
+  const result = await executor.query(
+    `
+      SELECT *
+      FROM plans p
+      WHERE p.status = $1
+        AND NOT EXISTS (
+          SELECT 1
+          FROM search_requests sr
+          WHERE sr.plan_id = p.id AND sr.status = 'accepted'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM group_offers go
+          WHERE go.plan_id = p.id AND go.status = 'accepted'
+        )
+    `,
+    ['published'],
+  )
+
+  return mapRows<Plan>(result.rows)
+}
+
 export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
   const grouped = new Map<string, DemandGroupSummary>()
 
-  const result = await query('SELECT * FROM plans WHERE status = $1', [
-    'published',
-  ])
-  const activePlans = mapRows<Plan>(result.rows)
+  const activePlans = await listEligiblePublishedPlans()
 
   for (const tp of activePlans) {
     const key = buildGroupKey(tp)
