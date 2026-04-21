@@ -172,3 +172,55 @@ export interface SavedLocation {
   lng: number
   createdAt?: string
 }
+
+export interface Review {
+  id: string
+  tripId: string
+  reviewerId: string
+  revieweeId: string
+  rating: number
+  comment?: string | null
+  createdAt: string
+}
+
+export interface Report {
+  id: string
+  tripId: string
+  reporterId: string
+  reporteeId: string
+  reason: string
+  detail?: string | null
+  createdAt: string
+}
+
+export type NotificationType =
+  | 'request_received'
+  | 'request_accepted'
+  | 'request_declined'
+  | 'request_canceled'
+  | 'request_closed'
+  | 'request_expired'
+  | 'request_expiring_soon'
+  | 'strong_match_available'
+  | 'trip_completed'
+  | 'recurring_reminder'
+
+export type ClientRequestSource =
+  | 'group_offer'
+  | 'search_request'
+  | 'group_request'
+
+export interface AppNotification {
+  id: string
+  recipientId: string
+  type: NotificationType
+  title: string
+  body: string
+  read: boolean
+  readAt?: string | null
+  createdAt: string
+  targetRoute?: string | null
+  deepLink?: string | null
+  requestSource?: ClientRequestSource | null
+  metadata?: Record<string, unknown> | null
+}

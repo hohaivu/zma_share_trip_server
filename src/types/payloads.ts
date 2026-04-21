@@ -1,6 +1,10 @@
 import {
+  AppNotification,
+  ClientRequestSource,
   Location,
   Plan,
+  Report,
+  Review,
   Route,
   SearchRequest,
   User,
@@ -254,6 +258,40 @@ export interface ManualTopUpPayload {
 export interface ManualTopUpResult {
   summary: WalletSummary
   transaction: WalletTransaction
+}
+
+export interface UpdateUserPayload {
+  displayName?: string
+  avatarUrl?: string
+  role?: string
+  preferredMode?: string | null
+}
+
+export interface CreateReviewPayload {
+  tripId: string
+  reviewerId: string
+  revieweeId: string
+  rating: number
+  comment?: string
+}
+
+export interface CreateReportPayload {
+  tripId: string
+  reporterId: string
+  reporteeId: string
+  reason: string
+  detail?: string
+}
+
+export interface CreateNotificationPayload {
+  recipientId: string
+  type: AppNotification['type']
+  title: string
+  body: string
+  targetRoute?: string
+  deepLink?: string
+  requestSource?: ClientRequestSource
+  metadata?: Record<string, unknown>
 }
 
 export interface RouteFeeSnapshot {

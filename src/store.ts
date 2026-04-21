@@ -1,5 +1,11 @@
 import { query, withTransaction } from './db/connection'
-import { mapRows, normalizeUtc, parseNumeric, toCamelCase } from './db/utils'
+import {
+  mapRows,
+  normalizeUtc,
+  parseJsonb,
+  parseNumeric,
+  toCamelCase,
+} from './db/utils'
 import { HttpError } from './http-error'
 import {
   Car,
@@ -7,6 +13,9 @@ import {
   GroupRequest,
   Location,
   Plan,
+  AppNotification,
+  Report,
+  Review,
   Route,
   SavedLocation,
   SearchRequest,
@@ -16,12 +25,16 @@ import {
 } from './types/entities'
 import {
   BootstrapResult,
+  CreateNotificationPayload,
+  CreateReportPayload,
+  CreateReviewPayload,
   CreateCarPayload,
   CreatePlanPayload,
   CreateRoutePayload,
   DemandGroupSummary,
   ManualTopUpPayload,
   ManualTopUpResult,
+  UpdateUserPayload,
   UpdateCarPayload,
   UpdatePlanPayload,
   UpdateRoutePayload,
@@ -41,6 +54,127 @@ export function generateId(prefix: string): string {
 
 export function toSnakeCase(key: string): string {
   return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+}
+
+function mapUser(row: Record<string, unknown>): User {
+  const user = toCamelCase<User>(row)
+  if (!user) throw new Error('Cannot map null row to User')
+  user.ratingAvg = parseNumeric(user.ratingAvg)
+  user.tripCount = Number(user.tripCount || 0)
+  user.blockedUserIds = parseJsonb<string[]>(row.blocked_user_ids) || []
+  return user
+}
+
+
+function mapAppNotification(row: Record<string, unknown>): AppNotification {
+  const notification = toCamelCase<AppNotification>(row)
+  if (!notification) throw new Error('Cannot map null row to AppNotification')
+  notification.metadata = parseJsonb<Record<string, unknown>>(row.metadata) || {}
+  return notification
+}
+
+const VALID_REPORT_REASONS = new Set([
+  'no_show',
+  'unsafe_behavior',
+  'misleading_route',
+  'harassment',
+  'spam',
+  'fake_profile',
+])
+
+const EDITABLE_USER_FIELDS = new Set<keyof UpdateUserPayload>([
+  'displayName',
+  'avatarUrl',
+  'role',
+  'preferredMode',
+])
+
+function assertEditableUserUpdate(data: UpdateUserPayload): void {
+  for (const key of Object.keys(data)) {
+    if (!EDITABLE_USER_FIELDS.has(key as keyof UpdateUserPayload)) {
+      throw new HttpError(400, `Field is not editable: ${key}`)
+    }
+  }
+}
+
+function buildNotificationCopy(
+  type: string,
+  data: Record<string, unknown>,
+): Omit<AppNotification, 'id' | 'recipientId' | 'read' | 'readAt' | 'createdAt'> {
+  const requestSource =
+    type.startsWith('group_')
+      ? 'group_offer'
+      : type.startsWith('search_')
+        ? 'search_request'
+        : undefined
+
+  switch (type) {
+    case 'group_offer_received':
+    case 'search_request_received':
+      return {
+        type: 'request_received',
+        title: 'New request received',
+        body:
+          type === 'group_offer_received'
+            ? 'You received a new group offer.'
+            : 'You received a new direct request.',
+        targetRoute: '/offers',
+        deepLink: '/offers',
+        requestSource,
+        metadata: data,
+      }
+    case 'group_offer_accepted':
+    case 'search_request_accepted':
+      return {
+        type: 'request_accepted',
+        title: 'Request accepted',
+        body: 'Your request was accepted.',
+        targetRoute: '/journeys',
+        deepLink: '/journeys',
+        requestSource,
+        metadata: data,
+      }
+    case 'group_offer_declined':
+    case 'search_request_declined':
+      return {
+        type: 'request_declined',
+        title: 'Request declined',
+        body: 'Your request was declined.',
+        targetRoute: '/offers',
+        deepLink: '/offers',
+        requestSource,
+        metadata: data,
+      }
+    case 'group_request_canceled':
+      return {
+        type: 'request_canceled',
+        title: 'Request canceled',
+        body: 'A request was canceled.',
+        targetRoute: '/offers',
+        deepLink: '/offers',
+        requestSource: 'group_request',
+        metadata: data,
+      }
+    case 'sibling_offer_closed':
+      return {
+        type: 'request_closed',
+        title: 'Request closed',
+        body: 'This request is no longer available.',
+        targetRoute: '/offers',
+        deepLink: '/offers',
+        requestSource: 'group_offer',
+        metadata: data,
+      }
+    default:
+      return {
+        type: 'strong_match_available',
+        title: 'Notification',
+        body: 'You have a new notification.',
+        targetRoute: '/notifications',
+        deepLink: '/notifications',
+        metadata: data,
+      }
+  }
 }
 
 export function listByColumn<T>(
@@ -662,37 +796,55 @@ export async function dynamicUpdate<T>(
 
 // --- Notifications ---
 
-export interface NotificationPayload {
-  type: string
-  recipientId: string
-  data: Record<string, unknown>
-  createdAt: string
-}
-
-const notifications: NotificationPayload[] = []
-
 export function emitNotification(
   type: string,
   recipientId: string,
   data: Record<string, unknown>,
 ): void {
-  notifications.push({
-    type,
+  const copy = buildNotificationCopy(type, data)
+  void createNotification({
     recipientId,
-    data,
-    createdAt: new Date().toISOString(),
+    ...copy,
+    targetRoute: copy.targetRoute ?? undefined,
+    deepLink: copy.deepLink ?? undefined,
+    requestSource: copy.requestSource ?? undefined,
+    metadata: copy.metadata ?? undefined,
+  }).catch((error) => {
+    console.error('[emitNotification] failed to persist notification', error)
   })
 }
 
-export function listNotifications(): NotificationPayload[] {
-  return [...notifications]
+export async function listNotifications(recipientId: string): Promise<AppNotification[]> {
+  const result = await query(
+    `
+      SELECT *
+      FROM notifications
+      WHERE recipient_id = $1
+      ORDER BY created_at DESC, id DESC
+    `,
+    [recipientId],
+  )
+  return result.rows.map(mapAppNotification)
 }
 
 // --- User ---
 
 export async function getUser(userId: string): Promise<User | null> {
   const result = await query('SELECT * FROM users WHERE id = $1', [userId])
-  return toCamelCase<User>(result.rows[0])
+  return result.rows[0] ? mapUser(result.rows[0]) : null
+}
+
+export async function updateUser(
+  userId: string,
+  data: UpdateUserPayload,
+): Promise<User | null> {
+  assertEditableUserUpdate(data)
+  const result = await dynamicUpdate<User>(
+    'users',
+    userId,
+    data as Record<string, unknown>,
+  )
+  return result ? mapUser(result as unknown as Record<string, unknown>) : null
 }
 
 export async function setUserMode(
@@ -739,7 +891,7 @@ export async function bootstrapUser(
         mauid,
       ],
     )
-    const user = toCamelCase<User>(updated.rows[0])
+    const user = mapUser(updated.rows[0])
     if (!user) throw new Error('Failed to update user')
     return { user, wasCreated: false }
   }
@@ -753,9 +905,168 @@ export async function bootstrapUser(
   `,
     [mauid, displayName || '', avatarUrl || '', 'client'],
   )
-  const user = toCamelCase<User>(result.rows[0])
+  const user = mapUser(result.rows[0])
   if (!user) throw new Error('Failed to bootstrap user')
   return { user, wasCreated: true }
+}
+
+export async function createReview(payload: CreateReviewPayload): Promise<Review> {
+  if (!Number.isInteger(payload.rating) || payload.rating < 1 || payload.rating > 5) {
+    throw new HttpError(400, 'rating must be an integer between 1 and 5')
+  }
+
+  try {
+    const result = await query(
+      `
+        INSERT INTO reviews (id, trip_id, reviewer_id, reviewee_id, rating, comment, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        RETURNING *
+      `,
+      [
+        generateId('review'),
+        payload.tripId,
+        payload.reviewerId,
+        payload.revieweeId,
+        payload.rating,
+        payload.comment || null,
+      ],
+    )
+
+    return toCamelCase<Review>(result.rows[0]) as Review
+  } catch (error) {
+    if (isPgUniqueViolation(error, 'reviews_unique_trip_reviewer_reviewee')) {
+      throw new HttpError(409, 'Review already exists for this trip')
+    }
+    throw error
+  }
+}
+
+export async function listReviewsByReviewer(userId: string): Promise<Review[]> {
+  const result = await query(
+    'SELECT * FROM reviews WHERE reviewer_id = $1 ORDER BY created_at DESC, id DESC',
+    [userId],
+  )
+  return mapRows<Review>(result.rows)
+}
+
+export async function createReport(payload: CreateReportPayload): Promise<Report> {
+  if (!VALID_REPORT_REASONS.has(payload.reason)) {
+    throw new HttpError(400, 'Invalid report reason')
+  }
+
+  const result = await query(
+    `
+      INSERT INTO reports (id, trip_id, reporter_id, reportee_id, reason, detail, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      RETURNING *
+    `,
+    [
+      generateId('report'),
+      payload.tripId,
+      payload.reporterId,
+      payload.reporteeId,
+      payload.reason,
+      payload.detail || null,
+    ],
+  )
+  return toCamelCase<Report>(result.rows[0]) as Report
+}
+
+export async function listReportsByReporter(userId: string): Promise<Report[]> {
+  const result = await query(
+    'SELECT * FROM reports WHERE reporter_id = $1 ORDER BY created_at DESC, id DESC',
+    [userId],
+  )
+  return mapRows<Report>(result.rows)
+}
+
+export async function getBlockedUsers(blockerId: string): Promise<string[]> {
+  const user = await getUser(blockerId)
+  if (!user) throw new HttpError(404, 'User not found')
+  return user.blockedUserIds || []
+}
+
+async function setBlockedUsers(blockerId: string, ids: string[]): Promise<string[]> {
+  const updated = await dynamicUpdate<User>(
+    'users',
+    blockerId,
+    { blockedUserIds: ids },
+    ['blockedUserIds'],
+  )
+  return mapUser(updated as unknown as Record<string, unknown>).blockedUserIds || []
+}
+
+export async function blockUser(
+  blockerId: string,
+  blockedId: string,
+): Promise<string[]> {
+  const current = new Set(await getBlockedUsers(blockerId))
+  current.add(blockedId)
+  return setBlockedUsers(blockerId, [...current])
+}
+
+export async function unblockUser(
+  blockerId: string,
+  blockedId: string,
+): Promise<string[]> {
+  const current = (await getBlockedUsers(blockerId)).filter((id) => id !== blockedId)
+  return setBlockedUsers(blockerId, current)
+}
+
+export async function createNotification(
+  payload: CreateNotificationPayload,
+): Promise<AppNotification> {
+  const result = await query(
+    `
+      INSERT INTO notifications (
+        id, recipient_id, type, title, body, target_route, deep_link,
+        request_source, metadata, read, created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, NOW())
+      RETURNING *
+    `,
+    [
+      generateId('notif'),
+      payload.recipientId,
+      payload.type,
+      payload.title,
+      payload.body,
+      payload.targetRoute || null,
+      payload.deepLink || null,
+      payload.requestSource || null,
+      JSON.stringify(payload.metadata || {}),
+    ],
+  )
+  return mapAppNotification(result.rows[0])
+}
+
+export async function markNotificationRead(
+  recipientId: string,
+  notificationId: string,
+): Promise<AppNotification | null> {
+  const result = await query(
+    `
+      UPDATE notifications
+      SET read = TRUE, read_at = NOW()
+      WHERE id = $1 AND recipient_id = $2
+      RETURNING *
+    `,
+    [notificationId, recipientId],
+  )
+  return result.rows[0] ? mapAppNotification(result.rows[0]) : null
+}
+
+export async function markAllNotificationsRead(
+  recipientId: string,
+): Promise<void> {
+  await query(
+    `
+      UPDATE notifications
+      SET read = TRUE, read_at = NOW()
+      WHERE recipient_id = $1 AND read = FALSE
+    `,
+    [recipientId],
+  )
 }
 
 // --- Car ---

@@ -806,3 +806,166 @@ describe('user mode with bootstrapped users', () => {
     assert.equal(readRes.body.preferredMode, 'driver')
   })
 })
+
+describe('user profile, review, report, blocklist, and notification routes', () => {
+  it('reads and patches user profile with editable fields only', async () => {
+    const bootstrap = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-profile-test-001',
+      displayName: 'Profile Test',
+      avatarUrl: 'https://example.com/profile.png',
+    })
+    assert.equal(bootstrap.status, 201)
+    const userId = bootstrap.body.id
+
+    const getRes = await request(server, 'GET', `/api/users/${userId}`)
+    assert.equal(getRes.status, 200)
+    assert.equal(getRes.body.id, userId)
+    assert.equal(getRes.body.mauid, 'zalo-profile-test-001')
+
+    const patchRes = await request(server, 'PATCH', `/api/users/${userId}`, {
+      displayName: 'Profile Test Updated',
+      preferredMode: 'client',
+    })
+    assert.equal(patchRes.status, 200)
+    assert.equal(patchRes.body.displayName, 'Profile Test Updated')
+    assert.equal(patchRes.body.role, 'client')
+
+    const rejectRes = await request(server, 'PATCH', `/api/users/${userId}`, {
+      mauid: 'should-not-change',
+    })
+    assert.equal(rejectRes.status, 400)
+    assert.ok(rejectRes.body.message.includes('Field is not editable'))
+  })
+
+  it('creates review and report records and lists them by user', async () => {
+    const reviewer = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-reviewer-001',
+      displayName: 'Reviewer User',
+      avatarUrl: '',
+    })
+    const reviewee = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-reviewee-001',
+      displayName: 'Reviewee User',
+      avatarUrl: '',
+    })
+
+    const reviewRes = await request(server, 'POST', '/api/reviews', {
+      tripId: 'trip-review-api-001',
+      reviewerId: reviewer.body.id,
+      revieweeId: reviewee.body.id,
+      rating: 5,
+      comment: 'Great trip',
+    })
+    assert.equal(reviewRes.status, 201)
+    assert.equal(reviewRes.body.reviewerId, reviewer.body.id)
+    assert.equal(reviewRes.body.revieweeId, reviewee.body.id)
+    assert.equal(reviewRes.body.rating, 5)
+
+    const reportRes = await request(server, 'POST', '/api/reports', {
+      tripId: 'trip-review-api-001',
+      reporterId: reviewer.body.id,
+      reporteeId: reviewee.body.id,
+      reason: 'spam',
+      detail: 'Spam in chat',
+    })
+    assert.equal(reportRes.status, 201)
+    assert.equal(reportRes.body.reason, 'spam')
+
+    const reviewsByUser = await request(
+      server,
+      'GET',
+      `/api/users/${reviewer.body.id}/reviews`,
+    )
+    assert.equal(reviewsByUser.status, 200)
+    assert.equal(reviewsByUser.body.items.length, 1)
+    assert.equal(reviewsByUser.body.items[0].tripId, 'trip-review-api-001')
+
+    const reportsByUser = await request(
+      server,
+      'GET',
+      `/api/users/${reviewer.body.id}/reports`,
+    )
+    assert.equal(reportsByUser.status, 200)
+    assert.equal(reportsByUser.body.items.length, 1)
+    assert.equal(reportsByUser.body.items[0].reason, 'spam')
+  })
+
+  it('blocks, unblocks, lists notifications, and marks them read', async () => {
+    const owner = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-block-owner-001',
+      displayName: 'Block Owner',
+      avatarUrl: '',
+    })
+    const blocked = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-block-target-001',
+      displayName: 'Blocked User',
+      avatarUrl: '',
+    })
+    const ownerId = owner.body.id
+    const blockedId = blocked.body.id
+
+    const blockRes = await request(
+      server,
+      'POST',
+      `/api/users/${ownerId}/blocked-users`,
+      { blockedId },
+    )
+    assert.equal(blockRes.status, 201)
+    assert.deepEqual(blockRes.body.blockedUserIds, [blockedId])
+
+    const blockedListRes = await request(
+      server,
+      'GET',
+      `/api/users/${ownerId}/blocked-users`,
+    )
+    assert.equal(blockedListRes.status, 200)
+    assert.deepEqual(blockedListRes.body.blockedUserIds, [blockedId])
+
+    const notificationRes = await request(
+      server,
+      'POST',
+      `/api/users/${ownerId}/notifications`,
+      {
+        type: 'request_received',
+        title: 'New request',
+        body: 'You have a new request',
+        targetRoute: '/journeys/1',
+      },
+    )
+    assert.equal(notificationRes.status, 201)
+    assert.equal(notificationRes.body.read, false)
+
+    const notificationId = notificationRes.body.id
+    const listRes = await request(
+      server,
+      'GET',
+      `/api/users/${ownerId}/notifications`,
+    )
+    assert.equal(listRes.status, 200)
+    assert.equal(listRes.body.items.length, 1)
+    assert.equal(listRes.body.items[0].id, notificationId)
+
+    const markReadRes = await request(
+      server,
+      'POST',
+      `/api/users/${ownerId}/notifications/${notificationId}/read`,
+    )
+    assert.equal(markReadRes.status, 200)
+    assert.equal(markReadRes.body.read, true)
+
+    const markAllRes = await request(
+      server,
+      'POST',
+      `/api/users/${ownerId}/notifications/read-all`,
+    )
+    assert.equal(markAllRes.status, 204)
+
+    const unblockRes = await request(
+      server,
+      'DELETE',
+      `/api/users/${ownerId}/blocked-users/${blockedId}`,
+    )
+    assert.equal(unblockRes.status, 200)
+    assert.deepEqual(unblockRes.body.blockedUserIds, [])
+  })
+})
