@@ -19,6 +19,19 @@ const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
 const CLIENT_002_ID = 'a1b2c3d4-0004-4000-8000-000000000004'
 
+function formatLocalDateValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
 // Simple fetch helper
 function request(
   server: any,
@@ -356,6 +369,354 @@ describe('POST /api/trips/:id/cancel', () => {
     const summaryRes = await request(server, 'GET', `/api/trips/${route.id}/summary`)
     assert.equal(summaryRes.status, 200)
     assert.equal(summaryRes.body.accepted, null)
+  })
+})
+
+describe('POST /api/trips/:id/complete', () => {
+  it('completes linked plan when completing an accepted route', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = formatLocalDateValue(new Date())
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate,
+          departureTime: `${serviceDate}T07:00:00.000Z`,
+          tripPrice: 155000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-complete-sync',
+      dropoffWardId: 'ward-complete-sync-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const searchRequest = await store.createSearchRequest(
+      CLIENT_001_ID,
+      plan.id,
+      route.id,
+    )
+    await store.acceptSearchRequest(searchRequest.id)
+
+    const completeRes = await request(server, 'POST', `/api/trips/${route.id}/complete`)
+    assert.equal(completeRes.status, 200)
+    assert.equal(completeRes.body.status, 'completed')
+
+    const linkedPlan = await store.getPlan(plan.id)
+    assert.equal(linkedPlan?.status, 'completed')
+  })
+})
+
+describe('work queue visibility endpoints', () => {
+  it('keeps same-day completed routes visible until driver submits review', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = formatLocalDateValue(new Date())
+    const route = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate,
+      departureTime: `${serviceDate}T07:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    await store.updateRoute(route.id, { status: 'completed' })
+
+    const beforeReview = await request(
+      server,
+      'GET',
+      `/api/driver/routes?driverId=${DRIVER_001_ID}`,
+    )
+    assert.equal(beforeReview.status, 200)
+    assert.equal(
+      beforeReview.body.some((item: { id: string }) => item.id === route.id),
+      true,
+    )
+
+    await store.createReview({
+      tripId: route.id,
+      reviewerId: DRIVER_001_ID,
+      revieweeId: CLIENT_001_ID,
+      rating: 5,
+      comment: 'done',
+    })
+
+    const afterReview = await request(
+      server,
+      'GET',
+      `/api/driver/routes?driverId=${DRIVER_001_ID}`,
+    )
+    assert.equal(afterReview.status, 200)
+    assert.equal(
+      afterReview.body.some((item: { id: string }) => item.id === route.id),
+      false,
+    )
+  })
+
+  it('hides expired completed routes from driver work queue', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = formatLocalDateValue(addDays(new Date(), -1))
+    const route = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate,
+      departureTime: `${serviceDate}T07:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    await store.updateRoute(route.id, { status: 'completed' })
+
+    const res = await request(server, 'GET', `/api/driver/routes?driverId=${DRIVER_001_ID}`)
+    assert.equal(res.status, 200)
+    assert.equal(res.body.some((item: { id: string }) => item.id === route.id), false)
+  })
+
+  it('keeps same-day completed plans visible until client submits review', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = formatLocalDateValue(new Date())
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-plan-review',
+      dropoffWardId: 'ward-plan-review-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    await store.updatePlan(plan.id, { status: 'completed' })
+
+    const beforeReview = await request(
+      server,
+      'GET',
+      `/api/client/trip-plans?clientId=${CLIENT_001_ID}`,
+    )
+    assert.equal(beforeReview.status, 200)
+    assert.equal(
+      beforeReview.body.some((item: { id: string }) => item.id === plan.id),
+      true,
+    )
+
+    await store.createReview({
+      tripId: plan.id,
+      reviewerId: CLIENT_001_ID,
+      revieweeId: DRIVER_001_ID,
+      rating: 5,
+      comment: 'done',
+    })
+
+    const afterReview = await request(
+      server,
+      'GET',
+      `/api/client/trip-plans?clientId=${CLIENT_001_ID}`,
+    )
+    assert.equal(afterReview.status, 200)
+    assert.equal(
+      afterReview.body.some((item: { id: string }) => item.id === plan.id),
+      false,
+    )
+  })
+
+  it('hides expired completed plans from client work queue', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = formatLocalDateValue(addDays(new Date(), -1))
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-plan-expired',
+      dropoffWardId: 'ward-plan-expired-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    await store.updatePlan(plan.id, { status: 'completed' })
+
+    const res = await request(
+      server,
+      'GET',
+      `/api/client/trip-plans?clientId=${CLIENT_001_ID}`,
+    )
+    assert.equal(res.status, 200)
+    assert.equal(res.body.some((item: { id: string }) => item.id === plan.id), false)
+  })
+})
+
+describe('inbox visibility endpoints', () => {
+  it('hides client group offers when linked route becomes terminal', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = '2030-04-20'
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate,
+          departureTime: `${serviceDate}T07:00:00.000Z`,
+          tripPrice: 155000,
+        })
+      ).id,
+    )
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-goffer-hide',
+      dropoffWardId: 'ward-goffer-hide-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const groups = await store.deriveDemandGroups()
+    const targetGroup = groups.find((group) => group.memberPlanIds.includes(plan.id))
+    assert.ok(targetGroup)
+    const groupRequest = await store.createGroupRequest(
+      DRIVER_001_ID,
+      route.id,
+      targetGroup!.id,
+    )
+
+    const before = await request(
+      server,
+      'GET',
+      `/api/client/group-offers?clientId=${CLIENT_001_ID}`,
+    )
+    assert.equal(before.status, 200)
+    assert.equal(
+      before.body.some((item: { id: string }) => item.id === groupRequest.offers[0]?.id),
+      true,
+    )
+
+    await store.updateRoute(route.id, { status: 'completed' })
+
+    const after = await request(
+      server,
+      'GET',
+      `/api/client/group-offers?clientId=${CLIENT_001_ID}`,
+    )
+    assert.equal(after.status, 200)
+    assert.equal(
+      after.body.some((item: { id: string }) => item.id === groupRequest.offers[0]?.id),
+      false,
+    )
+  })
+
+  it('hides client search requests when linked route becomes terminal', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = '2030-04-21'
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate,
+          departureTime: `${serviceDate}T07:00:00.000Z`,
+          tripPrice: 155000,
+        })
+      ).id,
+    )
+    const searchRequest = await store.createSearchRequest(CLIENT_001_ID, null, route.id)
+
+    const before = await request(
+      server,
+      'GET',
+      `/api/client/search-requests?clientId=${CLIENT_001_ID}`,
+    )
+    assert.equal(before.status, 200)
+    assert.equal(
+      before.body.some((item: { id: string }) => item.id === searchRequest.id),
+      true,
+    )
+
+    await store.updateRoute(route.id, { status: 'canceled' })
+
+    const after = await request(
+      server,
+      'GET',
+      `/api/client/search-requests?clientId=${CLIENT_001_ID}`,
+    )
+    assert.equal(after.status, 200)
+    assert.equal(
+      after.body.some((item: { id: string }) => item.id === searchRequest.id),
+      false,
+    )
+  })
+
+  it('hides driver search requests when linked plan becomes terminal', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = '2030-04-22'
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate,
+          departureTime: `${serviceDate}T07:00:00.000Z`,
+          tripPrice: 155000,
+        })
+      ).id,
+    )
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-driver-search-hide',
+      dropoffWardId: 'ward-driver-search-hide-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const searchRequest = await store.createSearchRequest(CLIENT_001_ID, plan.id, route.id)
+
+    const before = await request(
+      server,
+      'GET',
+      `/api/driver/search-requests?driverId=${DRIVER_001_ID}`,
+    )
+    assert.equal(before.status, 200)
+    assert.equal(
+      before.body.some((item: { id: string }) => item.id === searchRequest.id),
+      true,
+    )
+
+    await store.updatePlan(plan.id, { status: 'completed' })
+
+    const after = await request(
+      server,
+      'GET',
+      `/api/driver/search-requests?driverId=${DRIVER_001_ID}`,
+    )
+    assert.equal(after.status, 200)
+    assert.equal(
+      after.body.some((item: { id: string }) => item.id === searchRequest.id),
+      false,
+    )
   })
 })
 
@@ -910,8 +1271,19 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       avatarUrl: '',
     })
 
+    const serviceDate = formatLocalDateValue(new Date())
+    const route = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate,
+      departureTime: `${serviceDate}T07:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    await store.updateRoute(route.id, { status: 'completed' })
+
     const reviewRes = await request(server, 'POST', '/api/reviews', {
-      tripId: 'trip-review-api-001',
+      tripId: route.id,
       reviewerId: reviewer.body.id,
       revieweeId: reviewee.body.id,
       rating: 5,
@@ -923,7 +1295,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     assert.equal(reviewRes.body.rating, 5)
 
     const reportRes = await request(server, 'POST', '/api/reports', {
-      tripId: 'trip-review-api-001',
+      tripId: route.id,
       reporterId: reviewer.body.id,
       reporteeId: reviewee.body.id,
       reason: 'spam',
@@ -939,7 +1311,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     )
     assert.equal(reviewsByUser.status, 200)
     assert.equal(reviewsByUser.body.items.length, 1)
-    assert.equal(reviewsByUser.body.items[0].tripId, 'trip-review-api-001')
+    assert.equal(reviewsByUser.body.items[0].tripId, route.id)
 
     const reportsByUser = await request(
       server,
@@ -949,6 +1321,41 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     assert.equal(reportsByUser.status, 200)
     assert.equal(reportsByUser.body.items.length, 1)
     assert.equal(reportsByUser.body.items[0].reason, 'spam')
+  })
+
+  it('rejects review submission after review window expires', async () => {
+    const reviewer = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-reviewer-expired-001',
+      displayName: 'Expired Reviewer',
+      avatarUrl: '',
+    })
+    const reviewee = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-reviewee-expired-001',
+      displayName: 'Expired Reviewee',
+      avatarUrl: '',
+    })
+
+    const serviceDate = formatLocalDateValue(addDays(new Date(), -1))
+    const route = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate,
+      departureTime: `${serviceDate}T07:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    await store.updateRoute(route.id, { status: 'completed' })
+
+    const res = await request(server, 'POST', '/api/reviews', {
+      tripId: route.id,
+      reviewerId: reviewer.body.id,
+      revieweeId: reviewee.body.id,
+      rating: 5,
+      comment: 'Too late',
+    })
+
+    assert.equal(res.status, 400)
+    assert.equal(res.body.message, 'Review window has expired for this trip')
   })
 
   it('blocks, unblocks, lists notifications, and marks them read', async () => {

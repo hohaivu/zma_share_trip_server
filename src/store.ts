@@ -48,6 +48,24 @@ function isPgUniqueViolation(e: unknown, constraint: string): boolean {
   return err?.code === '23505' && err?.constraint === constraint
 }
 
+function formatLocalDateValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function isTerminalTripStatus(status?: string | null): boolean {
+  return status === 'completed' || status === 'canceled'
+}
+
+function isSameDayReviewWindowOpen(
+  serviceDate: string,
+  now: Date = new Date(),
+): boolean {
+  return serviceDate === formatLocalDateValue(now)
+}
+
 export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}${Math.random().toString().slice(2, 6)}`
 }
@@ -915,6 +933,16 @@ export async function createReview(payload: CreateReviewPayload): Promise<Review
     throw new HttpError(400, 'rating must be an integer between 1 and 5')
   }
 
+  const route = await getRoute(payload.tripId)
+  const plan = route ? null : await getPlan(payload.tripId)
+  const trip = route ?? plan
+  const hasOpenReviewWindow =
+    trip?.status === 'completed' && isSameDayReviewWindowOpen(trip.serviceDate)
+
+  if (!trip || !hasOpenReviewWindow) {
+    throw new HttpError(400, 'Review window has expired for this trip')
+  }
+
   try {
     const result = await query(
       `
@@ -1269,7 +1297,43 @@ export async function createRoute(
   return route
 }
 
-export const listRoutesByDriver = listByColumn<Route>('routes', 'driver_id')
+async function hasReviewerSubmittedTripReview(
+  tripId: string,
+  reviewerId: string,
+): Promise<boolean> {
+  const result = await query(
+    'SELECT 1 FROM reviews WHERE trip_id = $1 AND reviewer_id = $2 LIMIT 1',
+    [tripId, reviewerId],
+  )
+  return result.rows.length > 0
+}
+
+async function isTripVisibleInWorkQueue(
+  trip: Pick<Route | Plan, 'id' | 'status' | 'serviceDate'>,
+  reviewerId: string,
+): Promise<boolean> {
+  if (trip.status === 'draft' || trip.status === 'published') {
+    return true
+  }
+
+  if (trip.status !== 'completed' || !isSameDayReviewWindowOpen(trip.serviceDate)) {
+    return false
+  }
+
+  return !(await hasReviewerSubmittedTripReview(trip.id, reviewerId))
+}
+
+async function shouldHideRequestForTerminalTrip(
+  request: Pick<SearchRequest, 'routeId' | 'planId'> | Pick<GroupOffer, 'routeId' | 'planId'>,
+): Promise<boolean> {
+  const route = await getRoute(request.routeId)
+  if (isTerminalTripStatus(route?.status)) {
+    return true
+  }
+
+  const plan = request.planId ? await getPlan(request.planId) : null
+  return isTerminalTripStatus(plan?.status)
+}
 
 export async function getRoute(id: string): Promise<Route | null> {
   const result = await query('SELECT * FROM routes WHERE id = $1', [id])
@@ -1439,7 +1503,31 @@ export async function updatePlan(
   )
 }
 
-export const listPlansByClient = listByColumn<Plan>('plans', 'client_id')
+const listRoutesByDriverRaw = listByColumn<Route>('routes', 'driver_id')
+
+export async function listRoutesByDriver(driverId: string): Promise<Route[]> {
+  const routes = await listRoutesByDriverRaw(driverId)
+  const visible = await Promise.all(
+    routes.map(async (route) => ({
+      route,
+      visible: await isTripVisibleInWorkQueue(route, driverId),
+    })),
+  )
+  return visible.filter((item) => item.visible).map((item) => item.route)
+}
+
+const listPlansByClientRaw = listByColumn<Plan>('plans', 'client_id')
+
+export async function listPlansByClient(clientId: string): Promise<Plan[]> {
+  const plans = await listPlansByClientRaw(clientId)
+  const visible = await Promise.all(
+    plans.map(async (plan) => ({
+      plan,
+      visible: await isTripVisibleInWorkQueue(plan, clientId),
+    })),
+  )
+  return visible.filter((item) => item.visible).map((item) => item.plan)
+}
 
 // --- Departure Block ---
 
@@ -2184,6 +2272,60 @@ export async function cancelTrip(tripId: string): Promise<Route | Plan> {
   })
 }
 
+export async function completeTrip(tripId: string): Promise<Route | Plan> {
+  return withTransaction(async (tx) => {
+    const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [
+      tripId,
+    ])
+    const route = routeRes.rows[0] ? mapRoute(routeRes.rows[0]) : null
+    if (route) {
+      const accepted = await findAcceptedRouteMatchTx(tx, route.id)
+      const updatedRouteRes = await tx.query(
+        "UPDATE routes SET status = 'completed' WHERE id = $1 RETURNING *",
+        [route.id],
+      )
+      if (accepted?.kind === 'search_request' && accepted.request.planId) {
+        await tx.query("UPDATE plans SET status = 'completed' WHERE id = $1", [
+          accepted.request.planId,
+        ])
+      }
+      if (accepted?.kind === 'group_offer' && accepted.offer.planId) {
+        await tx.query("UPDATE plans SET status = 'completed' WHERE id = $1", [
+          accepted.offer.planId,
+        ])
+      }
+      return mapRoute(updatedRouteRes.rows[0])
+    }
+
+    const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [
+      tripId,
+    ])
+    const plan = planRes.rows[0] ? toCamelCase<Plan>(planRes.rows[0]) : null
+    if (plan) {
+      const accepted = await findAcceptedPlanMatchTx(tx, plan)
+      const updatedPlanRes = await tx.query(
+        "UPDATE plans SET status = 'completed' WHERE id = $1 RETURNING *",
+        [plan.id],
+      )
+      if (accepted?.kind === 'search_request') {
+        await tx.query("UPDATE routes SET status = 'completed' WHERE id = $1", [
+          accepted.request.routeId,
+        ])
+      }
+      if (accepted?.kind === 'group_offer') {
+        await tx.query("UPDATE routes SET status = 'completed' WHERE id = $1", [
+          accepted.offer.routeId,
+        ])
+      }
+      const updatedPlan = toCamelCase<Plan>(updatedPlanRes.rows[0])
+      if (!updatedPlan) throw new Error('Failed to complete plan')
+      return updatedPlan
+    }
+
+    throw new HttpError(404, 'Trip not found')
+  })
+}
+
 export async function declineSearchRequest(
   requestId: string,
 ): Promise<SearchRequest> {
@@ -2213,18 +2355,54 @@ export const listGroupRequestsByDriver = listByColumn<GroupRequest>(
   'group_requests',
   'driver_id',
 )
-export const listGroupOffersByClient = listByColumn<GroupOffer>(
-  'group_offers',
-  'client_id',
-)
-export const listSearchRequestsByDriver = listByColumn<SearchRequest>(
+const listGroupOffersByClientRaw = listByColumn<GroupOffer>('group_offers', 'client_id')
+
+export async function listGroupOffersByClient(clientId: string): Promise<GroupOffer[]> {
+  const offers = await listGroupOffersByClientRaw(clientId)
+  const visible = await Promise.all(
+    offers.map(async (offer) => ({
+      offer,
+      hidden: await shouldHideRequestForTerminalTrip(offer),
+    })),
+  )
+  return visible.filter((item) => !item.hidden).map((item) => item.offer)
+}
+
+const listSearchRequestsByDriverRaw = listByColumn<SearchRequest>(
   'search_requests',
   'driver_id',
 )
-export const listSearchRequestsByClient = listByColumn<SearchRequest>(
+
+export async function listSearchRequestsByDriver(
+  driverId: string,
+): Promise<SearchRequest[]> {
+  const requests = await listSearchRequestsByDriverRaw(driverId)
+  const visible = await Promise.all(
+    requests.map(async (request) => ({
+      request,
+      hidden: await shouldHideRequestForTerminalTrip(request),
+    })),
+  )
+  return visible.filter((item) => !item.hidden).map((item) => item.request)
+}
+
+const listSearchRequestsByClientRaw = listByColumn<SearchRequest>(
   'search_requests',
   'client_id',
 )
+
+export async function listSearchRequestsByClient(
+  clientId: string,
+): Promise<SearchRequest[]> {
+  const requests = await listSearchRequestsByClientRaw(clientId)
+  const visible = await Promise.all(
+    requests.map(async (request) => ({
+      request,
+      hidden: await shouldHideRequestForTerminalTrip(request),
+    })),
+  )
+  return visible.filter((item) => !item.hidden).map((item) => item.request)
+}
 export const listSearchRequestsByRoute = listByColumn<SearchRequest>(
   'search_requests',
   'route_id',

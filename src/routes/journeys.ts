@@ -158,12 +158,7 @@ router.post(
       return res.status(404).json({ message: 'Trip not found' })
     }
 
-    if (route) {
-      const updated = await store.updateRoute(tripId, { status: 'completed' })
-      return res.json(updated)
-    }
-
-    const updated = await store.updatePlan(tripId, { status: 'completed' })
+    const updated = await store.completeTrip(tripId)
     res.json(updated)
   }),
 )
