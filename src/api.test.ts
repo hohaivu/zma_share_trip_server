@@ -15,7 +15,9 @@ import {
 const it = createDbTest('Postgres unavailable for DB-backed API tests')
 
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
+const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
+const CLIENT_002_ID = 'a1b2c3d4-0004-4000-8000-000000000004'
 
 // Simple fetch helper
 function request(
@@ -476,6 +478,65 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
           group.pickupWardId === 'ward-api-exclusive',
       ),
       true,
+    )
+  })
+})
+
+describe('GET /api/driver/routes/:id/inbound-search-requests', () => {
+  it('returns only pending inbound search requests for driver detail reads', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-04-12',
+          departureTime: '2030-04-12T07:00:00.000Z',
+          tripPrice: 125000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const acceptedRequest = await store.createSearchRequest(
+      CLIENT_001_ID,
+      null,
+      route.id,
+    )
+    await store.acceptSearchRequest(acceptedRequest.id)
+
+    const closedRequest = await store.createSearchRequest(
+      CLIENT_002_ID,
+      null,
+      route.id,
+    )
+    await query('UPDATE search_requests SET status = $1 WHERE id = $2', [
+      'closed',
+      closedRequest.id,
+    ])
+
+    const pendingRequest = await store.createSearchRequest(
+      CLIENT_002_ID,
+      null,
+      route.id,
+    )
+
+    const res = await request(
+      server,
+      'GET',
+      `/api/driver/routes/${route.id}/inbound-search-requests`,
+    )
+
+    assert.equal(res.status, 200)
+    assert.deepEqual(
+      res.body.map((request: { id: string; status: string }) => ({
+        id: request.id,
+        status: request.status,
+      })),
+      [{ id: pendingRequest.id, status: 'pending' }],
     )
   })
 })
