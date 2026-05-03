@@ -411,11 +411,23 @@ export async function computeMatchedDemandGroups(
 
   const driver = await store.getUser(route.driverId)
   const groups = await store.deriveDemandGroups()
+  const pendingInboundPlanIds = new Set(
+    (await store.listSearchRequestsByRoute(routeId))
+      .filter((request) => request.status === 'pending') // only pending; accepted/declined do not suppress matches
+      .map((request) => request.planId)
+      .filter((planId): planId is string => Boolean(planId)),
+  )
   const results: DemandGroupResult[] = []
 
   const routeBearing = computeBearing(route.origin, route.destination)
 
   for (const group of groups) {
+    if (
+      group.memberPlanIds.some((planId) => pendingInboundPlanIds.has(planId))
+    ) {
+      continue
+    }
+
     const matchTier = classifyMatch(route, group)
     if (!matchTier) continue
 
@@ -457,6 +469,7 @@ export async function computeMatchedDemandGroups(
       departureBlockEnd: group.departureBlockEnd,
       memberCount: group.memberCount,
       totalPassengerCount: group.totalPassengerCount,
+      memberPlanIds: group.memberPlanIds,
       ...scores,
     })
   }

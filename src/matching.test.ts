@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { after, before, describe, it } from 'node:test'
 
 import * as matching from './matching'
+import * as store from './store'
 import { createDbTest, setupTestDb, teardownTestDb } from './test-db'
 import { User } from './types/entities'
 
@@ -314,6 +315,80 @@ describe('computeMatchedDemandGroups', () => {
 
   itDb('returns empty array for non-existent route', async () => {
     assert.deepEqual(await matching.computeMatchedDemandGroups('route-999'), [])
+  })
+
+  itDb('excludes groups whose plan has a pending inbound search request for the route', async () => {
+    const serviceDate = '2030-04-30'
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:15:00.000Z`,
+          tripPrice: 100000,
+        })
+      ).id,
+    )
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-pending-search',
+      dropoffWardId: 'ward-pending-search-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+
+    const beforeRequest = await matching.computeMatchedDemandGroups(route.id)
+    assert.equal(
+      beforeRequest.some((group) => group.memberPlanIds?.includes(plan.id)),
+      true,
+    )
+
+    await store.createSearchRequest(CLIENT_001_ID, plan.id, route.id)
+
+    const afterRequest = await matching.computeMatchedDemandGroups(route.id)
+    assert.equal(
+      afterRequest.some((group) => group.memberPlanIds?.includes(plan.id)),
+      false,
+    )
+  })
+
+  itDb('keeps groups when pending inbound search request has no linked plan', async () => {
+    const serviceDate = '2030-05-01'
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:15:00.000Z`,
+          tripPrice: 100000,
+        })
+      ).id,
+    )
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-adhoc-search',
+      dropoffWardId: 'ward-adhoc-search-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+
+    await store.createSearchRequest(CLIENT_001_ID, null, route.id)
+
+    const results = await matching.computeMatchedDemandGroups(route.id)
+    assert.equal(
+      results.some((group) => group.memberPlanIds?.includes(plan.id)),
+      true,
+    )
   })
 })
 

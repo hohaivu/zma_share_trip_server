@@ -179,6 +179,7 @@ export interface DemandGroupResult extends ScoreFields {
   departureBlockEnd: string
   memberCount: number
   totalPassengerCount: number
+  memberPlanIds?: string[]
 }
 
 export interface MatchingRouteResult extends ScoreFields {
