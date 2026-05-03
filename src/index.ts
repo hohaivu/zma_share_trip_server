@@ -26,9 +26,8 @@ const PORT = process.env.PORT || 3010
 app.use(express.json())
 app.use(
   cors({
-    origin: process.env.ALLOWED_ORIGINS
-      ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
-      : '*',
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS', 'PUT'],
   }),
 )
 
