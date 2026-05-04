@@ -544,14 +544,16 @@ describe('search request plan linkage', () => {
     )
   })
 
-  it('accepts ad hoc search requests without plan linkage', async () => {
-    const sreq = await store.createSearchRequest(
-      CLIENT_001_ID,
-      null,
-      'route-002',
+  it('rejects search requests without plan linkage', async () => {
+    await assert.rejects(
+      async () =>
+        await store.createSearchRequest(
+          CLIENT_001_ID,
+          null as unknown as string,
+          'route-002',
+        ),
+      /Plan not found/,
     )
-    assert.equal(sreq.status, 'pending')
-    assert.equal(sreq.planId, null)
   })
 })
 
@@ -652,14 +654,14 @@ describe('single active search request invariant', () => {
   it('rejects duplicate active search requests for same route and client', async () => {
     const sreq1 = await store.createSearchRequest(
       CLIENT_001_ID,
-      null,
+      'plan-001',
       'route-002',
     )
     assert.equal(sreq1.status, 'pending')
 
     await assert.rejects(
       async () =>
-        await store.createSearchRequest(CLIENT_001_ID, null, 'route-002'),
+        await store.createSearchRequest(CLIENT_001_ID, 'plan-001', 'route-002'),
       (err: unknown) => {
         assert.ok(err && typeof err === 'object')
         const conflictError = err as {
@@ -687,7 +689,7 @@ describe('single active search request invariant', () => {
       })
       const initialRequest = await store.createSearchRequest(
         CLIENT_001_ID,
-        null,
+        'plan-001',
         route.id,
       )
 
@@ -698,7 +700,7 @@ describe('single active search request invariant', () => {
 
       const resentRequest = await store.createSearchRequest(
         CLIENT_001_ID,
-        null,
+        'plan-001',
         route.id,
       )
 

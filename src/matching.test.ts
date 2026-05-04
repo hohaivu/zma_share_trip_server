@@ -382,7 +382,7 @@ describe('computeMatchedDemandGroups', () => {
       passengerCount: 1,
     })
 
-    await store.createSearchRequest(CLIENT_001_ID, null, route.id)
+    await store.createSearchRequest(CLIENT_001_ID, plan.id, route.id)
 
     const results = await matching.computeMatchedDemandGroups(route.id)
     assert.equal(

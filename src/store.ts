@@ -1946,7 +1946,7 @@ export async function cancelGroupRequest(
 
 export async function createSearchRequest(
   clientId: string,
-  planId: string | null,
+  planId: string,
   routeId: string,
   note?: string,
 ): Promise<SearchRequest> {
@@ -1964,14 +1964,12 @@ export async function createSearchRequest(
       )
     }
 
-    if (planId) {
-      const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [
-        planId,
-      ])
-      const tp = toCamelCase<Plan>(tpRes.rows[0])
-      if (!tp) {
-        throw new HttpError(400, 'Plan not found')
-      }
+    const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [
+      planId,
+    ])
+    const tp = toCamelCase<Plan>(tpRes.rows[0])
+    if (!tp) {
+      throw new HttpError(400, 'Plan not found')
     }
 
     const routeRes = await tx.query(
@@ -2000,7 +1998,7 @@ export async function createSearchRequest(
         [
           sreqId,
           clientId,
-          planId || null,
+          planId,
           routeId,
           route.driverId,
           route.tripPrice,
