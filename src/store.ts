@@ -164,13 +164,15 @@ function buildNotificationCopy(
         metadata: data,
       }
     case 'group_request_canceled':
+    case 'search_request_canceled':
       return {
         type: 'request_canceled',
         title: 'Request canceled',
         body: 'A request was canceled.',
         targetRoute: '/offers',
         deepLink: '/offers',
-        requestSource: 'group_request',
+        requestSource:
+          type === 'group_request_canceled' ? 'group_request' : 'search_request',
         metadata: data,
       }
     case 'sibling_offer_closed':
@@ -2379,6 +2381,34 @@ export async function declineSearchRequest(
   if (!updated) throw new Error('Failed to decline search request')
 
   emitNotification('search_request_declined', updated.clientId, {
+    searchRequestId: requestId,
+  })
+
+  return updated
+}
+
+export async function cancelSearchRequest(
+  requestId: string,
+): Promise<SearchRequest> {
+  const sreqRes = await query('SELECT * FROM search_requests WHERE id = $1', [
+    requestId,
+  ])
+  const sreq = toCamelCase<SearchRequest>(sreqRes.rows[0])
+  if (!sreq) throw new Error('Search request not found')
+  if (sreq.status !== 'pending') {
+    throw new HttpError(
+      409,
+      `Cannot cancel search request in status: ${sreq.status}`,
+    )
+  }
+  const updatedRes = await query(
+    "UPDATE search_requests SET status = 'canceled' WHERE id = $1 RETURNING *",
+    [requestId],
+  )
+  const updated = toCamelCase<SearchRequest>(updatedRes.rows[0])
+  if (!updated) throw new Error('Failed to cancel search request')
+
+  emitNotification('search_request_canceled', updated.driverId, {
     searchRequestId: requestId,
   })
 

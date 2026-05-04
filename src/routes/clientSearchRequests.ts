@@ -34,4 +34,13 @@ router.get(
   }),
 )
 
+// POST /api/client/search-requests/:id/cancel
+router.post(
+  '/search-requests/:id/cancel',
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = await store.cancelSearchRequest(req.params.id as string)
+    res.json(result)
+  }),
+)
+
 export default router
