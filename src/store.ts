@@ -1503,6 +1503,40 @@ export async function updatePlan(
   )
 }
 
+export async function cancelPlanByClient(
+  planId: string,
+  clientId: string,
+): Promise<Plan> {
+  return withTransaction(async (tx) => {
+    const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [
+      planId,
+    ])
+    const plan = toCamelCase<Plan>(planRes.rows[0])
+    if (!plan) {
+      throw new HttpError(404, 'Plan not found')
+    }
+    if (plan.clientId !== clientId) {
+      throw new HttpError(403, 'Client does not own this plan')
+    }
+    if (plan.status === 'canceled') {
+      return plan
+    }
+
+    const accepted = await findAcceptedPlanMatchTx(tx, plan)
+    if (accepted) {
+      throw new HttpError(409, 'Cannot cancel an accepted plan')
+    }
+
+    const updatedPlan = await tx.query(
+      "UPDATE plans SET status = 'canceled' WHERE id = $1 RETURNING *",
+      [plan.id],
+    )
+    const canceledPlan = toCamelCase<Plan>(updatedPlan.rows[0])
+    if (!canceledPlan) throw new Error('Failed to cancel plan')
+    return canceledPlan
+  })
+}
+
 const listRoutesByDriverRaw = listByColumn<Route>('routes', 'driver_id')
 
 export async function listRoutesByDriver(driverId: string): Promise<Route[]> {

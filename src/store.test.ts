@@ -256,6 +256,119 @@ describe('deriveDemandGroups', () => {
   })
 })
 
+describe('cancelPlanByClient', () => {
+  it('cancels an owned unpublished-pairing plan and removes it from work queue and demand', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-client-cancel',
+      dropoffWardId: 'ward-client-cancel-dest',
+      serviceDate: '2030-05-07',
+      departureBlockStart: '2030-05-07T07:00:00.000Z',
+      departureBlockEnd: '2030-05-07T07:30:00.000Z',
+      passengerCount: 1,
+    })
+
+    const before = await store.deriveDemandGroups()
+    assert.equal(
+      before.some((group) => group.memberPlanIds.includes(plan.id)),
+      true,
+    )
+
+    const canceled = await store.cancelPlanByClient(plan.id, CLIENT_001_ID)
+    const clientPlans = await store.listPlansByClient(CLIENT_001_ID)
+    const after = await store.deriveDemandGroups()
+
+    assert.equal(canceled.status, 'canceled')
+    assert.equal(
+      clientPlans.some((item) => item.id === plan.id),
+      false,
+      'Canceled plan should be hidden from client work queue',
+    )
+    assert.equal(
+      after.some((group) => group.memberPlanIds.includes(plan.id)),
+      false,
+      'Canceled plan should be removed from demand groups',
+    )
+  })
+
+  it('rejects cancellation by a non-owner', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    await assert.rejects(
+      () => store.cancelPlanByClient('plan-001', CLIENT_002_ID),
+      (err: unknown) =>
+        err instanceof Error &&
+        'statusCode' in err &&
+        err.statusCode === 403,
+    )
+  })
+
+  it('throws 404 for a missing plan', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    await assert.rejects(
+      () => store.cancelPlanByClient('plan-missing', CLIENT_001_ID),
+      (err: unknown) =>
+        err instanceof Error &&
+        'statusCode' in err &&
+        err.statusCode === 404,
+    )
+  })
+
+  it('rejects plan cancellation when search request is accepted', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const request = await store.createSearchRequest(
+      CLIENT_001_ID,
+      'plan-001',
+      'route-002',
+    )
+    await store.acceptSearchRequest(request.id)
+
+    await assert.rejects(
+      () => store.cancelPlanByClient('plan-001', CLIENT_001_ID),
+      (err: unknown) =>
+        err instanceof Error &&
+        'statusCode' in err &&
+        err.statusCode === 409,
+    )
+  })
+
+  it('rejects plan cancellation when group offer is accepted', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const groups = await store.deriveDemandGroups()
+    const multiMemberGroup = groups.find((group) => group.memberCount > 1)
+    assert.ok(multiMemberGroup)
+    const result = await store.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      multiMemberGroup.id,
+    )
+    const targetOffer = result.offers.find(
+      (offer) => offer.clientId === CLIENT_001_ID,
+    )
+    assert.ok(targetOffer)
+    await store.acceptGroupOffer(targetOffer.id)
+
+    await assert.rejects(
+      () => store.cancelPlanByClient(targetOffer.planId, CLIENT_001_ID),
+      (err: unknown) =>
+        err instanceof Error &&
+        'statusCode' in err &&
+        err.statusCode === 409,
+    )
+  })
+})
+
 // ─── 6.2 exact-3 / near-3 classification ──────────────────────────────────────
 
 describe('matching classification', () => {

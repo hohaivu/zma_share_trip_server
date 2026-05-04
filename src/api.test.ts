@@ -112,6 +112,57 @@ describe('POST /api/client/trip-plans', () => {
   })
 })
 
+describe('DELETE /api/client/trip-plans/:id', () => {
+  it('cancels an owned plan', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-api-cancel',
+      dropoffWardId: 'ward-api-cancel-dest',
+      serviceDate: '2030-06-01',
+      departureBlockStart: '2030-06-01T08:00:00.000Z',
+      departureBlockEnd: '2030-06-01T08:30:00.000Z',
+      passengerCount: 1,
+    })
+
+    const res = await request(
+      server,
+      'DELETE',
+      `/api/client/trip-plans/${plan.id}`,
+      { clientId: CLIENT_001_ID },
+    )
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.id, plan.id)
+    assert.equal(res.body.status, 'canceled')
+  })
+
+  it('rejects a non-owner', async () => {
+    const res = await request(
+      server,
+      'DELETE',
+      '/api/client/trip-plans/plan-001',
+      { clientId: CLIENT_002_ID },
+    )
+
+    assert.equal(res.status, 403)
+  })
+
+  it('returns 404 for a missing plan', async () => {
+    const res = await request(
+      server,
+      'DELETE',
+      '/api/client/trip-plans/plan-missing',
+      { clientId: CLIENT_001_ID },
+    )
+
+    assert.equal(res.status, 404)
+  })
+})
+
 describe('POST /api/client/search-routes', () => {
   it('returns matched routes from submitted criteria', async () => {
     const res = await request(server, 'POST', '/api/client/search-routes', {

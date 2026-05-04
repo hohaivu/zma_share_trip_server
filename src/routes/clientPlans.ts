@@ -65,4 +65,16 @@ router.put(
   ),
 )
 
+// DELETE /api/client/trip-plans/:id — cancel own plan
+router.delete(
+  '/trip-plans/:id',
+  asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
+    const clientId = (req.body?.clientId ?? req.query.clientId) as string
+    requireParam(clientId, 'clientId is required')
+
+    const plan = await store.cancelPlanByClient(req.params.id, clientId)
+    res.json(plan)
+  }),
+)
+
 export default router
