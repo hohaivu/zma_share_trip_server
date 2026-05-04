@@ -1137,6 +1137,13 @@ export async function listCarsByOwner(
   return result.rows.map(mapCar)
 }
 
+export async function getCarById(
+  id: string,
+): Promise<(Car & { colorHex?: string }) | null> {
+  const result = await query('SELECT * FROM cars WHERE id = $1', [id])
+  return result.rows[0] ? mapCar(result.rows[0]) : null
+}
+
 export async function updateCar(
   id: string,
   data: UpdateCarPayload,

@@ -1185,6 +1185,38 @@ describe('preserved endpoints', () => {
     assert.equal(res.status, 201)
     assert.ok(res.body.id)
   })
+
+  it('GET /api/driver/cars/:id returns persisted car detail', async () => {
+    const created = await store.createCar(DRIVER_001_ID, {
+      nickname: 'Live API car',
+      plateNumberFull: '51A-123.45',
+      plateNumberMasked: '51A-***45',
+      brand: 'Toyota',
+      model: 'Vios',
+      color: 'Trắng',
+      seatCapacity: 4,
+      verificationStatus: 'verified',
+      photos: ['https://example.com/car.jpg'],
+    })
+
+    const res = await request(server, 'GET', `/api/driver/cars/${created.id}`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.id, created.id)
+    assert.equal(res.body.ownerId, DRIVER_001_ID)
+    assert.equal(res.body.brand, 'Toyota')
+    assert.equal(res.body.model, 'Vios')
+    assert.equal(res.body.color, 'Trắng')
+    assert.equal(res.body.plateNumberMasked, '51A-***45')
+    assert.deepEqual(res.body.photos, ['https://example.com/car.jpg'])
+  })
+
+  it('GET /api/driver/cars/:id returns 404 for unknown car', async () => {
+    const res = await request(server, 'GET', '/api/driver/cars/car-missing')
+
+    assert.equal(res.status, 404)
+    assert.equal(res.body.message, 'Car not found')
+  })
 })
 
 // ─── Bootstrap endpoint tests ─────────────────────────────────────────────────

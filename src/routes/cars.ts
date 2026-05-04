@@ -40,6 +40,18 @@ router.get(
   }),
 )
 
+router.get(
+  '/cars/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const car = await store.getCarById(req.params.id as string)
+    if (!car) {
+      return res.status(404).json({ message: 'Car not found' })
+    }
+
+    res.json(car)
+  }),
+)
+
 router.put(
   '/cars/:id',
   asyncHandler(async (req: Request, res: Response) => {
