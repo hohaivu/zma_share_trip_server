@@ -8,37 +8,37 @@ import {
 } from './db/utils'
 import { HttpError } from './http-error'
 import {
+  AppNotification,
   Car,
   ClientRequestSource,
   GroupOffer,
   GroupRequest,
   Location,
   Plan,
-  AppNotification,
   Report,
   Review,
   Route,
   SavedLocation,
   SearchRequest,
+  User,
   Wallet,
   WalletTransaction,
-  User,
 } from './types/entities'
 import {
   BootstrapResult,
+  CreateCarPayload,
   CreateNotificationPayload,
+  CreatePlanPayload,
   CreateReportPayload,
   CreateReviewPayload,
-  CreateCarPayload,
-  CreatePlanPayload,
   CreateRoutePayload,
   DemandGroupSummary,
   ManualTopUpPayload,
   ManualTopUpResult,
-  UpdateUserPayload,
   UpdateCarPayload,
   UpdatePlanPayload,
   UpdateRoutePayload,
+  UpdateUserPayload,
   WalletSummary,
 } from './types/payloads'
 
@@ -84,11 +84,11 @@ function mapUser(row: Record<string, unknown>): User {
   return user
 }
 
-
 function mapAppNotification(row: Record<string, unknown>): AppNotification {
   const notification = toCamelCase<AppNotification>(row)
   if (!notification) throw new Error('Cannot map null row to AppNotification')
-  notification.metadata = parseJsonb<Record<string, unknown>>(row.metadata) || {}
+  notification.metadata =
+    parseJsonb<Record<string, unknown>>(row.metadata) || {}
   return notification
 }
 
@@ -125,7 +125,10 @@ function inferRequestSource(type: string): ClientRequestSource | undefined {
 function buildNotificationCopy(
   type: string,
   data: Record<string, unknown>,
-): Omit<AppNotification, 'id' | 'recipientId' | 'read' | 'readAt' | 'createdAt'> {
+): Omit<
+  AppNotification,
+  'id' | 'recipientId' | 'read' | 'readAt' | 'createdAt'
+> {
   const requestSource = inferRequestSource(type)
 
   switch (type) {
@@ -174,7 +177,9 @@ function buildNotificationCopy(
         targetRoute: '/offers',
         deepLink: '/offers',
         requestSource:
-          type === 'group_request_canceled' ? 'group_request' : 'search_request',
+          type === 'group_request_canceled'
+            ? 'group_request'
+            : 'search_request',
         metadata: data,
       }
     case 'sibling_offer_closed':
@@ -836,7 +841,9 @@ export function emitNotification(
   })
 }
 
-export async function listNotifications(recipientId: string): Promise<AppNotification[]> {
+export async function listNotifications(
+  recipientId: string,
+): Promise<AppNotification[]> {
   const result = await query(
     `
       SELECT *
@@ -932,8 +939,14 @@ export async function bootstrapUser(
   return { user, wasCreated: true }
 }
 
-export async function createReview(payload: CreateReviewPayload): Promise<Review> {
-  if (!Number.isInteger(payload.rating) || payload.rating < 1 || payload.rating > 5) {
+export async function createReview(
+  payload: CreateReviewPayload,
+): Promise<Review> {
+  if (
+    !Number.isInteger(payload.rating) ||
+    payload.rating < 1 ||
+    payload.rating > 5
+  ) {
     throw new HttpError(400, 'rating must be an integer between 1 and 5')
   }
 
@@ -981,7 +994,9 @@ export async function listReviewsByReviewer(userId: string): Promise<Review[]> {
   return mapRows<Review>(result.rows)
 }
 
-export async function createReport(payload: CreateReportPayload): Promise<Report> {
+export async function createReport(
+  payload: CreateReportPayload,
+): Promise<Report> {
   if (!VALID_REPORT_REASONS.has(payload.reason)) {
     throw new HttpError(400, 'Invalid report reason')
   }
@@ -1018,14 +1033,19 @@ export async function getBlockedUsers(blockerId: string): Promise<string[]> {
   return user.blockedUserIds || []
 }
 
-async function setBlockedUsers(blockerId: string, ids: string[]): Promise<string[]> {
+async function setBlockedUsers(
+  blockerId: string,
+  ids: string[],
+): Promise<string[]> {
   const updated = await dynamicUpdate<User>(
     'users',
     blockerId,
     { blockedUserIds: ids },
     ['blockedUserIds'],
   )
-  return mapUser(updated as unknown as Record<string, unknown>).blockedUserIds || []
+  return (
+    mapUser(updated as unknown as Record<string, unknown>).blockedUserIds || []
+  )
 }
 
 export async function blockUser(
@@ -1041,7 +1061,9 @@ export async function unblockUser(
   blockerId: string,
   blockedId: string,
 ): Promise<string[]> {
-  const current = (await getBlockedUsers(blockerId)).filter((id) => id !== blockedId)
+  const current = (await getBlockedUsers(blockerId)).filter(
+    (id) => id !== blockedId,
+  )
   return setBlockedUsers(blockerId, current)
 }
 
@@ -1201,8 +1223,12 @@ const IMMUTABLE_PUBLISHED_ROUTE_FIELDS: Array<keyof UpdateRoutePayload> = [
   'distanceMeters',
 ]
 
-function hasImmutablePublishedRouteFieldUpdate(data: UpdateRoutePayload): boolean {
-  return IMMUTABLE_PUBLISHED_ROUTE_FIELDS.some((field) => data[field] !== undefined)
+function hasImmutablePublishedRouteFieldUpdate(
+  data: UpdateRoutePayload,
+): boolean {
+  return IMMUTABLE_PUBLISHED_ROUTE_FIELDS.some(
+    (field) => data[field] !== undefined,
+  )
 }
 
 function buildRouteWriteValues(
@@ -1327,7 +1353,10 @@ async function isTripVisibleInWorkQueue(
     return true
   }
 
-  if (trip.status !== 'completed' || !isSameDayReviewWindowOpen(trip.serviceDate)) {
+  if (
+    trip.status !== 'completed' ||
+    !isSameDayReviewWindowOpen(trip.serviceDate)
+  ) {
     return false
   }
 
@@ -1335,7 +1364,9 @@ async function isTripVisibleInWorkQueue(
 }
 
 async function shouldHideRequestForTerminalTrip(
-  request: Pick<SearchRequest, 'routeId' | 'planId'> | Pick<GroupOffer, 'routeId' | 'planId'>,
+  request:
+    | Pick<SearchRequest, 'routeId' | 'planId'>
+    | Pick<GroupOffer, 'routeId' | 'planId'>,
 ): Promise<boolean> {
   const route = await getRoute(request.routeId)
   if (isTerminalTripStatus(route?.status)) {
@@ -1519,9 +1550,10 @@ export async function cancelPlanByClient(
   clientId: string,
 ): Promise<Plan> {
   return withTransaction(async (tx) => {
-    const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [
-      planId,
-    ])
+    const planRes = await tx.query(
+      'SELECT * FROM plans WHERE id = $1 FOR UPDATE',
+      [planId],
+    )
     const plan = toCamelCase<Plan>(planRes.rows[0])
     if (!plan) {
       throw new HttpError(404, 'Plan not found')
@@ -1816,10 +1848,7 @@ export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
       return { updatedOffer: offer, siblings: [], offer }
     }
     if (offer.status !== 'pending') {
-      throw new HttpError(
-        409,
-        `Cannot accept offer in status: ${offer.status}`,
-      )
+      throw new HttpError(409, `Cannot accept offer in status: ${offer.status}`)
     }
 
     const route = await loadRouteForWalletTx(tx, offer.routeId)
@@ -1966,9 +1995,7 @@ export async function createSearchRequest(
       )
     }
 
-    const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [
-      planId,
-    ])
+    const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [planId])
     const tp = toCamelCase<Plan>(tpRes.rows[0])
     if (!tp) {
       throw new HttpError(400, 'Plan not found')
@@ -2251,7 +2278,12 @@ async function cancelPlanTripTx(
 
   const accepted = await findAcceptedPlanMatchTx(executor, plan)
   if (accepted) {
-    const route = await loadRouteForWalletTx(executor, accepted.kind === 'search_request' ? accepted.request.routeId : accepted.offer.routeId)
+    const route = await loadRouteForWalletTx(
+      executor,
+      accepted.kind === 'search_request'
+        ? accepted.request.routeId
+        : accepted.offer.routeId,
+    )
     if (route.walletFeeStatus === 'charged') {
       await refundRouteFeeTx(executor, route, {
         description: 'Route fee refunded on trip cancel',
@@ -2295,17 +2327,19 @@ async function cancelPlanTripTx(
 
 export async function cancelTrip(tripId: string): Promise<Route | Plan> {
   return withTransaction(async (tx) => {
-    const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [
-      tripId,
-    ])
+    const routeRes = await tx.query(
+      'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
+      [tripId],
+    )
     if (routeRes.rows[0]) {
       const route = mapRoute(routeRes.rows[0])
       return cancelRouteTripTx(tx, route)
     }
 
-    const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [
-      tripId,
-    ])
+    const planRes = await tx.query(
+      'SELECT * FROM plans WHERE id = $1 FOR UPDATE',
+      [tripId],
+    )
     const plan = toCamelCase<Plan>(planRes.rows[0])
     if (plan) {
       return cancelPlanTripTx(tx, plan)
@@ -2317,9 +2351,10 @@ export async function cancelTrip(tripId: string): Promise<Route | Plan> {
 
 export async function completeTrip(tripId: string): Promise<Route | Plan> {
   return withTransaction(async (tx) => {
-    const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [
-      tripId,
-    ])
+    const routeRes = await tx.query(
+      'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
+      [tripId],
+    )
     const route = routeRes.rows[0] ? mapRoute(routeRes.rows[0]) : null
     if (route) {
       const accepted = await findAcceptedRouteMatchTx(tx, route.id)
@@ -2340,9 +2375,10 @@ export async function completeTrip(tripId: string): Promise<Route | Plan> {
       return mapRoute(updatedRouteRes.rows[0])
     }
 
-    const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [
-      tripId,
-    ])
+    const planRes = await tx.query(
+      'SELECT * FROM plans WHERE id = $1 FOR UPDATE',
+      [tripId],
+    )
     const plan = planRes.rows[0] ? toCamelCase<Plan>(planRes.rows[0]) : null
     if (plan) {
       const accepted = await findAcceptedPlanMatchTx(tx, plan)
@@ -2426,9 +2462,14 @@ export const listGroupRequestsByDriver = listByColumn<GroupRequest>(
   'group_requests',
   'driver_id',
 )
-const listGroupOffersByClientRaw = listByColumn<GroupOffer>('group_offers', 'client_id')
+const listGroupOffersByClientRaw = listByColumn<GroupOffer>(
+  'group_offers',
+  'client_id',
+)
 
-export async function listGroupOffersByClient(clientId: string): Promise<GroupOffer[]> {
+export async function listGroupOffersByClient(
+  clientId: string,
+): Promise<GroupOffer[]> {
   const offers = await listGroupOffersByClientRaw(clientId)
   const visible = await Promise.all(
     offers.map(async (offer) => ({

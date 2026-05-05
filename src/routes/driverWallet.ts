@@ -43,7 +43,10 @@ function singleQueryValue(value: unknown): string | undefined {
 
 function requireBodyString(value: unknown, fieldName: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new HttpError(400, `Wallet validation error: ${fieldName} is required`)
+    throw new HttpError(
+      400,
+      `Wallet validation error: ${fieldName} is required`,
+    )
   }
   return value
 }
@@ -100,7 +103,10 @@ router.get(
   '/wallet',
   asyncHandler(async (req: Request, res: Response) => {
     const driverId = singleQueryValue(req.query.driverId)
-    requireParam(driverId, 'Wallet validation error: driverId query is required')
+    requireParam(
+      driverId,
+      'Wallet validation error: driverId query is required',
+    )
 
     res.json(await walletStore.getDriverWalletSummary(driverId))
   }),
@@ -111,7 +117,10 @@ router.get(
   '/wallet/transactions',
   asyncHandler(async (req: Request, res: Response) => {
     const driverId = singleQueryValue(req.query.driverId)
-    requireParam(driverId, 'Wallet validation error: driverId query is required')
+    requireParam(
+      driverId,
+      'Wallet validation error: driverId query is required',
+    )
 
     const limit = parsePositiveInteger(
       singleQueryValue(req.query.limit),

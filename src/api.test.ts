@@ -380,10 +380,7 @@ describe('driver wallet routes', () => {
       `/api/driver/wallet?driverId=${DRIVER_001_ID}`,
     )
     assert.equal(summaryRes.status, 200)
-    assert.equal(
-      summaryRes.body.balanceVnd,
-      initialSummary.balanceVnd + 150000,
-    )
+    assert.equal(summaryRes.body.balanceVnd, initialSummary.balanceVnd + 150000)
   })
 })
 
@@ -422,12 +419,20 @@ describe('POST /api/trips/:id/cancel', () => {
     )
     await store.acceptSearchRequest(searchRequest.id)
 
-    const cancelRes = await request(server, 'POST', `/api/trips/${route.id}/cancel`)
+    const cancelRes = await request(
+      server,
+      'POST',
+      `/api/trips/${route.id}/cancel`,
+    )
     assert.equal(cancelRes.status, 200)
     assert.equal(cancelRes.body.status, 'canceled')
     assert.equal(cancelRes.body.walletFeeStatus, 'refunded')
 
-    const summaryRes = await request(server, 'GET', `/api/trips/${route.id}/summary`)
+    const summaryRes = await request(
+      server,
+      'GET',
+      `/api/trips/${route.id}/summary`,
+    )
     assert.equal(summaryRes.status, 200)
     assert.equal(summaryRes.body.accepted, null)
   })
@@ -469,7 +474,11 @@ describe('POST /api/trips/:id/complete', () => {
     )
     await store.acceptSearchRequest(searchRequest.id)
 
-    const completeRes = await request(server, 'POST', `/api/trips/${route.id}/complete`)
+    const completeRes = await request(
+      server,
+      'POST',
+      `/api/trips/${route.id}/complete`,
+    )
     assert.equal(completeRes.status, 200)
     assert.equal(completeRes.body.status, 'completed')
 
@@ -540,9 +549,16 @@ describe('work queue visibility endpoints', () => {
     })
     await store.updateRoute(route.id, { status: 'completed' })
 
-    const res = await request(server, 'GET', `/api/driver/routes?driverId=${DRIVER_001_ID}`)
+    const res = await request(
+      server,
+      'GET',
+      `/api/driver/routes?driverId=${DRIVER_001_ID}`,
+    )
     assert.equal(res.status, 200)
-    assert.equal(res.body.some((item: { id: string }) => item.id === route.id), false)
+    assert.equal(
+      res.body.some((item: { id: string }) => item.id === route.id),
+      false,
+    )
   })
 
   it('keeps same-day completed plans visible until client submits review', async () => {
@@ -616,7 +632,10 @@ describe('work queue visibility endpoints', () => {
       `/api/client/trip-plans?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(res.status, 200)
-    assert.equal(res.body.some((item: { id: string }) => item.id === plan.id), false)
+    assert.equal(
+      res.body.some((item: { id: string }) => item.id === plan.id),
+      false,
+    )
   })
 })
 
@@ -649,7 +668,9 @@ describe('inbox visibility endpoints', () => {
       passengerCount: 1,
     })
     const groups = await store.deriveDemandGroups()
-    const targetGroup = groups.find((group) => group.memberPlanIds.includes(plan.id))
+    const targetGroup = groups.find((group) =>
+      group.memberPlanIds.includes(plan.id),
+    )
     assert.ok(targetGroup)
     const groupRequest = await store.createGroupRequest(
       DRIVER_001_ID,
@@ -664,7 +685,9 @@ describe('inbox visibility endpoints', () => {
     )
     assert.equal(before.status, 200)
     assert.equal(
-      before.body.some((item: { id: string }) => item.id === groupRequest.offers[0]?.id),
+      before.body.some(
+        (item: { id: string }) => item.id === groupRequest.offers[0]?.id,
+      ),
       true,
     )
 
@@ -677,7 +700,9 @@ describe('inbox visibility endpoints', () => {
     )
     assert.equal(after.status, 200)
     assert.equal(
-      after.body.some((item: { id: string }) => item.id === groupRequest.offers[0]?.id),
+      after.body.some(
+        (item: { id: string }) => item.id === groupRequest.offers[0]?.id,
+      ),
       false,
     )
   })
@@ -709,7 +734,11 @@ describe('inbox visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const searchRequest = await store.createSearchRequest(CLIENT_001_ID, plan.id, route.id)
+    const searchRequest = await store.createSearchRequest(
+      CLIENT_001_ID,
+      plan.id,
+      route.id,
+    )
 
     const before = await request(
       server,
@@ -763,7 +792,11 @@ describe('inbox visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const searchRequest = await store.createSearchRequest(CLIENT_001_ID, plan.id, route.id)
+    const searchRequest = await store.createSearchRequest(
+      CLIENT_001_ID,
+      plan.id,
+      route.id,
+    )
 
     const before = await request(
       server,

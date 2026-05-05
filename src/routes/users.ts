@@ -160,8 +160,15 @@ router.get(
 router.post(
   '/users/:id/notifications',
   asyncHandler(async (req: Request, res: Response) => {
-    const { type, title, body, targetRoute, deepLink, requestSource, metadata } =
-      req.body || {}
+    const {
+      type,
+      title,
+      body,
+      targetRoute,
+      deepLink,
+      requestSource,
+      metadata,
+    } = req.body || {}
     requireParam(type, 'type is required')
     requireParam(title, 'title is required')
     requireParam(body, 'body is required')

@@ -6,13 +6,13 @@ import { after, before, describe, it as nodeIt } from 'node:test'
 import { query } from './db/connection'
 import * as matching from './matching'
 import * as store from './store'
-import { Plan, Route } from './types/entities'
 import {
   createDbTest,
   isDbAvailable,
   setupTestDb,
   teardownTestDb,
 } from './test-db'
+import { Plan, Route } from './types/entities'
 
 const it = createDbTest('Postgres unavailable for DB-backed store tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
@@ -302,9 +302,7 @@ describe('cancelPlanByClient', () => {
     await assert.rejects(
       () => store.cancelPlanByClient('plan-001', CLIENT_002_ID),
       (err: unknown) =>
-        err instanceof Error &&
-        'statusCode' in err &&
-        err.statusCode === 403,
+        err instanceof Error && 'statusCode' in err && err.statusCode === 403,
     )
   })
 
@@ -315,9 +313,7 @@ describe('cancelPlanByClient', () => {
     await assert.rejects(
       () => store.cancelPlanByClient('plan-missing', CLIENT_001_ID),
       (err: unknown) =>
-        err instanceof Error &&
-        'statusCode' in err &&
-        err.statusCode === 404,
+        err instanceof Error && 'statusCode' in err && err.statusCode === 404,
     )
   })
 
@@ -335,9 +331,7 @@ describe('cancelPlanByClient', () => {
     await assert.rejects(
       () => store.cancelPlanByClient('plan-001', CLIENT_001_ID),
       (err: unknown) =>
-        err instanceof Error &&
-        'statusCode' in err &&
-        err.statusCode === 409,
+        err instanceof Error && 'statusCode' in err && err.statusCode === 409,
     )
   })
 
@@ -362,9 +356,7 @@ describe('cancelPlanByClient', () => {
     await assert.rejects(
       () => store.cancelPlanByClient(targetOffer.planId, CLIENT_001_ID),
       (err: unknown) =>
-        err instanceof Error &&
-        'statusCode' in err &&
-        err.statusCode === 409,
+        err instanceof Error && 'statusCode' in err && err.statusCode === 409,
     )
   })
 })
@@ -829,7 +821,10 @@ describe('wallet-gated accept and cancel transitions', () => {
 
     const groups = await store.deriveDemandGroups()
     const multiMemberGroup = groups.find((g) => g.memberCount > 1)
-    assert.ok(multiMemberGroup, 'Need a multi-member group for group-offer test')
+    assert.ok(
+      multiMemberGroup,
+      'Need a multi-member group for group-offer test',
+    )
 
     const groupRequest = await store.createGroupRequest(
       DRIVER_001_ID,
