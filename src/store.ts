@@ -9,6 +9,7 @@ import {
 import { HttpError } from './http-error'
 import {
   Car,
+  ClientRequestSource,
   GroupOffer,
   GroupRequest,
   Location,
@@ -115,16 +116,17 @@ function assertEditableUserUpdate(data: UpdateUserPayload): void {
   }
 }
 
+function inferRequestSource(type: string): ClientRequestSource | undefined {
+  if (type.startsWith('group_')) return 'group_offer'
+  if (type.startsWith('search_')) return 'search_request'
+  return undefined
+}
+
 function buildNotificationCopy(
   type: string,
   data: Record<string, unknown>,
 ): Omit<AppNotification, 'id' | 'recipientId' | 'read' | 'readAt' | 'createdAt'> {
-  const requestSource =
-    type.startsWith('group_')
-      ? 'group_offer'
-      : type.startsWith('search_')
-        ? 'search_request'
-        : undefined
+  const requestSource = inferRequestSource(type)
 
   switch (type) {
     case 'group_offer_received':
