@@ -396,6 +396,77 @@ describe('computeMatchedDemandGroups', () => {
       )
     },
   )
+
+  itDb('returns empty array when route has an accepted group offer', async () => {
+    const serviceDate = '2030-05-02'
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:15:00.000Z`,
+          tripPrice: 100000,
+        })
+      ).id,
+    )
+    await store.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-accepted-offer',
+      dropoffWardId: 'ward-accepted-offer-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const beforeAccept = await matching.computeMatchedDemandGroups(route.id)
+    assert.ok(beforeAccept.length > 0)
+
+    const groupRequest = await store.createGroupRequest(
+      DRIVER_001_ID,
+      route.id,
+      beforeAccept[0].demandGroupId,
+    )
+    await store.acceptGroupOffer(groupRequest.offers[0].id)
+
+    assert.deepEqual(await matching.computeMatchedDemandGroups(route.id), [])
+  })
+
+  itDb('returns empty array when route has an accepted route request', async () => {
+    const serviceDate = '2030-05-03'
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:15:00.000Z`,
+          tripPrice: 100000,
+        })
+      ).id,
+    )
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-accepted-route-request',
+      dropoffWardId: 'ward-accepted-route-request-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const routeRequest = await store.createRouteRequest(
+      CLIENT_001_ID,
+      plan.id,
+      route.id,
+    )
+    await store.acceptRouteRequest(routeRequest.id)
+
+    assert.deepEqual(await matching.computeMatchedDemandGroups(route.id), [])
+  })
 })
 
 // ─── 2.5 computeMatchingRoutesFromCriteria ────────────────────────────────────
@@ -408,5 +479,88 @@ describe('computeMatchingRoutesFromCriteria', () => {
     }
     const results = await matching.computeMatchingRoutesFromCriteria(criteria)
     assert.ok(Array.isArray(results))
+  })
+
+  itDb('omits route with accepted group offer', async () => {
+    const serviceDate = '2030-05-04'
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:15:00.000Z`,
+          tripPrice: 100000,
+        })
+      ).id,
+    )
+    await store.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-search-accepted-offer',
+      dropoffWardId: 'ward-search-accepted-offer-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const matches = await matching.computeMatchedDemandGroups(route.id)
+    const groupRequest = await store.createGroupRequest(
+      DRIVER_001_ID,
+      route.id,
+      matches[0].demandGroupId,
+    )
+    await store.acceptGroupOffer(groupRequest.offers[0].id)
+
+    const results = await matching.computeMatchingRoutesFromCriteria({
+      ...BASE_PLAN,
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      clientId: CLIENT_001_ID,
+    })
+    assert.equal(results.some((result) => result.routeId === route.id), false)
+  })
+
+  itDb('omits route with accepted route request', async () => {
+    const serviceDate = '2030-05-05'
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:15:00.000Z`,
+          tripPrice: 100000,
+        })
+      ).id,
+    )
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-search-accepted-route-request',
+      dropoffWardId: 'ward-search-accepted-route-request-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const routeRequest = await store.createRouteRequest(
+      CLIENT_001_ID,
+      plan.id,
+      route.id,
+    )
+    await store.acceptRouteRequest(routeRequest.id)
+
+    const results = await matching.computeMatchingRoutesFromCriteria({
+      ...BASE_PLAN,
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      clientId: CLIENT_001_ID,
+    })
+    assert.equal(results.some((result) => result.routeId === route.id), false)
   })
 })

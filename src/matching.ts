@@ -408,6 +408,8 @@ export async function computeMatchedDemandGroups(
 ): Promise<DemandGroupResult[]> {
   const route = await store.getRoute(routeId)
   if (!route) return []
+  if (route.status !== 'published') return []
+  if (!(await store.isRouteAvailable(routeId))) return []
 
   const driver = await store.getUser(route.driverId)
   const groups = await store.deriveDemandGroups()
@@ -492,6 +494,7 @@ export async function computeMatchingRoutesFromCriteria(
 
   for (const route of allRoutes) {
     if (route.status !== 'published') continue
+    if (!(await store.isRouteAvailable(route.id))) continue
 
     const driver = await store.getUser(route.driverId)
     const routeBearing = computeBearing(route.origin, route.destination)
@@ -515,8 +518,6 @@ export async function computeMatchingRoutesFromCriteria(
       routeBearing,
       planBearing,
     )
-    const routeAvailable = await store.isRouteAvailable(route.id)
-
     results.push({
       routeId: route.id,
       matchTier,
@@ -535,7 +536,7 @@ export async function computeMatchingRoutesFromCriteria(
           }
         : null,
       carId: route.carId,
-      routeAvailable,
+      routeAvailable: true,
       ...scores,
     })
   }

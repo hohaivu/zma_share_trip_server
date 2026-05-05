@@ -4,6 +4,7 @@ import { after, before, describe } from 'node:test'
 
 import { query } from './db/connection'
 import app from './index'
+import * as matching from './matching'
 import * as store from './store'
 import {
   createDbTest,
@@ -186,6 +187,76 @@ describe('POST /api/client/search-routes', () => {
     })
     assert.equal(res.status, 400)
     assert.ok(res.body.message.includes('required'))
+  })
+
+  it('omits route with accepted group offer or route request', async () => {
+    const groupOfferDate = '2030-06-10'
+    const routeRequestDate = '2030-06-11'
+    const createRouteAndPlan = async (serviceDate: string, suffix: string) => {
+      const route = await store.publishRoute(
+        (
+          await store.createRoute(DRIVER_001_ID, {
+            carId: 'car-001',
+            origin: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
+            destination: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
+            serviceDate,
+            departureTime: `${serviceDate}T07:15:00.000Z`,
+            tripPrice: 100000,
+          })
+        ).id,
+      )
+      const plan = await store.createPlan(CLIENT_001_ID, {
+        pickup: { lat: 10.776, lng: 106.701, label: 'Quận 1' },
+        dropoff: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
+        pickupWardId: `ward-api-${suffix}`,
+        dropoffWardId: `ward-api-${suffix}-dest`,
+        serviceDate,
+        departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+        departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+        passengerCount: 1,
+      })
+      return { route, plan }
+    }
+
+    const groupOffer = await createRouteAndPlan(groupOfferDate, 'group-offer')
+    const groupMatches = await matching.computeMatchedDemandGroups(
+      groupOffer.route.id,
+    )
+    const groupRequest = await store.createGroupRequest(
+      DRIVER_001_ID,
+      groupOffer.route.id,
+      groupMatches[0].demandGroupId,
+    )
+    await store.acceptGroupOffer(groupRequest.offers[0].id)
+
+    const routeRequest = await createRouteAndPlan(
+      routeRequestDate,
+      'route-request',
+    )
+    const acceptedRouteRequest = await store.createRouteRequest(
+      CLIENT_001_ID,
+      routeRequest.plan.id,
+      routeRequest.route.id,
+    )
+    await store.acceptRouteRequest(acceptedRouteRequest.id)
+
+    for (const item of [groupOffer, routeRequest]) {
+      const res = await request(server, 'POST', '/api/client/search-routes', {
+        clientId: CLIENT_002_ID,
+        pickup: { lat: 10.776, lng: 106.701, label: 'Quận 1' },
+        dropoff: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
+        pickupWardId: 'ward-search-other-client',
+        dropoffWardId: 'ward-search-other-client-dest',
+        serviceDate: item.route.serviceDate,
+        departureBlockStart: `${item.route.serviceDate}T07:00:00.000Z`,
+        departureBlockEnd: `${item.route.serviceDate}T07:30:00.000Z`,
+      })
+      assert.equal(res.status, 200)
+      assert.equal(
+        res.body.some((result: { routeId: string }) => result.routeId === item.route.id),
+        false,
+      )
+    }
   })
 })
 
