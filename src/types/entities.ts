@@ -14,9 +14,11 @@ export interface Location {
 
 export interface User {
   id: string
+  identityId?: string
   mauid: string
   displayName: string
   avatarUrl: string
+  phone?: string | null
   verificationStatus?: string
   ratingAvg?: number
   tripCount?: number
@@ -26,6 +28,31 @@ export interface User {
   modeSelectedAt?: string | Date
   role?: string
   createdAt?: Date | string
+}
+
+export interface Identity {
+  id: string
+  mauid: string
+  displayName: string
+  avatarUrl: string
+  phone?: string | null
+  preferredMode?: string
+  modeSelectedAt?: string | Date
+  createdAt?: Date | string
+  updatedAt?: Date | string
+}
+
+export interface PersonaMap {
+  driver: User
+  client: User
+}
+
+export interface BootstrapSession {
+  identity: Identity
+  personas: PersonaMap
+  activeMode: string
+  activeUser: User
+  wasCreated: boolean
 }
 
 export interface Car {

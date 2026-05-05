@@ -7,6 +7,10 @@ const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
 const CLIENT_002_ID = 'a1b2c3d4-0004-4000-8000-000000000004'
+const DRIVER_001_CLIENT_ID = 'a1b2c3d4-1001-4000-8000-000000000001'
+const DRIVER_002_CLIENT_ID = 'a1b2c3d4-1002-4000-8000-000000000002'
+const CLIENT_001_DRIVER_ID = 'a1b2c3d4-1003-4000-8000-000000000003'
+const CLIENT_002_DRIVER_ID = 'a1b2c3d4-1004-4000-8000-000000000004'
 
 const SERVICE_DATE_MAR20 = '2030-03-20'
 const SERVICE_DATE_MAR21 = '2030-03-21'
@@ -25,6 +29,7 @@ const WARD_KEY_TD = 'ward-td-binhtho_79'
 const PROVINCE_HCM = '79'
 
 interface SeedUser extends Omit<User, 'createdAt' | 'modeSelectedAt'> {
+  identityId: string
   createdAt: string
   modeSelectedAt: string
 }
@@ -186,6 +191,7 @@ function makePlan(
 const users = [
   makeUser({
     id: DRIVER_001_ID,
+    identityId: 'identity-driver-001',
     mauid: 'zalo-driver-001',
     displayName: 'Tài xế 001',
     ratingAvg: 4.8,
@@ -196,7 +202,18 @@ const users = [
     createdAt: '2026-01-01T00:00:00.000Z',
   }),
   makeUser({
+    id: DRIVER_001_CLIENT_ID,
+    identityId: 'identity-driver-001',
+    mauid: 'zalo-driver-001',
+    displayName: 'Tài xế 001',
+    role: 'client',
+    preferredMode: 'driver',
+    modeSelectedAt: '2026-01-01T00:00:00.000Z',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }),
+  makeUser({
     id: DRIVER_002_ID,
+    identityId: 'identity-driver-002',
     mauid: 'zalo-driver-002',
     displayName: 'Tài xế 002',
     ratingAvg: 4.5,
@@ -207,7 +224,18 @@ const users = [
     createdAt: '2026-01-02T00:00:00.000Z',
   }),
   makeUser({
+    id: DRIVER_002_CLIENT_ID,
+    identityId: 'identity-driver-002',
+    mauid: 'zalo-driver-002',
+    displayName: 'Tài xế 002',
+    role: 'client',
+    preferredMode: 'driver',
+    modeSelectedAt: '2026-01-02T00:00:00.000Z',
+    createdAt: '2026-01-02T00:00:00.000Z',
+  }),
+  makeUser({
     id: CLIENT_001_ID,
+    identityId: 'identity-client-001',
     mauid: 'zalo-client-001',
     displayName: 'Hành khách 001',
     ratingAvg: 4.7,
@@ -218,12 +246,33 @@ const users = [
     createdAt: '2026-01-01T00:00:00.000Z',
   }),
   makeUser({
+    id: CLIENT_001_DRIVER_ID,
+    identityId: 'identity-client-001',
+    mauid: 'zalo-client-001',
+    displayName: 'Hành khách 001',
+    role: 'driver',
+    preferredMode: 'client',
+    modeSelectedAt: '2026-01-01T00:00:00.000Z',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }),
+  makeUser({
     id: CLIENT_002_ID,
+    identityId: 'identity-client-002',
     mauid: 'zalo-client-002',
     displayName: 'Hành khách 002',
     ratingAvg: 4.9,
     tripCount: 30,
     role: 'client',
+    preferredMode: 'client',
+    modeSelectedAt: '2026-01-02T00:00:00.000Z',
+    createdAt: '2026-01-02T00:00:00.000Z',
+  }),
+  makeUser({
+    id: CLIENT_002_DRIVER_ID,
+    identityId: 'identity-client-002',
+    mauid: 'zalo-client-002',
+    displayName: 'Hành khách 002',
+    role: 'driver',
     preferredMode: 'client',
     modeSelectedAt: '2026-01-02T00:00:00.000Z',
     createdAt: '2026-01-02T00:00:00.000Z',
@@ -365,24 +414,36 @@ export async function seed() {
       TRUNCATE TABLE wallet_transactions, wallets, group_offers, route_requests, group_requests, plans, routes, cars, users, saved_locations CASCADE;
     `)
 
-    // Insert users
+    // Insert identities and role-specific personas
     for (const u of users) {
       await client.query(
         `
-        INSERT INTO users (id, mauid, display_name, avatar_url, verification_status, rating_avg, trip_count, role, preferred_mode, mode_selected_at, blocked_user_ids, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        INSERT INTO identities (id, mauid, display_name, avatar_url, preferred_mode, mode_selected_at, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+        ON CONFLICT (mauid) DO NOTHING
       `,
         [
-          u.id,
+          u.identityId,
           u.mauid,
           u.displayName,
           u.avatarUrl,
+          u.preferredMode,
+          u.modeSelectedAt,
+          u.createdAt,
+        ],
+      )
+      await client.query(
+        `
+        INSERT INTO users (id, identity_id, verification_status, rating_avg, trip_count, role, blocked_user_ids, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `,
+        [
+          u.id,
+          u.identityId,
           u.verificationStatus,
           u.ratingAvg,
           u.tripCount,
           u.role,
-          u.preferredMode,
-          u.modeSelectedAt,
           JSON.stringify(u.blockedUserIds),
           u.createdAt,
         ],

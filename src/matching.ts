@@ -197,12 +197,15 @@ async function passesHardFiltersWithBearings(
 
   if (driver) {
     const ids = Array.isArray(clientIds) ? clientIds : []
+    const driverBlockedIds = await store.getBlockedUsers(driver.id)
     for (const clientId of ids) {
-      const client = await store.getUser(clientId)
+      const [client, clientBlockedIds] = await Promise.all([
+        store.getUser(clientId),
+        store.getBlockedUsers(clientId),
+      ])
       if (
         client &&
-        (driver.blockedUserIds?.includes(clientId) ||
-          client.blockedUserIds?.includes(driver.id))
+        (driverBlockedIds.includes(clientId) || clientBlockedIds.includes(driver.id))
       ) {
         return false
       }
@@ -487,6 +490,7 @@ export async function computeMatchedDemandGroups(
 export async function computeMatchingRoutesFromCriteria(
   criteria: SearchRoutesCriteriaPayload,
 ): Promise<MatchingRouteResult[]> {
+  await store.assertUserRole(criteria.clientId, 'client')
   const allRoutes = await store.listAllRoutes()
   const results: MatchingRouteResult[] = []
 
@@ -529,8 +533,10 @@ export async function computeMatchingRoutesFromCriteria(
       driverSummary: driver
         ? {
             id: driver.id,
+            mauid: driver.mauid,
             displayName: driver.displayName,
             avatarUrl: driver.avatarUrl,
+            verificationStatus: driver.verificationStatus,
             ratingAvg: driver.ratingAvg,
             tripCount: driver.tripCount,
           }

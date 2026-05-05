@@ -1206,11 +1206,11 @@ describe('CRUD operations', () => {
     assert.ok(user)
     assert.equal(user.displayName, 'Tài xế 001')
 
-    const updated = await store.setUserMode(DRIVER_001_ID, 'client')
-    assert.equal(updated!.preferredMode, 'client')
-    assert.ok(updated!.modeSelectedAt)
+    const updated = await store.setUserMode(user.identityId!, 'client')
+    assert.equal(updated!.identity.preferredMode, 'client')
+    assert.ok(updated!.identity.modeSelectedAt)
 
-    const mode = await store.getUserMode(DRIVER_001_ID)
+    const mode = await store.getUserMode(user.identityId!)
     assert.equal(mode!.preferredMode, 'client')
   })
 

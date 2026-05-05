@@ -1,5 +1,6 @@
 import {
   AppNotification,
+  BootstrapSession,
   ClientRequestSource,
   Location,
   Plan,
@@ -21,7 +22,7 @@ export interface BootstrapPayload {
 }
 
 export interface BootstrapResult {
-  user: User
+  session: BootstrapSession
   wasCreated: boolean
 }
 
@@ -155,8 +156,10 @@ export interface ScoreFields {
 
 export interface DriverSummary {
   id: string
+  mauid?: string
   displayName: string
   avatarUrl: string
+  verificationStatus?: string
   ratingAvg?: number
   tripCount?: number
 }
@@ -264,7 +267,7 @@ export interface ManualTopUpResult {
 export interface UpdateUserPayload {
   displayName?: string
   avatarUrl?: string
-  role?: string
+  phone?: string | null
   preferredMode?: string | null
 }
 

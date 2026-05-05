@@ -1,8 +1,24 @@
-CREATE TABLE IF NOT EXISTS users (
-  id VARCHAR(255) PRIMARY KEY,
-  zalo_id VARCHAR(255) UNIQUE NOT NULL,
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE TABLE IF NOT EXISTS identities (
+  id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::varchar(255),
+  mauid VARCHAR(255) UNIQUE NOT NULL,
   display_name VARCHAR(255) NOT NULL,
   avatar_url TEXT,
+  phone VARCHAR(50),
+  preferred_mode VARCHAR(50) DEFAULT 'client',
+  mode_selected_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(255) PRIMARY KEY,
+  identity_id VARCHAR(255) REFERENCES identities(id) ON DELETE CASCADE,
+  zalo_id VARCHAR(255),
+  display_name VARCHAR(255),
+  avatar_url TEXT,
+  phone VARCHAR(50),
   verification_status VARCHAR(50) DEFAULT 'unverified',
   rating_avg NUMERIC(3,2) DEFAULT 0.0,
   trip_count INTEGER DEFAULT 0,
@@ -10,7 +26,16 @@ CREATE TABLE IF NOT EXISTS users (
   preferred_mode VARCHAR(50),
   mode_selected_at TIMESTAMP WITH TIME ZONE,
   blocked_user_ids JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT users_identity_role_unique UNIQUE (identity_id, role)
+);
+
+CREATE TABLE IF NOT EXISTS identity_blocks (
+  blocker_identity_id VARCHAR(255) REFERENCES identities(id) ON DELETE CASCADE,
+  blocked_identity_id VARCHAR(255) REFERENCES identities(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (blocker_identity_id, blocked_identity_id),
+  CHECK (blocker_identity_id <> blocked_identity_id)
 );
 
 CREATE TABLE IF NOT EXISTS cars (

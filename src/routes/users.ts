@@ -31,7 +31,7 @@ router.patch(
 
 // POST /api/users/:id/mode — save preferred mode
 router.post(
-  '/users/:id/mode',
+  '/identities/:id/mode',
   asyncHandler(async (req: Request, res: Response) => {
     const { preferredMode } = req.body || {}
     requireParam(preferredMode, 'preferredMode is required')
@@ -50,9 +50,44 @@ router.post(
 
 // GET /api/users/:id/mode — read preferred mode
 router.get(
-  '/users/:id/mode',
+  '/identities/:id/mode',
   asyncHandler(async (req: Request, res: Response) => {
     const result = await store.getUserMode(req.params.id as string)
+    if (!result) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+
+    res.json(result)
+  }),
+)
+
+router.post(
+  '/users/:id/mode',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { preferredMode } = req.body || {}
+    requireParam(preferredMode, 'preferredMode is required')
+
+    const user = await store.getUser(req.params.id as string)
+    if (!user?.identityId) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+    const result = await store.setUserMode(user.identityId, preferredMode)
+    if (!result) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+
+    res.json(result)
+  }),
+)
+
+router.get(
+  '/users/:id/mode',
+  asyncHandler(async (req: Request, res: Response) => {
+    const user = await store.getUser(req.params.id as string)
+    if (!user?.identityId) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+    const result = await store.getUserMode(user.identityId)
     if (!result) {
       return res.status(404).json({ message: 'User not found' })
     }

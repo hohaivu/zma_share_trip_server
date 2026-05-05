@@ -1567,13 +1567,16 @@ describe('POST /api/users/bootstrap', () => {
       avatarUrl: 'https://example.com/avatar.png',
     })
     assert.equal(res.status, 201)
-    assert.ok(res.body.id, 'should return a backend UUID id')
-    assert.notEqual(res.body.id, 'zalo-new-user-001', 'id !== mauid')
-    assert.equal(res.body.mauid, 'zalo-new-user-001')
-    assert.equal(res.body.displayName, 'New Test User')
-    assert.equal(res.body.avatarUrl, 'https://example.com/avatar.png')
-    assert.equal(res.body.preferredMode, 'client')
+    assert.ok(res.body.identity.id, 'should return a backend identity UUID id')
+    assert.notEqual(res.body.identity.id, 'zalo-new-user-001', 'id !== mauid')
+    assert.equal(res.body.identity.mauid, 'zalo-new-user-001')
+    assert.equal(res.body.identity.displayName, 'New Test User')
+    assert.equal(res.body.identity.avatarUrl, 'https://example.com/avatar.png')
+    assert.equal(res.body.identity.preferredMode, 'client')
     assert.equal(res.body.activeMode, 'client')
+    assert.equal(res.body.activeUser.role, 'client')
+    assert.equal(res.body.personas.client.identityId, res.body.identity.id)
+    assert.equal(res.body.personas.driver.identityId, res.body.identity.id)
   })
 
   it('resolves existing user on repeated bootstrap (200)', async () => {
@@ -1592,11 +1595,13 @@ describe('POST /api/users/bootstrap', () => {
       avatarUrl: 'https://example.com/new-avatar.png',
     })
     assert.equal(second.status, 200)
-    assert.equal(second.body.id, first.body.id, 'backend id should be stable')
-    assert.equal(second.body.mauid, 'zalo-repeat-user-001')
-    assert.equal(second.body.displayName, 'Repeat User Updated')
-    assert.equal(second.body.avatarUrl, 'https://example.com/new-avatar.png')
-    assert.equal(second.body.preferredMode, 'client')
+    assert.equal(second.body.identity.id, first.body.identity.id, 'identity id should be stable')
+    assert.equal(second.body.personas.client.id, first.body.personas.client.id, 'client persona id should be stable')
+    assert.equal(second.body.personas.driver.id, first.body.personas.driver.id, 'driver persona id should be stable')
+    assert.equal(second.body.identity.mauid, 'zalo-repeat-user-001')
+    assert.equal(second.body.identity.displayName, 'Repeat User Updated')
+    assert.equal(second.body.identity.avatarUrl, 'https://example.com/new-avatar.png')
+    assert.equal(second.body.identity.preferredMode, 'client')
     assert.equal(second.body.activeMode, 'client')
   })
 
@@ -1638,21 +1643,57 @@ describe('user mode with bootstrapped users', () => {
       displayName: 'Mode Test',
       avatarUrl: '',
     })
-    const userId = bootstrap.body.id
+    const identityId = bootstrap.body.identity.id
+    const userId = bootstrap.body.activeUser.id
 
     // Save mode
-    const saveRes = await request(server, 'POST', `/api/users/${userId}/mode`, {
+    const saveRes = await request(server, 'POST', `/api/identities/${identityId}/mode`, {
       preferredMode: 'driver',
     })
     assert.equal(saveRes.status, 200)
-    assert.equal(saveRes.body.preferredMode, 'driver')
+    assert.equal(saveRes.body.identity.preferredMode, 'driver')
     assert.equal(saveRes.body.activeMode, 'driver')
-    assert.equal(saveRes.body.id, userId)
+    assert.equal(saveRes.body.activeUser.id, bootstrap.body.personas.driver.id)
 
     // Read mode
     const readRes = await request(server, 'GET', `/api/users/${userId}/mode`)
     assert.equal(readRes.status, 200)
     assert.equal(readRes.body.preferredMode, 'driver')
+  })
+})
+
+describe('persona role validation', () => {
+  it('rejects wrong-role personas on driver and client mutations', async () => {
+    const bootstrap = await request(server, 'POST', '/api/users/bootstrap', {
+      mauid: 'zalo-role-validation-001',
+      displayName: 'Role Validation',
+      avatarUrl: '',
+    })
+    assert.equal(bootstrap.status, 201)
+
+    const clientPersonaId = bootstrap.body.personas.client.id
+    const driverPersonaId = bootstrap.body.personas.driver.id
+    const serviceDate = formatLocalDateValue(addDays(new Date(), 1))
+
+    const routeRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: clientPersonaId,
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate,
+      departureTime: `${serviceDate}T07:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    assert.equal(routeRes.status, 403)
+
+    const planRes = await request(server, 'POST', '/api/client/trip-plans', {
+      clientId: driverPersonaId,
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate,
+      departureTime: `${serviceDate}T07:30:00.000Z`,
+      seats: 1,
+    })
+    assert.equal(planRes.status, 403)
   })
 })
 
@@ -1664,7 +1705,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       avatarUrl: 'https://example.com/profile.png',
     })
     assert.equal(bootstrap.status, 201)
-    const userId = bootstrap.body.id
+    const userId = bootstrap.body.activeUser.id
 
     const getRes = await request(server, 'GET', `/api/users/${userId}`)
     assert.equal(getRes.status, 200)
@@ -1677,6 +1718,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     })
     assert.equal(patchRes.status, 200)
     assert.equal(patchRes.body.displayName, 'Profile Test Updated')
+    assert.equal(patchRes.body.mauid, 'zalo-profile-test-001')
     assert.equal(patchRes.body.role, 'client')
 
     const rejectRes = await request(server, 'PATCH', `/api/users/${userId}`, {
@@ -1711,20 +1753,20 @@ describe('user profile, review, report, blocklist, and notification routes', () 
 
     const reviewRes = await request(server, 'POST', '/api/reviews', {
       tripId: route.id,
-      reviewerId: reviewer.body.id,
-      revieweeId: reviewee.body.id,
+      reviewerId: reviewer.body.activeUser.id,
+      revieweeId: reviewee.body.activeUser.id,
       rating: 5,
       comment: 'Great trip',
     })
     assert.equal(reviewRes.status, 201)
-    assert.equal(reviewRes.body.reviewerId, reviewer.body.id)
-    assert.equal(reviewRes.body.revieweeId, reviewee.body.id)
+    assert.equal(reviewRes.body.reviewerId, reviewer.body.activeUser.id)
+    assert.equal(reviewRes.body.revieweeId, reviewee.body.activeUser.id)
     assert.equal(reviewRes.body.rating, 5)
 
     const reportRes = await request(server, 'POST', '/api/reports', {
       tripId: route.id,
-      reporterId: reviewer.body.id,
-      reporteeId: reviewee.body.id,
+      reporterId: reviewer.body.activeUser.id,
+      reporteeId: reviewee.body.activeUser.id,
       reason: 'spam',
       detail: 'Spam in chat',
     })
@@ -1734,7 +1776,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     const reviewsByUser = await request(
       server,
       'GET',
-      `/api/users/${reviewer.body.id}/reviews`,
+      `/api/users/${reviewer.body.activeUser.id}/reviews`,
     )
     assert.equal(reviewsByUser.status, 200)
     assert.equal(reviewsByUser.body.items.length, 1)
@@ -1743,7 +1785,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     const reportsByUser = await request(
       server,
       'GET',
-      `/api/users/${reviewer.body.id}/reports`,
+      `/api/users/${reviewer.body.activeUser.id}/reports`,
     )
     assert.equal(reportsByUser.status, 200)
     assert.equal(reportsByUser.body.items.length, 1)
@@ -1775,8 +1817,8 @@ describe('user profile, review, report, blocklist, and notification routes', () 
 
     const res = await request(server, 'POST', '/api/reviews', {
       tripId: route.id,
-      reviewerId: reviewer.body.id,
-      revieweeId: reviewee.body.id,
+      reviewerId: reviewer.body.activeUser.id,
+      revieweeId: reviewee.body.activeUser.id,
       rating: 5,
       comment: 'Future completed trip',
     })
@@ -1785,8 +1827,8 @@ describe('user profile, review, report, blocklist, and notification routes', () 
 
     const duplicate = await request(server, 'POST', '/api/reviews', {
       tripId: route.id,
-      reviewerId: reviewer.body.id,
-      revieweeId: reviewee.body.id,
+      reviewerId: reviewer.body.activeUser.id,
+      revieweeId: reviewee.body.activeUser.id,
       rating: 4,
       comment: 'Duplicate',
     })
@@ -1803,8 +1845,8 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     })
     const incompleteRes = await request(server, 'POST', '/api/reviews', {
       tripId: incomplete.id,
-      reviewerId: reviewer.body.id,
-      revieweeId: reviewee.body.id,
+      reviewerId: reviewer.body.activeUser.id,
+      revieweeId: reviewee.body.activeUser.id,
       rating: 5,
       comment: 'Not done',
     })
@@ -1824,8 +1866,12 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       displayName: 'Blocked User',
       avatarUrl: '',
     })
-    const ownerId = owner.body.id
-    const blockedId = blocked.body.id
+    const ownerId = owner.body.activeUser.id
+    const blockedId = blocked.body.activeUser.id
+    const blockedPersonaIds = [
+      blocked.body.personas.client.id,
+      blocked.body.personas.driver.id,
+    ].sort()
 
     const blockRes = await request(
       server,
@@ -1834,7 +1880,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       { blockedId },
     )
     assert.equal(blockRes.status, 201)
-    assert.deepEqual(blockRes.body.blockedUserIds, [blockedId])
+    assert.deepEqual([...blockRes.body.blockedUserIds].sort(), blockedPersonaIds)
 
     const blockedListRes = await request(
       server,
@@ -1842,7 +1888,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       `/api/users/${ownerId}/blocked-users`,
     )
     assert.equal(blockedListRes.status, 200)
-    assert.deepEqual(blockedListRes.body.blockedUserIds, [blockedId])
+    assert.deepEqual([...blockedListRes.body.blockedUserIds].sort(), blockedPersonaIds)
 
     const notificationRes = await request(
       server,

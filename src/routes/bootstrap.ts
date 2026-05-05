@@ -21,13 +21,13 @@ router.post(
       if (avatarUrl === undefined)
         throw new HttpError(400, 'avatarUrl is required')
 
-      const { user, wasCreated } = await store.bootstrapUser(
+      const { session, wasCreated } = await store.bootstrapUser(
         mauid,
         displayName,
         avatarUrl,
       )
 
-      res.status(wasCreated ? 201 : 200).json(user)
+      res.status(wasCreated ? 201 : 200).json(session)
     },
   ),
 )

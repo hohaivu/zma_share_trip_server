@@ -12,6 +12,8 @@ import {
   Car,
   ClientRequestSource,
   GroupOffer,
+  BootstrapSession,
+  Identity,
   GroupRequest,
   Location,
   Plan,
@@ -90,6 +92,32 @@ function mapUser(row: Record<string, unknown>): User {
   return user
 }
 
+function mapIdentity(row: Record<string, unknown>): Identity {
+  const identity = toCamelCase<Identity>(row)
+  if (!identity) throw new Error('Cannot map null row to Identity')
+  identity.preferredMode = identity.preferredMode || 'client'
+  return identity
+}
+
+function buildSession(
+  identity: Identity,
+  personas: User[],
+  wasCreated: boolean,
+): BootstrapSession {
+  const driver = personas.find((persona) => persona.role === 'driver')
+  const client = personas.find((persona) => persona.role === 'client')
+  if (!driver || !client) throw new Error('Identity missing required personas')
+  const activeMode = identity.preferredMode === 'driver' ? 'driver' : 'client'
+  const activeUser = activeMode === 'driver' ? driver : client
+  return {
+    identity,
+    personas: { driver, client },
+    activeMode,
+    activeUser: { ...activeUser, activeMode },
+    wasCreated,
+  }
+}
+
 function mapAppNotification(row: Record<string, unknown>): AppNotification {
   const notification = toCamelCase<AppNotification>(row)
   if (!notification) throw new Error('Cannot map null row to AppNotification')
@@ -110,7 +138,7 @@ const VALID_REPORT_REASONS = new Set([
 const EDITABLE_USER_FIELDS = new Set<keyof UpdateUserPayload>([
   'displayName',
   'avatarUrl',
-  'role',
+  'phone',
   'preferredMode',
 ])
 
@@ -668,6 +696,7 @@ async function refundRouteFeeTx(
 export async function getOrCreateDriverWallet(
   driverId: string,
 ): Promise<Wallet> {
+  await assertUserRole(driverId, 'driver')
   return withTransaction((tx) => getOrCreateDriverWalletTx(tx, driverId))
 }
 
@@ -682,6 +711,7 @@ export async function listDriverWalletTransactions(
   driverId: string,
   limit?: number,
 ): Promise<WalletTransaction[]> {
+  await assertUserRole(driverId, 'driver')
   const txLimit = Math.max(
     1,
     Math.min(100, Math.floor(limit ?? DEFAULT_WALLET_TRANSACTION_LIMIT)),
@@ -703,6 +733,7 @@ export async function topUpDriverWallet(
   driverId: string,
   payload: ManualTopUpPayload,
 ): Promise<ManualTopUpResult> {
+  await assertUserRole(driverId, 'driver')
   if (!Number.isFinite(payload.amountVnd) || payload.amountVnd <= 0) {
     throw new HttpError(400, 'Top-up amount must be greater than zero')
   }
@@ -865,8 +896,55 @@ export async function listNotifications(
 // --- User ---
 
 export async function getUser(userId: string): Promise<User | null> {
-  const result = await query('SELECT * FROM users WHERE id = $1', [userId])
+  const result = await query(
+    `
+    SELECT u.*, i.mauid, i.display_name, i.avatar_url, i.phone,
+           i.preferred_mode, i.mode_selected_at
+    FROM users u
+    LEFT JOIN identities i ON i.id = u.identity_id
+    WHERE u.id = $1
+  `,
+    [userId],
+  )
   return result.rows[0] ? mapUser(result.rows[0]) : null
+}
+
+async function getIdentity(identityId: string): Promise<Identity | null> {
+  const result = await query('SELECT * FROM identities WHERE id = $1', [
+    identityId,
+  ])
+  return result.rows[0] ? mapIdentity(result.rows[0]) : null
+}
+
+async function listPersonasByIdentity(identityId: string): Promise<User[]> {
+  const result = await query(
+    `
+    SELECT u.*, i.mauid, i.display_name, i.avatar_url, i.phone,
+           i.preferred_mode, i.mode_selected_at
+    FROM users u
+    JOIN identities i ON i.id = u.identity_id
+    WHERE u.identity_id = $1
+    ORDER BY u.role
+  `,
+    [identityId],
+  )
+  return result.rows.map(mapUser)
+}
+
+export async function assertUserRole(userId: string, role: 'driver' | 'client'): Promise<void> {
+  const user = await getUser(userId)
+  if (!user) throw new HttpError(404, 'User not found')
+  if (user.role !== role) {
+    throw new HttpError(403, `User must be a ${role} persona`)
+  }
+}
+
+export async function getSessionByIdentity(
+  identityId: string,
+): Promise<BootstrapSession | null> {
+  const identity = await getIdentity(identityId)
+  if (!identity) return null
+  return buildSession(identity, await listPersonasByIdentity(identity.id), false)
 }
 
 export async function updateUser(
@@ -874,32 +952,57 @@ export async function updateUser(
   data: UpdateUserPayload,
 ): Promise<User | null> {
   assertEditableUserUpdate(data)
-  const result = await dynamicUpdate<User>(
-    'users',
-    userId,
-    data as Record<string, unknown>,
+  const user = await getUser(userId)
+  if (!user?.identityId) return null
+  const result = await query(
+    `
+    UPDATE identities
+    SET display_name = COALESCE($2, display_name),
+        avatar_url = COALESCE($3, avatar_url),
+        phone = COALESCE($4, phone),
+        preferred_mode = COALESCE($5, preferred_mode),
+        mode_selected_at = CASE WHEN $5::text IS NULL THEN mode_selected_at ELSE NOW() END,
+        updated_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `,
+    [
+      user.identityId,
+      data.displayName ?? null,
+      data.avatarUrl ?? null,
+      data.phone ?? null,
+      data.preferredMode ?? null,
+    ],
   )
-  return result ? mapUser(result as unknown as Record<string, unknown>) : null
+  if (result.rowCount === 0) return null
+  return getUser(userId)
 }
 
 export async function setUserMode(
-  userId: string,
+  identityId: string,
   mode: string,
-): Promise<User | null> {
+): Promise<BootstrapSession | null> {
+  if (mode !== 'driver' && mode !== 'client') {
+    throw new HttpError(400, 'preferredMode must be driver or client')
+  }
   const result = await query(
-    'UPDATE users SET preferred_mode = $1, mode_selected_at = NOW() WHERE id = $2 RETURNING *',
-    [mode, userId],
+    'UPDATE identities SET preferred_mode = $1, mode_selected_at = NOW(), updated_at = NOW() WHERE id = $2 RETURNING *',
+    [mode, identityId],
   )
   if (result.rowCount === 0) return null
-  return mapUser(result.rows[0])
+  return buildSession(
+    mapIdentity(result.rows[0]),
+    await listPersonasByIdentity(identityId),
+    false,
+  )
 }
 
 export async function getUserMode(
-  userId: string,
+  identityId: string,
 ): Promise<{ preferredMode: string; modeSelectedAt: string } | null> {
   const result = await query(
-    'SELECT preferred_mode, mode_selected_at FROM users WHERE id = $1',
-    [userId],
+    'SELECT preferred_mode, mode_selected_at FROM identities WHERE id = $1',
+    [identityId],
   )
   if (result.rowCount === 0) return null
   return toCamelCase<{ preferredMode: string; modeSelectedAt: string }>(
@@ -912,35 +1015,66 @@ export async function bootstrapUser(
   displayName?: string,
   avatarUrl?: string,
 ): Promise<BootstrapResult> {
-  // Look up existing user by mauid
-  const existing = await query('SELECT * FROM users WHERE mauid = $1', [mauid])
-  if (existing.rows.length > 0) {
-    // Update display fields on subsequent bootstrap calls
-    const updated = await query(
-      `UPDATE users SET display_name = $1, avatar_url = $2 WHERE mauid = $3 RETURNING *`,
-      [
-        displayName || existing.rows[0].display_name,
-        avatarUrl ?? existing.rows[0].avatar_url,
-        mauid,
-      ],
-    )
-    const user = mapUser(updated.rows[0])
-    if (!user) throw new Error('Failed to update user')
-    return { user, wasCreated: false }
-  }
+  return withTransaction(async (tx) => {
+    const existing = await tx.query('SELECT * FROM identities WHERE mauid = $1', [
+      mauid,
+    ])
+    const wasCreated = existing.rows.length === 0
+    const identityResult = wasCreated
+      ? await tx.query(
+          `
+          INSERT INTO identities (mauid, display_name, avatar_url, preferred_mode, created_at, updated_at)
+          VALUES ($1, $2, $3, 'client', NOW(), NOW())
+          RETURNING *
+        `,
+          [mauid, displayName || '', avatarUrl || ''],
+        )
+      : await tx.query(
+          `
+          UPDATE identities
+          SET display_name = $1, avatar_url = $2, updated_at = NOW()
+          WHERE mauid = $3
+          RETURNING *
+        `,
+          [
+            displayName || existing.rows[0].display_name,
+            avatarUrl ?? existing.rows[0].avatar_url,
+            mauid,
+          ],
+        )
+    const identity = mapIdentity(identityResult.rows[0])
 
-  // Create new user with auto-generated UUID id
-  const result = await query(
-    `
-    INSERT INTO users (mauid, display_name, avatar_url, role, created_at)
-    VALUES ($1, $2, $3, $4, NOW())
-    RETURNING *
-  `,
-    [mauid, displayName || '', avatarUrl || '', 'client'],
-  )
-  const user = mapUser(result.rows[0])
-  if (!user) throw new Error('Failed to bootstrap user')
-  return { user, wasCreated: true }
+    for (const role of ['driver', 'client']) {
+      await tx.query(
+        `
+        INSERT INTO users (id, identity_id, role, verification_status, rating_avg, trip_count, created_at)
+        VALUES ($1, $2, $3, 'unverified', 0, 0, NOW())
+        ON CONFLICT DO NOTHING
+      `,
+        [generateId(`user-${role}`), identity.id, role],
+      )
+    }
+
+    const personasResult = await tx.query(
+      `
+      SELECT u.*, i.mauid, i.display_name, i.avatar_url, i.phone,
+             i.preferred_mode, i.mode_selected_at
+      FROM users u
+      JOIN identities i ON i.id = u.identity_id
+      WHERE u.identity_id = $1
+    `,
+      [identity.id],
+    )
+
+    return {
+      session: buildSession(
+        identity,
+        personasResult.rows.map(mapUser),
+        wasCreated,
+      ),
+      wasCreated,
+    }
+  })
 }
 
 export async function createReview(
@@ -1030,42 +1164,57 @@ export async function listReportsByReporter(userId: string): Promise<Report[]> {
 
 export async function getBlockedUsers(blockerId: string): Promise<string[]> {
   const user = await getUser(blockerId)
-  if (!user) throw new HttpError(404, 'User not found')
-  return user.blockedUserIds || []
-}
-
-async function setBlockedUsers(
-  blockerId: string,
-  ids: string[],
-): Promise<string[]> {
-  const updated = await dynamicUpdate<User>(
-    'users',
-    blockerId,
-    { blockedUserIds: ids },
-    ['blockedUserIds'],
+  if (!user?.identityId) throw new HttpError(404, 'User not found')
+  const result = await query(
+    `
+      SELECT u.id
+      FROM identity_blocks b
+      JOIN users u ON u.identity_id = b.blocked_identity_id
+      WHERE b.blocker_identity_id = $1
+      ORDER BY u.id
+    `,
+    [user.identityId],
   )
-  return (
-    mapUser(updated as unknown as Record<string, unknown>).blockedUserIds || []
-  )
+  return result.rows.map((row) => String(row.id))
 }
 
 export async function blockUser(
   blockerId: string,
   blockedId: string,
 ): Promise<string[]> {
-  const current = new Set(await getBlockedUsers(blockerId))
-  current.add(blockedId)
-  return setBlockedUsers(blockerId, [...current])
+  const blocker = await getUser(blockerId)
+  const blocked = await getUser(blockedId)
+  if (!blocker?.identityId || !blocked?.identityId) {
+    throw new HttpError(404, 'User not found')
+  }
+  await query(
+    `
+      INSERT INTO identity_blocks (blocker_identity_id, blocked_identity_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT DO NOTHING
+    `,
+    [blocker.identityId, blocked.identityId],
+  )
+  return getBlockedUsers(blockerId)
 }
 
 export async function unblockUser(
   blockerId: string,
   blockedId: string,
 ): Promise<string[]> {
-  const current = (await getBlockedUsers(blockerId)).filter(
-    (id) => id !== blockedId,
+  const blocker = await getUser(blockerId)
+  const blocked = await getUser(blockedId)
+  if (!blocker?.identityId || !blocked?.identityId) {
+    throw new HttpError(404, 'User not found')
+  }
+  await query(
+    `
+      DELETE FROM identity_blocks
+      WHERE blocker_identity_id = $1 AND blocked_identity_id = $2
+    `,
+    [blocker.identityId, blocked.identityId],
   )
-  return setBlockedUsers(blockerId, current)
+  return getBlockedUsers(blockerId)
 }
 
 export async function createNotification(
@@ -1130,6 +1279,7 @@ export async function createCar(
   ownerId: string,
   data: CreateCarPayload,
 ): Promise<Car & { colorHex?: string }> {
+  await assertUserRole(ownerId, 'driver')
   const result = await query(
     `
     INSERT INTO cars (id, owner_id, nickname, plate_number_masked, plate_number_full, brand, model, color, seat_capacity, verification_status, photos, created_at)
@@ -1156,6 +1306,7 @@ export async function createCar(
 export async function listCarsByOwner(
   ownerId: string,
 ): Promise<(Car & { colorHex?: string })[]> {
+  await assertUserRole(ownerId, 'driver')
   const result = await query('SELECT * FROM cars WHERE owner_id = $1', [
     ownerId,
   ])
@@ -1291,6 +1442,7 @@ export async function createRoute(
   driverId: string,
   data: CreateRoutePayload,
 ): Promise<Route> {
+  await assertUserRole(driverId, 'driver')
   assertServiceDateIsNotPast(data.serviceDate)
 
   const fields = data as unknown as Record<string, unknown>
@@ -1500,6 +1652,7 @@ export async function createPlan(
   clientId: string,
   data: CreatePlanPayload,
 ): Promise<Plan> {
+  await assertUserRole(clientId, 'client')
   assertServiceDateIsNotPast(data.serviceDate)
 
   const res = await query(
@@ -1604,6 +1757,7 @@ export async function listRoutesByDriver(
   driverId: string,
   scope: TripListScope = 'active',
 ): Promise<Route[]> {
+  await assertUserRole(driverId, 'driver')
   const routes = await listRoutesByDriverRaw(driverId)
   if (normalizeTripListScope(scope) === 'history') {
     return routes.filter(isTripVisibleInHistory)
@@ -1624,6 +1778,7 @@ export async function listPlansByClient(
   clientId: string,
   scope: TripListScope = 'active',
 ): Promise<Plan[]> {
+  await assertUserRole(clientId, 'client')
   const plans = await listPlansByClientRaw(clientId)
   if (normalizeTripListScope(scope) === 'history') {
     return plans.filter(isTripVisibleInHistory)
@@ -1790,6 +1945,8 @@ export async function createGroupRequest(
   demandGroupId: string,
   note?: string,
 ): Promise<{ groupRequest: GroupRequest; offers: GroupOffer[] }> {
+  await assertUserRole(driverId, 'driver')
+
   const resData = await withTransaction(async (tx) => {
     // Acquire a lock on the route so concurrent requests won't conflict
     const routeRes = await tx.query(
@@ -2025,6 +2182,8 @@ export async function createRouteRequest(
   routeId: string,
   note?: string,
 ): Promise<RouteRequest> {
+  await assertUserRole(clientId, 'client')
+
   const resData = await withTransaction(async (tx) => {
     const existingRes = await tx.query(
       `SELECT * FROM route_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
@@ -2507,13 +2666,22 @@ export async function cancelRouteRequest(
   return updated
 }
 
-export const listGroupRequestsByDriver = listByColumn<GroupRequest>(
+const listGroupRequestsByDriverRaw = listByColumn<GroupRequest>(
   'group_requests',
   'driver_id',
 )
+
+export async function listGroupRequestsByDriver(
+  driverId: string,
+): Promise<GroupRequest[]> {
+  await assertUserRole(driverId, 'driver')
+  return listGroupRequestsByDriverRaw(driverId)
+}
+
 export async function listGroupOffersByClient(
   clientId: string,
 ): Promise<GroupOffer[]> {
+  await assertUserRole(clientId, 'client')
   const offersRes = await query(
     'SELECT * FROM group_offers WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
     [clientId],
@@ -2531,6 +2699,7 @@ export async function listGroupOffersByClient(
 export async function listRouteRequestsByDriver(
   driverId: string,
 ): Promise<RouteRequest[]> {
+  await assertUserRole(driverId, 'driver')
   const requestsRes = await query(
     'SELECT * FROM route_requests WHERE driver_id = $1 ORDER BY created_at DESC, id DESC',
     [driverId],
@@ -2548,6 +2717,7 @@ export async function listRouteRequestsByDriver(
 export async function listRouteRequestsByClient(
   clientId: string,
 ): Promise<RouteRequest[]> {
+  await assertUserRole(clientId, 'client')
   const requestsRes = await query(
     'SELECT * FROM route_requests WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
     [clientId],
