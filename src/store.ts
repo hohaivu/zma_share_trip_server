@@ -2395,6 +2395,7 @@ export async function cancelTrip(tripId: string): Promise<Route | Plan> {
 
 export async function completeTrip(tripId: string): Promise<Route | Plan> {
   return withTransaction(async (tx) => {
+    const completedAt = new Date()
     const routeRes = await tx.query(
       'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
       [tripId],
@@ -2403,18 +2404,20 @@ export async function completeTrip(tripId: string): Promise<Route | Plan> {
     if (route) {
       const accepted = await findAcceptedRouteMatchTx(tx, route.id)
       const updatedRouteRes = await tx.query(
-        "UPDATE routes SET status = 'completed' WHERE id = $1 RETURNING *",
-        [route.id],
+        "UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *",
+        [route.id, completedAt],
       )
       if (accepted?.kind === 'route_request' && accepted.request.planId) {
-        await tx.query("UPDATE plans SET status = 'completed' WHERE id = $1", [
-          accepted.request.planId,
-        ])
+        await tx.query(
+          "UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1",
+          [accepted.request.planId, completedAt],
+        )
       }
       if (accepted?.kind === 'group_offer' && accepted.offer.planId) {
-        await tx.query("UPDATE plans SET status = 'completed' WHERE id = $1", [
-          accepted.offer.planId,
-        ])
+        await tx.query(
+          "UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1",
+          [accepted.offer.planId, completedAt],
+        )
       }
       return mapRoute(updatedRouteRes.rows[0])
     }
@@ -2427,18 +2430,20 @@ export async function completeTrip(tripId: string): Promise<Route | Plan> {
     if (plan) {
       const accepted = await findAcceptedPlanMatchTx(tx, plan)
       const updatedPlanRes = await tx.query(
-        "UPDATE plans SET status = 'completed' WHERE id = $1 RETURNING *",
-        [plan.id],
+        "UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *",
+        [plan.id, completedAt],
       )
       if (accepted?.kind === 'route_request') {
-        await tx.query("UPDATE routes SET status = 'completed' WHERE id = $1", [
-          accepted.request.routeId,
-        ])
+        await tx.query(
+          "UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1",
+          [accepted.request.routeId, completedAt],
+        )
       }
       if (accepted?.kind === 'group_offer') {
-        await tx.query("UPDATE routes SET status = 'completed' WHERE id = $1", [
-          accepted.offer.routeId,
-        ])
+        await tx.query(
+          "UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1",
+          [accepted.offer.routeId, completedAt],
+        )
       }
       const updatedPlan = toCamelCase<Plan>(updatedPlanRes.rows[0])
       if (!updatedPlan) throw new Error('Failed to complete plan')

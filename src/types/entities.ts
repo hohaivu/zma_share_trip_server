@@ -72,6 +72,7 @@ export interface Route {
   emptySeats?: number
   status: string
   notes?: string | null
+  completedAt?: string | null
   createdAt?: string
 }
 
@@ -129,6 +130,7 @@ export interface Plan {
   passengerCount: number
   notes?: string | null
   status: string
+  completedAt?: string | null
   createdAt?: string
 }
 
