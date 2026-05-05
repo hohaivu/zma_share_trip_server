@@ -643,6 +643,15 @@ describe('POST /api/trips/:id/complete', () => {
 
     const linkedPlan = await store.getPlan(plan.id)
     assert.equal(linkedPlan?.status, 'completed')
+
+    const planSummaryRes = await request(
+      server,
+      'GET',
+      `/api/trips/${plan.id}/summary`,
+    )
+    assert.equal(planSummaryRes.status, 200)
+    assert.equal(planSummaryRes.body.accepted?.type, 'route_request')
+    assert.equal(planSummaryRes.body.accepted?.matchedUser?.id, DRIVER_001_ID)
   })
 })
 

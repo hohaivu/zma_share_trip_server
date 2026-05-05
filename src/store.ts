@@ -2561,6 +2561,27 @@ export async function listRouteRequestsByClient(
   )
   return visible.filter((item) => !item.hidden).map((item) => item.request)
 }
+
+export async function listRouteRequestsByPlan(
+  planId: string,
+): Promise<RouteRequest[]> {
+  const requestsRes = await query(
+    'SELECT * FROM route_requests WHERE plan_id = $1 ORDER BY created_at DESC, id DESC',
+    [planId],
+  )
+  return mapRows<RouteRequest>(requestsRes.rows)
+}
+
+export async function listGroupOffersByPlan(
+  planId: string,
+): Promise<GroupOffer[]> {
+  const offersRes = await query(
+    'SELECT * FROM group_offers WHERE plan_id = $1 ORDER BY created_at DESC, id DESC',
+    [planId],
+  )
+  return mapRows<GroupOffer>(offersRes.rows)
+}
+
 export const listRouteRequestsByRoute = listByColumn<RouteRequest>(
   'route_requests',
   'route_id',

@@ -93,8 +93,8 @@ async function findAcceptedForPlan(
     return null
   }
   return findAccepted(
-    () => store.listRouteRequestsByClient(plan.clientId),
-    () => store.listGroupOffersByClient(plan.clientId),
+    () => store.listRouteRequestsByPlan(plan.id),
+    () => store.listGroupOffersByPlan(plan.id),
     plan.id,
     async (accepted) => ({
       type: 'route_request',
