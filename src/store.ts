@@ -81,6 +81,8 @@ function mapUser(row: Record<string, unknown>): User {
   user.ratingAvg = parseNumeric(user.ratingAvg)
   user.tripCount = Number(user.tripCount || 0)
   user.blockedUserIds = parseJsonb<string[]>(row.blocked_user_ids) || []
+  user.preferredMode = user.preferredMode || user.role || 'client'
+  user.activeMode = user.preferredMode
   return user
 }
 
@@ -879,15 +881,13 @@ export async function updateUser(
 export async function setUserMode(
   userId: string,
   mode: string,
-): Promise<{ preferredMode: string; modeSelectedAt: string } | null> {
+): Promise<User | null> {
   const result = await query(
-    'UPDATE users SET preferred_mode = $1, mode_selected_at = NOW() WHERE id = $2 RETURNING preferred_mode, mode_selected_at',
+    'UPDATE users SET preferred_mode = $1, mode_selected_at = NOW() WHERE id = $2 RETURNING *',
     [mode, userId],
   )
   if (result.rowCount === 0) return null
-  return toCamelCase<{ preferredMode: string; modeSelectedAt: string }>(
-    result.rows[0],
-  )
+  return mapUser(result.rows[0])
 }
 
 export async function getUserMode(
@@ -2474,15 +2474,14 @@ export const listGroupRequestsByDriver = listByColumn<GroupRequest>(
   'group_requests',
   'driver_id',
 )
-const listGroupOffersByClientRaw = listByColumn<GroupOffer>(
-  'group_offers',
-  'client_id',
-)
-
 export async function listGroupOffersByClient(
   clientId: string,
 ): Promise<GroupOffer[]> {
-  const offers = await listGroupOffersByClientRaw(clientId)
+  const offersRes = await query(
+    'SELECT * FROM group_offers WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
+    [clientId],
+  )
+  const offers = mapRows<GroupOffer>(offersRes.rows)
   const visible = await Promise.all(
     offers.map(async (offer) => ({
       offer,
@@ -2492,15 +2491,14 @@ export async function listGroupOffersByClient(
   return visible.filter((item) => !item.hidden).map((item) => item.offer)
 }
 
-const listSearchRequestsByDriverRaw = listByColumn<SearchRequest>(
-  'search_requests',
-  'driver_id',
-)
-
 export async function listSearchRequestsByDriver(
   driverId: string,
 ): Promise<SearchRequest[]> {
-  const requests = await listSearchRequestsByDriverRaw(driverId)
+  const requestsRes = await query(
+    'SELECT * FROM search_requests WHERE driver_id = $1 ORDER BY created_at DESC, id DESC',
+    [driverId],
+  )
+  const requests = mapRows<SearchRequest>(requestsRes.rows)
   const visible = await Promise.all(
     requests.map(async (request) => ({
       request,
@@ -2510,15 +2508,14 @@ export async function listSearchRequestsByDriver(
   return visible.filter((item) => !item.hidden).map((item) => item.request)
 }
 
-const listSearchRequestsByClientRaw = listByColumn<SearchRequest>(
-  'search_requests',
-  'client_id',
-)
-
 export async function listSearchRequestsByClient(
   clientId: string,
 ): Promise<SearchRequest[]> {
-  const requests = await listSearchRequestsByClientRaw(clientId)
+  const requestsRes = await query(
+    'SELECT * FROM search_requests WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
+    [clientId],
+  )
+  const requests = mapRows<SearchRequest>(requestsRes.rows)
   const visible = await Promise.all(
     requests.map(async (request) => ({
       request,

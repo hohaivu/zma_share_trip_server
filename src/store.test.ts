@@ -411,6 +411,106 @@ describe('computeVisibilityMode', () => {
 // ─── 6.4 first-accept-wins ────────────────────────────────────────────────────
 
 describe('first-accept-wins', () => {
+  it('lists visible requests in newest-first backend order and preserves conflicts', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const olderRoute = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-06-01',
+          departureTime: '2030-06-01T07:00:00.000Z',
+          tripPrice: 110000,
+        })
+      ).id,
+    )
+    const newerRoute = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-06-02',
+          departureTime: '2030-06-02T07:00:00.000Z',
+          tripPrice: 120000,
+        })
+      ).id,
+    )
+    const olderPlan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-order-old',
+      dropoffWardId: 'ward-order-old-dest',
+      serviceDate: '2030-06-01',
+      departureBlockStart: '2030-06-01T07:00:00.000Z',
+      departureBlockEnd: '2030-06-01T07:30:00.000Z',
+      passengerCount: 1,
+    })
+    const newerPlan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-order-new',
+      dropoffWardId: 'ward-order-new-dest',
+      serviceDate: '2030-06-02',
+      departureBlockStart: '2030-06-02T07:00:00.000Z',
+      departureBlockEnd: '2030-06-02T07:30:00.000Z',
+      passengerCount: 1,
+    })
+
+    const olderRequest = await store.createSearchRequest(
+      CLIENT_001_ID,
+      olderPlan.id,
+      olderRoute.id,
+    )
+    await query('UPDATE search_requests SET created_at = $1 WHERE id = $2', [
+      '2030-06-01T06:00:00.000Z',
+      olderRequest.id,
+    ])
+    const newerRequest = await store.createSearchRequest(
+      CLIENT_001_ID,
+      newerPlan.id,
+      newerRoute.id,
+    )
+    await query('UPDATE search_requests SET created_at = $1 WHERE id = $2', [
+      '2030-06-02T06:00:00.000Z',
+      newerRequest.id,
+    ])
+
+    const clientRequests = await store.listSearchRequestsByClient(CLIENT_001_ID)
+    const driverRequests = await store.listSearchRequestsByDriver(DRIVER_001_ID)
+
+    assert.deepEqual(
+      clientRequests
+        .filter((request) => [olderRequest.id, newerRequest.id].includes(request.id))
+        .map((request) => request.id),
+      [newerRequest.id, olderRequest.id],
+    )
+    assert.deepEqual(
+      driverRequests
+        .filter((request) => [olderRequest.id, newerRequest.id].includes(request.id))
+        .map((request) => request.id),
+      [newerRequest.id, olderRequest.id],
+    )
+
+    await assert.rejects(
+      async () =>
+        await store.createSearchRequest(
+          CLIENT_001_ID,
+          newerPlan.id,
+          newerRoute.id,
+        ),
+      (err: unknown) => {
+        const conflict = err as { statusCode?: number; payload?: { existingRequest?: { id?: string } } }
+        assert.equal(conflict.statusCode, 409)
+        assert.equal(conflict.payload?.existingRequest?.id, newerRequest.id)
+        return true
+      },
+    )
+  })
+
   it('accepting one group offer closes siblings', async () => {
     // Create a group request to get offers
     await setupTestDb() // Reset DB to ensure fresh state for this complex test
@@ -809,6 +909,100 @@ describe('wallet-gated route publish', () => {
 })
 
 describe('wallet-gated accept and cancel transitions', () => {
+  it('canceling a group request closes offers without charging wallet', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-06-03',
+          departureTime: '2030-06-03T07:00:00.000Z',
+          tripPrice: 130000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const groups = await store.deriveDemandGroups()
+    const multiMemberGroup = groups.find((g) => g.memberCount > 1)
+    assert.ok(multiMemberGroup)
+    const request = await store.createGroupRequest(
+      DRIVER_001_ID,
+      route.id,
+      multiMemberGroup!.id,
+    )
+
+    const canceled = await store.cancelGroupRequest(request.groupRequest.id)
+    const offers = await store.listGroupOffersByRoute(route.id)
+    const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
+    const transactions = await store.listDriverWalletTransactions(DRIVER_001_ID, 20)
+
+    assert.equal(canceled.status, 'canceled')
+    assert.equal(
+      offers.every((offer) => offer.status === 'closed'),
+      true,
+    )
+    assert.equal(wallet.balanceVnd, 500000)
+    assert.equal(wallet.reservedBalanceVnd, 5000)
+    assert.equal(transactions.some((tx) => tx.type === 'charge'), false)
+  })
+
+  it('declining and canceling search requests avoid wallet side effects', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const declinedRoute = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-06-04',
+          departureTime: '2030-06-04T07:00:00.000Z',
+          tripPrice: 140000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const canceledRoute = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-06-05',
+          departureTime: '2030-06-05T07:00:00.000Z',
+          tripPrice: 150000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const declinedRequest = await store.createSearchRequest(
+      CLIENT_001_ID,
+      'plan-001',
+      declinedRoute.id,
+    )
+    const canceledRequest = await store.createSearchRequest(
+      CLIENT_002_ID,
+      'plan-002',
+      canceledRoute.id,
+    )
+
+    const declined = await store.declineSearchRequest(declinedRequest.id)
+    const canceled = await store.cancelSearchRequest(canceledRequest.id)
+    const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
+    const transactions = await store.listDriverWalletTransactions(DRIVER_001_ID, 20)
+
+    assert.equal(declined.status, 'declined')
+    assert.equal(canceled.status, 'canceled')
+    assert.equal(wallet.balanceVnd, 500000)
+    assert.equal(wallet.reservedBalanceVnd, 10000)
+    assert.equal(transactions.some((tx) => tx.type === 'charge'), false)
+  })
+
   it('charges the route fee once when accepting a group offer and ignores retries', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return

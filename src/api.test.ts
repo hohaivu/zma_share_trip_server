@@ -1310,6 +1310,8 @@ describe('POST /api/users/bootstrap', () => {
     assert.equal(res.body.mauid, 'zalo-new-user-001')
     assert.equal(res.body.displayName, 'New Test User')
     assert.equal(res.body.avatarUrl, 'https://example.com/avatar.png')
+    assert.equal(res.body.preferredMode, 'client')
+    assert.equal(res.body.activeMode, 'client')
   })
 
   it('resolves existing user on repeated bootstrap (200)', async () => {
@@ -1332,6 +1334,8 @@ describe('POST /api/users/bootstrap', () => {
     assert.equal(second.body.mauid, 'zalo-repeat-user-001')
     assert.equal(second.body.displayName, 'Repeat User Updated')
     assert.equal(second.body.avatarUrl, 'https://example.com/new-avatar.png')
+    assert.equal(second.body.preferredMode, 'client')
+    assert.equal(second.body.activeMode, 'client')
   })
 
   it('returns 400 when mauid is missing', async () => {
@@ -1380,6 +1384,8 @@ describe('user mode with bootstrapped users', () => {
     })
     assert.equal(saveRes.status, 200)
     assert.equal(saveRes.body.preferredMode, 'driver')
+    assert.equal(saveRes.body.activeMode, 'driver')
+    assert.equal(saveRes.body.id, userId)
 
     // Read mode
     const readRes = await request(server, 'GET', `/api/users/${userId}/mode`)

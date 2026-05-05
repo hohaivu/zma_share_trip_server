@@ -22,6 +22,7 @@ export interface User {
   tripCount?: number
   blockedUserIds?: string[]
   preferredMode?: string
+  activeMode?: string
   modeSelectedAt?: string | Date
   role?: string
   createdAt?: Date | string
