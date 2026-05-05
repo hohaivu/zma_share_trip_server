@@ -157,7 +157,7 @@ export interface GroupOffer {
   createdAt?: string
 }
 
-export interface SearchRequest {
+export interface RouteRequest {
   id: string
   clientId: string
   planId: string
@@ -211,7 +211,7 @@ export type NotificationType =
 
 export type ClientRequestSource =
   | 'group_offer'
-  | 'search_request'
+  | 'route_request'
   | 'group_request'
 
 export interface AppNotification {

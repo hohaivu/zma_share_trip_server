@@ -8,11 +8,11 @@ import bootstrapRoute from './routes/bootstrap'
 import carsRoute from './routes/cars'
 import clientMatchesRoute from './routes/clientMatches'
 import clientPlansRoute from './routes/clientPlans'
-import clientSearchRequestsRoute from './routes/clientSearchRequests'
+import clientRouteRequestsRoute from './routes/clientRouteRequests'
 import demandGroupsRoute from './routes/demandGroups'
 import driverMatchesRoute from './routes/driverMatches'
 import driverRoutesRoute from './routes/driverRoutes'
-import driverSearchRequestsRoute from './routes/driverSearchRequests'
+import driverRouteRequestsRoute from './routes/driverRouteRequests'
 import driverWalletRoute from './routes/driverWallet'
 import groupOffersRoute from './routes/groupOffers'
 import groupRequestsRoute from './routes/groupRequests'
@@ -45,14 +45,14 @@ const driverRoutes = [
   groupRequestsRoute,
   demandGroupsRoute,
   driverMatchesRoute,
-  driverSearchRequestsRoute,
+  driverRouteRequestsRoute,
 ]
 
 const clientRoutes = [
   clientPlansRoute,
   groupOffersRoute,
   clientMatchesRoute,
-  clientSearchRequestsRoute,
+  clientRouteRequestsRoute,
 ]
 
 for (const route of sharedRoutes) app.use('/api', route)

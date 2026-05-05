@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express'
 
 import * as store from '../store'
-import { GroupOffer, Plan, Route, SearchRequest } from '../types/entities'
+import { GroupOffer, Plan, Route, RouteRequest } from '../types/entities'
 import { JourneyAcceptedState, JourneySummary } from '../types/payloads'
 import { asyncHandler } from './helpers'
 
@@ -9,7 +9,7 @@ const router = Router()
 
 type AcceptedSearchSummary = Extract<
   JourneyAcceptedState,
-  { type: 'search_request' }
+  { type: 'route_request' }
 >
 type AcceptedGroupSummary = Extract<
   JourneyAcceptedState,
@@ -30,11 +30,11 @@ export function buildJourneySummary<T extends Route | Plan>(
  * Shared helper: find an accepted match (search request or group offer) for an entity.
  */
 async function findAccepted(
-  getSearchReqs: () => Promise<SearchRequest[]>,
+  getSearchReqs: () => Promise<RouteRequest[]>,
   getGroupOffers: () => Promise<GroupOffer[]>,
   planId: string | null,
   buildSearchAccepted: (
-    accepted: SearchRequest,
+    accepted: RouteRequest,
   ) => Promise<AcceptedSearchSummary>,
   buildGroupAccepted: (accepted: GroupOffer) => Promise<AcceptedGroupSummary>,
 ): Promise<JourneyAcceptedState | null> {
@@ -64,11 +64,11 @@ async function findAcceptedForRoute(
     return null
   }
   return findAccepted(
-    () => store.listSearchRequestsByRoute(route.id),
+    () => store.listRouteRequestsByRoute(route.id),
     () => store.listGroupOffersByRoute(route.id),
     null,
     async (accepted) => ({
-      type: 'search_request',
+      type: 'route_request',
       requestId: accepted.id,
       matchedUser: (await store.getUser(accepted.clientId)) || null,
       plan: accepted.planId ? await store.getPlan(accepted.planId) : null,
@@ -93,11 +93,11 @@ async function findAcceptedForPlan(
     return null
   }
   return findAccepted(
-    () => store.listSearchRequestsByClient(plan.clientId),
+    () => store.listRouteRequestsByClient(plan.clientId),
     () => store.listGroupOffersByClient(plan.clientId),
     plan.id,
     async (accepted) => ({
-      type: 'search_request',
+      type: 'route_request',
       requestId: accepted.id,
       matchedUser: (await store.getUser(accepted.driverId)) || null,
       plan: accepted.planId ? await store.getPlan(accepted.planId) : null,

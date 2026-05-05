@@ -362,7 +362,7 @@ export async function seed() {
     await client.query('BEGIN')
 
     await client.query(`
-      TRUNCATE TABLE wallet_transactions, wallets, group_offers, search_requests, group_requests, plans, routes, cars, users, saved_locations CASCADE;
+      TRUNCATE TABLE wallet_transactions, wallets, group_offers, route_requests, group_requests, plans, routes, cars, users, saved_locations CASCADE;
     `)
 
     // Insert users

@@ -8,10 +8,10 @@ WITH DuplicateActive AS (
                PARTITION BY client_id, route_id
                ORDER BY created_at DESC
            ) as rn
-    FROM search_requests
+    FROM route_requests
     WHERE status IN ('pending', 'accepted')
 )
-UPDATE search_requests
+UPDATE route_requests
 SET status = 'closed'
 WHERE id IN (
     SELECT id
@@ -20,6 +20,6 @@ WHERE id IN (
 );
 
 -- 2. Add partial unique index
-CREATE UNIQUE INDEX IF NOT EXISTS search_requests_active_client_route_idx
-ON search_requests (client_id, route_id)
+CREATE UNIQUE INDEX IF NOT EXISTS route_requests_active_client_route_idx
+ON route_requests (client_id, route_id)
 WHERE status IN ('pending', 'accepted');

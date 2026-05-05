@@ -412,7 +412,7 @@ export async function computeMatchedDemandGroups(
   const driver = await store.getUser(route.driverId)
   const groups = await store.deriveDemandGroups()
   const pendingInboundPlanIds = new Set(
-    (await store.listSearchRequestsByRoute(routeId))
+    (await store.listRouteRequestsByRoute(routeId))
       .filter((request) => request.status === 'pending') // only pending; accepted/declined do not suppress matches
       .map((request) => request.planId)
       .filter((planId): planId is string => Boolean(planId)),

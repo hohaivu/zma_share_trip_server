@@ -23,16 +23,16 @@ router.get(
   }),
 )
 
-// GET /api/driver/routes/:id/inbound-search-requests
+// GET /api/driver/routes/:id/inbound-route-requests
 router.get(
-  '/routes/:id/inbound-search-requests',
+  '/routes/:id/inbound-route-requests',
   asyncHandler(async (req: Request, res: Response) => {
     const route = await store.getRoute(req.params.id as string)
     if (!route) {
       return res.status(404).json({ message: 'Route not found' })
     }
 
-    const results = await store.listSearchRequestsByRoute(
+    const results = await store.listRouteRequestsByRoute(
       req.params.id as string,
     )
     res.json(

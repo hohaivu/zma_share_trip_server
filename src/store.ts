@@ -19,7 +19,7 @@ import {
   Review,
   Route,
   SavedLocation,
-  SearchRequest,
+  RouteRequest,
   User,
   Wallet,
   WalletTransaction,
@@ -120,7 +120,7 @@ function assertEditableUserUpdate(data: UpdateUserPayload): void {
 
 function inferRequestSource(type: string): ClientRequestSource | undefined {
   if (type.startsWith('group_')) return 'group_offer'
-  if (type.startsWith('search_')) return 'search_request'
+  if (type.startsWith('route_')) return 'route_request'
   return undefined
 }
 
@@ -135,7 +135,7 @@ function buildNotificationCopy(
 
   switch (type) {
     case 'group_offer_received':
-    case 'search_request_received':
+    case 'route_request_received':
       return {
         type: 'request_received',
         title: 'New request received',
@@ -149,7 +149,7 @@ function buildNotificationCopy(
         metadata: data,
       }
     case 'group_offer_accepted':
-    case 'search_request_accepted':
+    case 'route_request_accepted':
       return {
         type: 'request_accepted',
         title: 'Request accepted',
@@ -160,7 +160,7 @@ function buildNotificationCopy(
         metadata: data,
       }
     case 'group_offer_declined':
-    case 'search_request_declined':
+    case 'route_request_declined':
       return {
         type: 'request_declined',
         title: 'Request declined',
@@ -171,7 +171,7 @@ function buildNotificationCopy(
         metadata: data,
       }
     case 'group_request_canceled':
-    case 'search_request_canceled':
+    case 'route_request_canceled':
       return {
         type: 'request_canceled',
         title: 'Request canceled',
@@ -181,7 +181,7 @@ function buildNotificationCopy(
         requestSource:
           type === 'group_request_canceled'
             ? 'group_request'
-            : 'search_request',
+            : 'route_request',
         metadata: data,
       }
     case 'sibling_offer_closed':
@@ -1365,7 +1365,7 @@ async function isTripVisibleInWorkQueue(
 
 async function shouldHideRequestForTerminalTrip(
   request:
-    | Pick<SearchRequest, 'routeId' | 'planId'>
+    | Pick<RouteRequest, 'routeId' | 'planId'>
     | Pick<GroupOffer, 'routeId' | 'planId'>,
 ): Promise<boolean> {
   const route = await getRoute(request.routeId)
@@ -1650,7 +1650,7 @@ async function listEligiblePublishedPlans(
       WHERE p.status = $1
         AND NOT EXISTS (
           SELECT 1
-          FROM search_requests sr
+          FROM route_requests sr
           WHERE sr.plan_id = p.id AND sr.status = 'accepted'
         )
         AND NOT EXISTS (
@@ -1730,7 +1730,7 @@ export async function getDemandGroupMembers(
 const ROUTE_ACCEPTED_SQL = `
   SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
   UNION ALL
-  SELECT 1 FROM search_requests WHERE route_id = $1 AND status = 'accepted'
+  SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
 `
 
 export async function checkRouteAvailability(
@@ -1896,7 +1896,7 @@ export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
     )
 
     await tx.query(
-      "UPDATE search_requests SET status = 'closed' WHERE route_id = $1 AND status = 'pending'",
+      "UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND status = 'pending'",
       [offer.routeId],
     )
 
@@ -1987,20 +1987,20 @@ export async function cancelGroupRequest(
   return result.greq
 }
 
-export async function createSearchRequest(
+export async function createRouteRequest(
   clientId: string,
   planId: string,
   routeId: string,
   note?: string,
-): Promise<SearchRequest> {
+): Promise<RouteRequest> {
   const resData = await withTransaction(async (tx) => {
     const existingRes = await tx.query(
-      `SELECT * FROM search_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
+      `SELECT * FROM route_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
       [clientId, routeId],
     )
     if (existingRes.rows.length > 0) {
-      const existingReq = toCamelCase<SearchRequest>(existingRes.rows[0])
-      throw new HttpError<{ existingRequest: SearchRequest }>(
+      const existingReq = toCamelCase<RouteRequest>(existingRes.rows[0])
+      throw new HttpError<{ existingRequest: RouteRequest }>(
         409,
         'Duplicate active request already exists',
         { existingRequest: existingReq! },
@@ -2032,7 +2032,7 @@ export async function createSearchRequest(
     try {
       const sreqRes = await tx.query(
         `
-        INSERT INTO search_requests (id, client_id, plan_id, route_id, driver_id, trip_price, note, status, created_at)
+        INSERT INTO route_requests (id, client_id, plan_id, route_id, driver_id, trip_price, note, status, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
         RETURNING *
       `,
@@ -2048,15 +2048,15 @@ export async function createSearchRequest(
         ],
       )
 
-      return { sreq: toCamelCase<SearchRequest>(sreqRes.rows[0]), route }
+      return { sreq: toCamelCase<RouteRequest>(sreqRes.rows[0]), route }
     } catch (e: unknown) {
-      if (isPgUniqueViolation(e, 'search_requests_active_client_route_idx')) {
+      if (isPgUniqueViolation(e, 'route_requests_active_client_route_idx')) {
         const raceRes = await tx.query(
-          `SELECT * FROM search_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
+          `SELECT * FROM route_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
           [clientId, routeId],
         )
-        const existingReqRace = toCamelCase<SearchRequest>(raceRes.rows[0])
-        throw new HttpError<{ existingRequest: SearchRequest }>(
+        const existingReqRace = toCamelCase<RouteRequest>(raceRes.rows[0])
+        throw new HttpError<{ existingRequest: RouteRequest }>(
           409,
           'Duplicate active request already exists (race)',
           { existingRequest: existingReqRace! },
@@ -2068,8 +2068,8 @@ export async function createSearchRequest(
 
   if (!resData.sreq) throw new Error('Failed to create search request')
 
-  emitNotification('search_request_received', resData.route.driverId, {
-    searchRequestId: resData.sreq.id,
+  emitNotification('route_request_received', resData.route.driverId, {
+    routeRequestId: resData.sreq.id,
     clientId,
     routeId,
   })
@@ -2077,15 +2077,15 @@ export async function createSearchRequest(
   return resData.sreq
 }
 
-export async function acceptSearchRequest(
+export async function acceptRouteRequest(
   requestId: string,
-): Promise<SearchRequest> {
+): Promise<RouteRequest> {
   const sreq = await withTransaction(async (tx) => {
     const sreqRes = await tx.query(
-      'SELECT * FROM search_requests WHERE id = $1 FOR UPDATE',
+      'SELECT * FROM route_requests WHERE id = $1 FOR UPDATE',
       [requestId],
     )
-    let sreq = toCamelCase<SearchRequest>(sreqRes.rows[0])
+    let sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
     if (!sreq) throw new HttpError(404, 'Search request not found')
     if (sreq.status === 'accepted') {
       return sreq
@@ -2113,10 +2113,10 @@ export async function acceptSearchRequest(
     }
 
     const updatedRes = await tx.query(
-      "UPDATE search_requests SET status = 'accepted' WHERE id = $1 RETURNING *",
+      "UPDATE route_requests SET status = 'accepted' WHERE id = $1 RETURNING *",
       [requestId],
     )
-    sreq = toCamelCase<SearchRequest>(updatedRes.rows[0])
+    sreq = toCamelCase<RouteRequest>(updatedRes.rows[0])
     if (!sreq) throw new Error('Failed to accept search request')
 
     await chargeRouteFeeTx(tx, route, {
@@ -2128,15 +2128,15 @@ export async function acceptSearchRequest(
       [sreq.routeId],
     )
     await tx.query(
-      "UPDATE search_requests SET status = 'closed' WHERE route_id = $1 AND id != $2 AND status = 'pending'",
+      "UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND id != $2 AND status = 'pending'",
       [sreq.routeId, requestId],
     )
 
     return sreq
   })
 
-  emitNotification('search_request_accepted', sreq.clientId, {
-    searchRequestId: requestId,
+  emitNotification('route_request_accepted', sreq.clientId, {
+    routeRequestId: requestId,
     routeId: sreq.routeId,
     driverId: sreq.driverId,
   })
@@ -2145,7 +2145,7 @@ export async function acceptSearchRequest(
 }
 
 type AcceptedJourneyMatch =
-  | { kind: 'search_request'; request: SearchRequest }
+  | { kind: 'route_request'; request: RouteRequest }
   | { kind: 'group_offer'; offer: GroupOffer }
 
 async function findAcceptedRouteMatchTx(
@@ -2155,15 +2155,15 @@ async function findAcceptedRouteMatchTx(
   const searchRes = await executor.query(
     `
     SELECT *
-    FROM search_requests
+    FROM route_requests
     WHERE route_id = $1 AND status = 'accepted'
     FOR UPDATE
   `,
     [routeId],
   )
-  const acceptedSearch = mapRows<SearchRequest>(searchRes.rows)[0]
+  const acceptedSearch = mapRows<RouteRequest>(searchRes.rows)[0]
   if (acceptedSearch) {
-    return { kind: 'search_request', request: acceptedSearch }
+    return { kind: 'route_request', request: acceptedSearch }
   }
 
   const offerRes = await executor.query(
@@ -2190,17 +2190,17 @@ async function findAcceptedPlanMatchTx(
   const searchRes = await executor.query(
     `
     SELECT *
-    FROM search_requests
+    FROM route_requests
     WHERE client_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted')
     FOR UPDATE
   `,
     [plan.clientId, plan.id],
   )
-  const acceptedSearch = mapRows<SearchRequest>(searchRes.rows).find(
+  const acceptedSearch = mapRows<RouteRequest>(searchRes.rows).find(
     (request) => request.status === 'accepted',
   )
   if (acceptedSearch) {
-    return { kind: 'search_request', request: acceptedSearch }
+    return { kind: 'route_request', request: acceptedSearch }
   }
 
   const offerRes = await executor.query(
@@ -2251,9 +2251,9 @@ async function cancelRouteTripTx(
       )
     }
 
-    if (accepted.kind === 'search_request') {
+    if (accepted.kind === 'route_request') {
       await executor.query(
-        "UPDATE search_requests SET status = 'canceled' WHERE id = $1",
+        "UPDATE route_requests SET status = 'canceled' WHERE id = $1",
         [accepted.request.id],
       )
     } else {
@@ -2292,7 +2292,7 @@ async function cancelPlanTripTx(
   if (accepted) {
     const route = await loadRouteForWalletTx(
       executor,
-      accepted.kind === 'search_request'
+      accepted.kind === 'route_request'
         ? accepted.request.routeId
         : accepted.offer.routeId,
     )
@@ -2315,9 +2315,9 @@ async function cancelPlanTripTx(
       )
     }
 
-    if (accepted.kind === 'search_request') {
+    if (accepted.kind === 'route_request') {
       await executor.query(
-        "UPDATE search_requests SET status = 'canceled' WHERE id = $1",
+        "UPDATE route_requests SET status = 'canceled' WHERE id = $1",
         [accepted.request.id],
       )
     } else {
@@ -2374,7 +2374,7 @@ export async function completeTrip(tripId: string): Promise<Route | Plan> {
         "UPDATE routes SET status = 'completed' WHERE id = $1 RETURNING *",
         [route.id],
       )
-      if (accepted?.kind === 'search_request' && accepted.request.planId) {
+      if (accepted?.kind === 'route_request' && accepted.request.planId) {
         await tx.query("UPDATE plans SET status = 'completed' WHERE id = $1", [
           accepted.request.planId,
         ])
@@ -2398,7 +2398,7 @@ export async function completeTrip(tripId: string): Promise<Route | Plan> {
         "UPDATE plans SET status = 'completed' WHERE id = $1 RETURNING *",
         [plan.id],
       )
-      if (accepted?.kind === 'search_request') {
+      if (accepted?.kind === 'route_request') {
         await tx.query("UPDATE routes SET status = 'completed' WHERE id = $1", [
           accepted.request.routeId,
         ])
@@ -2417,38 +2417,38 @@ export async function completeTrip(tripId: string): Promise<Route | Plan> {
   })
 }
 
-export async function declineSearchRequest(
+export async function declineRouteRequest(
   requestId: string,
-): Promise<SearchRequest> {
-  const sreqRes = await query('SELECT * FROM search_requests WHERE id = $1', [
+): Promise<RouteRequest> {
+  const sreqRes = await query('SELECT * FROM route_requests WHERE id = $1', [
     requestId,
   ])
-  const sreq = toCamelCase<SearchRequest>(sreqRes.rows[0])
+  const sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
   if (!sreq) throw new Error('Search request not found')
   if (sreq.status !== 'pending') {
     throw new Error(`Cannot decline search request in status: ${sreq.status}`)
   }
   const updatedRes = await query(
-    "UPDATE search_requests SET status = 'declined' WHERE id = $1 RETURNING *",
+    "UPDATE route_requests SET status = 'declined' WHERE id = $1 RETURNING *",
     [requestId],
   )
-  const updated = toCamelCase<SearchRequest>(updatedRes.rows[0])
+  const updated = toCamelCase<RouteRequest>(updatedRes.rows[0])
   if (!updated) throw new Error('Failed to decline search request')
 
-  emitNotification('search_request_declined', updated.clientId, {
-    searchRequestId: requestId,
+  emitNotification('route_request_declined', updated.clientId, {
+    routeRequestId: requestId,
   })
 
   return updated
 }
 
-export async function cancelSearchRequest(
+export async function cancelRouteRequest(
   requestId: string,
-): Promise<SearchRequest> {
-  const sreqRes = await query('SELECT * FROM search_requests WHERE id = $1', [
+): Promise<RouteRequest> {
+  const sreqRes = await query('SELECT * FROM route_requests WHERE id = $1', [
     requestId,
   ])
-  const sreq = toCamelCase<SearchRequest>(sreqRes.rows[0])
+  const sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
   if (!sreq) throw new Error('Search request not found')
   if (sreq.status !== 'pending') {
     throw new HttpError(
@@ -2457,14 +2457,14 @@ export async function cancelSearchRequest(
     )
   }
   const updatedRes = await query(
-    "UPDATE search_requests SET status = 'canceled' WHERE id = $1 RETURNING *",
+    "UPDATE route_requests SET status = 'canceled' WHERE id = $1 RETURNING *",
     [requestId],
   )
-  const updated = toCamelCase<SearchRequest>(updatedRes.rows[0])
+  const updated = toCamelCase<RouteRequest>(updatedRes.rows[0])
   if (!updated) throw new Error('Failed to cancel search request')
 
-  emitNotification('search_request_canceled', updated.driverId, {
-    searchRequestId: requestId,
+  emitNotification('route_request_canceled', updated.driverId, {
+    routeRequestId: requestId,
   })
 
   return updated
@@ -2491,14 +2491,14 @@ export async function listGroupOffersByClient(
   return visible.filter((item) => !item.hidden).map((item) => item.offer)
 }
 
-export async function listSearchRequestsByDriver(
+export async function listRouteRequestsByDriver(
   driverId: string,
-): Promise<SearchRequest[]> {
+): Promise<RouteRequest[]> {
   const requestsRes = await query(
-    'SELECT * FROM search_requests WHERE driver_id = $1 ORDER BY created_at DESC, id DESC',
+    'SELECT * FROM route_requests WHERE driver_id = $1 ORDER BY created_at DESC, id DESC',
     [driverId],
   )
-  const requests = mapRows<SearchRequest>(requestsRes.rows)
+  const requests = mapRows<RouteRequest>(requestsRes.rows)
   const visible = await Promise.all(
     requests.map(async (request) => ({
       request,
@@ -2508,14 +2508,14 @@ export async function listSearchRequestsByDriver(
   return visible.filter((item) => !item.hidden).map((item) => item.request)
 }
 
-export async function listSearchRequestsByClient(
+export async function listRouteRequestsByClient(
   clientId: string,
-): Promise<SearchRequest[]> {
+): Promise<RouteRequest[]> {
   const requestsRes = await query(
-    'SELECT * FROM search_requests WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
+    'SELECT * FROM route_requests WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
     [clientId],
   )
-  const requests = mapRows<SearchRequest>(requestsRes.rows)
+  const requests = mapRows<RouteRequest>(requestsRes.rows)
   const visible = await Promise.all(
     requests.map(async (request) => ({
       request,
@@ -2524,8 +2524,8 @@ export async function listSearchRequestsByClient(
   )
   return visible.filter((item) => !item.hidden).map((item) => item.request)
 }
-export const listSearchRequestsByRoute = listByColumn<SearchRequest>(
-  'search_requests',
+export const listRouteRequestsByRoute = listByColumn<RouteRequest>(
+  'route_requests',
   'route_id',
 )
 export const listGroupOffersByRoute = listByColumn<GroupOffer>(

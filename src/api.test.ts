@@ -412,12 +412,12 @@ describe('POST /api/trips/:id/cancel', () => {
       departureBlockEnd: '2030-04-03T07:30:00.000Z',
       passengerCount: 1,
     })
-    const searchRequest = await store.createSearchRequest(
+    const routeRequest = await store.createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       route.id,
     )
-    await store.acceptSearchRequest(searchRequest.id)
+    await store.acceptRouteRequest(routeRequest.id)
 
     const cancelRes = await request(
       server,
@@ -467,12 +467,12 @@ describe('POST /api/trips/:id/complete', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const searchRequest = await store.createSearchRequest(
+    const routeRequest = await store.createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       route.id,
     )
-    await store.acceptSearchRequest(searchRequest.id)
+    await store.acceptRouteRequest(routeRequest.id)
 
     const completeRes = await request(
       server,
@@ -734,7 +734,7 @@ describe('inbox visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const searchRequest = await store.createSearchRequest(
+    const routeRequest = await store.createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       route.id,
@@ -743,11 +743,11 @@ describe('inbox visibility endpoints', () => {
     const before = await request(
       server,
       'GET',
-      `/api/client/search-requests?clientId=${CLIENT_001_ID}`,
+      `/api/client/route-requests?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(before.status, 200)
     assert.equal(
-      before.body.some((item: { id: string }) => item.id === searchRequest.id),
+      before.body.some((item: { id: string }) => item.id === routeRequest.id),
       true,
     )
 
@@ -756,11 +756,11 @@ describe('inbox visibility endpoints', () => {
     const after = await request(
       server,
       'GET',
-      `/api/client/search-requests?clientId=${CLIENT_001_ID}`,
+      `/api/client/route-requests?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(after.status, 200)
     assert.equal(
-      after.body.some((item: { id: string }) => item.id === searchRequest.id),
+      after.body.some((item: { id: string }) => item.id === routeRequest.id),
       false,
     )
   })
@@ -792,7 +792,7 @@ describe('inbox visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const searchRequest = await store.createSearchRequest(
+    const routeRequest = await store.createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       route.id,
@@ -801,11 +801,11 @@ describe('inbox visibility endpoints', () => {
     const before = await request(
       server,
       'GET',
-      `/api/driver/search-requests?driverId=${DRIVER_001_ID}`,
+      `/api/driver/route-requests?driverId=${DRIVER_001_ID}`,
     )
     assert.equal(before.status, 200)
     assert.equal(
-      before.body.some((item: { id: string }) => item.id === searchRequest.id),
+      before.body.some((item: { id: string }) => item.id === routeRequest.id),
       true,
     )
 
@@ -814,11 +814,11 @@ describe('inbox visibility endpoints', () => {
     const after = await request(
       server,
       'GET',
-      `/api/driver/search-requests?driverId=${DRIVER_001_ID}`,
+      `/api/driver/route-requests?driverId=${DRIVER_001_ID}`,
     )
     assert.equal(after.status, 200)
     assert.equal(
-      after.body.some((item: { id: string }) => item.id === searchRequest.id),
+      after.body.some((item: { id: string }) => item.id === routeRequest.id),
       false,
     )
   })
@@ -897,18 +897,18 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       true,
     )
 
-    const searchRequestRes = await request(
+    const routeRequestRes = await request(
       server,
       'POST',
-      '/api/client/search-requests',
+      '/api/client/route-requests',
       {
         clientId: CLIENT_001_ID,
         planId: planRes.body.id,
         routeId: otherRouteRes.body.id,
       },
     )
-    assert.equal(searchRequestRes.status, 201)
-    await store.acceptSearchRequest(searchRequestRes.body.id)
+    assert.equal(routeRequestRes.status, 201)
+    await store.acceptRouteRequest(routeRequestRes.body.id)
 
     const suppressed = await request(
       server,
@@ -947,7 +947,7 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
   })
 })
 
-describe('GET /api/driver/routes/:id/inbound-search-requests', () => {
+describe('GET /api/driver/routes/:id/inbound-route-requests', () => {
   it('returns only pending inbound search requests for driver detail reads', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return
@@ -966,24 +966,24 @@ describe('GET /api/driver/routes/:id/inbound-search-requests', () => {
       ).id,
     )
 
-    const acceptedRequest = await store.createSearchRequest(
+    const acceptedRequest = await store.createRouteRequest(
       CLIENT_001_ID,
       'plan-001',
       route.id,
     )
-    await store.acceptSearchRequest(acceptedRequest.id)
+    await store.acceptRouteRequest(acceptedRequest.id)
 
-    const closedRequest = await store.createSearchRequest(
+    const closedRequest = await store.createRouteRequest(
       CLIENT_002_ID,
       'plan-002',
       route.id,
     )
-    await query('UPDATE search_requests SET status = $1 WHERE id = $2', [
+    await query('UPDATE route_requests SET status = $1 WHERE id = $2', [
       'closed',
       closedRequest.id,
     ])
 
-    const pendingRequest = await store.createSearchRequest(
+    const pendingRequest = await store.createRouteRequest(
       CLIENT_002_ID,
       'plan-002',
       route.id,
@@ -992,7 +992,7 @@ describe('GET /api/driver/routes/:id/inbound-search-requests', () => {
     const res = await request(
       server,
       'GET',
-      `/api/driver/routes/${route.id}/inbound-search-requests`,
+      `/api/driver/routes/${route.id}/inbound-route-requests`,
     )
 
     assert.equal(res.status, 200)
@@ -1006,7 +1006,7 @@ describe('GET /api/driver/routes/:id/inbound-search-requests', () => {
   })
 })
 
-describe('POST /api/client/search-requests', () => {
+describe('POST /api/client/route-requests', () => {
   it('creates a search request with a linked plan', async () => {
     // Create a fresh route so it's available
     const routeRes = await request(server, 'POST', '/api/driver/routes', {
@@ -1032,7 +1032,7 @@ describe('POST /api/client/search-requests', () => {
       passengerCount: 1,
     })
 
-    const res = await request(server, 'POST', '/api/client/search-requests', {
+    const res = await request(server, 'POST', '/api/client/route-requests', {
       clientId: CLIENT_001_ID,
       planId: tpRes.body.id,
       routeId: routeRes.body.id,
@@ -1063,7 +1063,7 @@ describe('POST /api/client/search-requests', () => {
       passengerCount: 1,
     })
 
-    const req1 = await request(server, 'POST', '/api/client/search-requests', {
+    const req1 = await request(server, 'POST', '/api/client/route-requests', {
       clientId: CLIENT_001_ID,
       planId: plan.id,
       routeId,
@@ -1071,7 +1071,7 @@ describe('POST /api/client/search-requests', () => {
     assert.equal(req1.status, 201)
     assert.equal(req1.body.status, 'pending')
 
-    const req2 = await request(server, 'POST', '/api/client/search-requests', {
+    const req2 = await request(server, 'POST', '/api/client/route-requests', {
       clientId: CLIENT_001_ID,
       planId: plan.id,
       routeId,
@@ -1110,7 +1110,7 @@ describe('POST /api/client/search-requests', () => {
       const initialRequest = await request(
         server,
         'POST',
-        '/api/client/search-requests',
+        '/api/client/route-requests',
         {
           clientId: CLIENT_001_ID,
           planId: plan.id,
@@ -1119,7 +1119,7 @@ describe('POST /api/client/search-requests', () => {
       )
       assert.equal(initialRequest.status, 201)
 
-      await query('UPDATE search_requests SET status = $1 WHERE id = $2', [
+      await query('UPDATE route_requests SET status = $1 WHERE id = $2', [
         terminalStatus,
         initialRequest.body.id,
       ])
@@ -1127,7 +1127,7 @@ describe('POST /api/client/search-requests', () => {
       const resend = await request(
         server,
         'POST',
-        '/api/client/search-requests',
+        '/api/client/route-requests',
         {
           clientId: CLIENT_001_ID,
           planId: plan.id,
@@ -1152,7 +1152,7 @@ describe('POST /api/client/search-requests', () => {
       tripPrice: 100000,
     })
 
-    const res = await request(server, 'POST', '/api/client/search-requests', {
+    const res = await request(server, 'POST', '/api/client/route-requests', {
       clientId: CLIENT_001_ID,
       routeId: routeRes.body.id,
       note: 'Hello without plan',
@@ -1171,7 +1171,7 @@ describe('POST /api/client/search-requests', () => {
       tripPrice: 100000,
     })
 
-    const res = await request(server, 'POST', '/api/client/search-requests', {
+    const res = await request(server, 'POST', '/api/client/route-requests', {
       clientId: CLIENT_001_ID,
       planId: 'plan-001',
       routeId: routeRes.body.id,
@@ -1191,7 +1191,7 @@ describe('POST /api/client/search-requests', () => {
       tripPrice: 100000,
     })
 
-    const res = await request(server, 'POST', '/api/client/search-requests', {
+    const res = await request(server, 'POST', '/api/client/route-requests', {
       clientId: CLIENT_001_ID,
       planId: 'plan-missing',
       routeId: routeRes.body.id,

@@ -6,7 +6,7 @@ import {
   Report,
   Review,
   Route,
-  SearchRequest,
+  RouteRequest,
   User,
   Wallet,
   WalletFeeStatus,
@@ -215,8 +215,8 @@ export interface DemandGroupSummary {
 }
 
 // -- Shared Journey Summary --
-export interface AcceptedSearchRequestSummary {
-  type: 'search_request'
+export interface AcceptedRouteRequestSummary {
+  type: 'route_request'
   requestId: string
   tripPrice: number
   status: string
@@ -234,7 +234,7 @@ export interface AcceptedGroupOfferSummary {
 }
 
 export type JourneyAcceptedState =
-  | AcceptedSearchRequestSummary
+  | AcceptedRouteRequestSummary
   | AcceptedGroupOfferSummary
 
 export type JourneySummary = (Route | Plan) & {
@@ -308,7 +308,7 @@ export interface RouteFeeSnapshot {
 
 // -- Conflicts --
 export interface DuplicateRequestConflict {
-  existingRequest: SearchRequest
+  existingRequest: RouteRequest
 }
 
 // -- Car Payloads --

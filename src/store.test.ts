@@ -113,12 +113,12 @@ describe('deriveDemandGroups', () => {
     assert.equal(target.memberCount, 2)
     assert.equal(target.totalPassengerCount, 3)
 
-    const request = await store.createSearchRequest(
+    const request = await store.createRouteRequest(
       CLIENT_001_ID,
       'plan-001',
       'route-002',
     )
-    await store.acceptSearchRequest(request.id)
+    await store.acceptRouteRequest(request.id)
 
     const after = await store.deriveDemandGroups()
     const recalculated = after.find((group) => group.id === target.id)
@@ -174,12 +174,12 @@ describe('deriveDemandGroups', () => {
       true,
     )
 
-    const request = await store.createSearchRequest(
+    const request = await store.createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       acceptedElsewhereRoute.id,
     )
-    await store.acceptSearchRequest(request.id)
+    await store.acceptRouteRequest(request.id)
 
     const after = await matching.computeMatchedDemandGroups(targetRoute.id)
     assert.equal(
@@ -234,12 +234,12 @@ describe('deriveDemandGroups', () => {
       ).id,
     )
 
-    const request = await store.createSearchRequest(
+    const request = await store.createRouteRequest(
       CLIENT_001_ID,
       'plan-001',
       route.id,
     )
-    await store.acceptSearchRequest(request.id)
+    await store.acceptRouteRequest(request.id)
 
     const suppressed = await store.deriveDemandGroups()
     const suppressedTarget = suppressed.find((group) => group.id === target.id)
@@ -321,12 +321,12 @@ describe('cancelPlanByClient', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const request = await store.createSearchRequest(
+    const request = await store.createRouteRequest(
       CLIENT_001_ID,
       'plan-001',
       'route-002',
     )
-    await store.acceptSearchRequest(request.id)
+    await store.acceptRouteRequest(request.id)
 
     await assert.rejects(
       () => store.cancelPlanByClient('plan-001', CLIENT_001_ID),
@@ -460,27 +460,27 @@ describe('first-accept-wins', () => {
       passengerCount: 1,
     })
 
-    const olderRequest = await store.createSearchRequest(
+    const olderRequest = await store.createRouteRequest(
       CLIENT_001_ID,
       olderPlan.id,
       olderRoute.id,
     )
-    await query('UPDATE search_requests SET created_at = $1 WHERE id = $2', [
+    await query('UPDATE route_requests SET created_at = $1 WHERE id = $2', [
       '2030-06-01T06:00:00.000Z',
       olderRequest.id,
     ])
-    const newerRequest = await store.createSearchRequest(
+    const newerRequest = await store.createRouteRequest(
       CLIENT_001_ID,
       newerPlan.id,
       newerRoute.id,
     )
-    await query('UPDATE search_requests SET created_at = $1 WHERE id = $2', [
+    await query('UPDATE route_requests SET created_at = $1 WHERE id = $2', [
       '2030-06-02T06:00:00.000Z',
       newerRequest.id,
     ])
 
-    const clientRequests = await store.listSearchRequestsByClient(CLIENT_001_ID)
-    const driverRequests = await store.listSearchRequestsByDriver(DRIVER_001_ID)
+    const clientRequests = await store.listRouteRequestsByClient(CLIENT_001_ID)
+    const driverRequests = await store.listRouteRequestsByDriver(DRIVER_001_ID)
 
     assert.deepEqual(
       clientRequests
@@ -497,7 +497,7 @@ describe('first-accept-wins', () => {
 
     await assert.rejects(
       async () =>
-        await store.createSearchRequest(
+        await store.createRouteRequest(
           CLIENT_001_ID,
           newerPlan.id,
           newerRoute.id,
@@ -599,7 +599,7 @@ describe('route exclusivity', () => {
 
   it('accepted search request blocks group offer acceptance', async () => {
     // Create a search request for route-002
-    const sreq = await store.createSearchRequest(
+    const sreq = await store.createRouteRequest(
       CLIENT_002_ID,
       'plan-004',
       'route-002',
@@ -607,7 +607,7 @@ describe('route exclusivity', () => {
     assert.equal(sreq.status, 'pending')
 
     // Accept it
-    const accepted = await store.acceptSearchRequest(sreq.id)
+    const accepted = await store.acceptRouteRequest(sreq.id)
     assert.equal(accepted.status, 'accepted')
     assert.equal(await store.isRouteAvailable('route-002'), false)
   })
@@ -622,7 +622,7 @@ describe('search request plan linkage', () => {
   })
 
   it('accepts grouped plan linkage when provided', async () => {
-    const sreq = await store.createSearchRequest(
+    const sreq = await store.createRouteRequest(
       CLIENT_001_ID,
       'plan-001',
       'route-002',
@@ -634,7 +634,7 @@ describe('search request plan linkage', () => {
   it('rejects unknown plan linkage', async () => {
     await assert.rejects(
       async () =>
-        await store.createSearchRequest(
+        await store.createRouteRequest(
           CLIENT_001_ID,
           'plan-missing',
           'route-002',
@@ -647,7 +647,7 @@ describe('search request plan linkage', () => {
   it('rejects search requests without plan linkage', async () => {
     await assert.rejects(
       async () =>
-        await store.createSearchRequest(
+        await store.createRouteRequest(
           CLIENT_001_ID,
           null as unknown as string,
           'route-002',
@@ -674,10 +674,10 @@ describe('single active search request invariant', () => {
       tripPrice: 100000,
     })
 
-    await query('DROP INDEX IF EXISTS search_requests_active_client_route_idx')
+    await query('DROP INDEX IF EXISTS route_requests_active_client_route_idx')
     await query(
       `
-        INSERT INTO search_requests (
+        INSERT INTO route_requests (
           id,
           client_id,
           plan_id,
@@ -729,13 +729,13 @@ describe('single active search request invariant', () => {
         __dirname,
         'db',
         'migrations',
-        '06_single_active_search_request.sql',
+        '06_single_active_route_request.sql',
       ),
       'utf8',
     )
     await query(migrationSql)
 
-    const requests = await store.listSearchRequestsByRoute(route.id)
+    const requests = await store.listRouteRequestsByRoute(route.id)
     const olderRequest = requests.find(
       (request) => request.id === 'sreq-mig-old',
     )
@@ -752,7 +752,7 @@ describe('single active search request invariant', () => {
   })
 
   it('rejects duplicate active search requests for same route and client', async () => {
-    const sreq1 = await store.createSearchRequest(
+    const sreq1 = await store.createRouteRequest(
       CLIENT_001_ID,
       'plan-001',
       'route-002',
@@ -761,7 +761,7 @@ describe('single active search request invariant', () => {
 
     await assert.rejects(
       async () =>
-        await store.createSearchRequest(CLIENT_001_ID, 'plan-001', 'route-002'),
+        await store.createRouteRequest(CLIENT_001_ID, 'plan-001', 'route-002'),
       (err: unknown) => {
         assert.ok(err && typeof err === 'object')
         const conflictError = err as {
@@ -787,18 +787,18 @@ describe('single active search request invariant', () => {
         departureTime: `2030-04-2${terminalStatus.length}T07:00:00.000Z`,
         tripPrice: 100000,
       })
-      const initialRequest = await store.createSearchRequest(
+      const initialRequest = await store.createRouteRequest(
         CLIENT_001_ID,
         'plan-001',
         route.id,
       )
 
-      await query('UPDATE search_requests SET status = $1 WHERE id = $2', [
+      await query('UPDATE route_requests SET status = $1 WHERE id = $2', [
         terminalStatus,
         initialRequest.id,
       ])
 
-      const resentRequest = await store.createSearchRequest(
+      const resentRequest = await store.createRouteRequest(
         CLIENT_001_ID,
         'plan-001',
         route.id,
@@ -980,19 +980,19 @@ describe('wallet-gated accept and cancel transitions', () => {
         })
       ).id,
     )
-    const declinedRequest = await store.createSearchRequest(
+    const declinedRequest = await store.createRouteRequest(
       CLIENT_001_ID,
       'plan-001',
       declinedRoute.id,
     )
-    const canceledRequest = await store.createSearchRequest(
+    const canceledRequest = await store.createRouteRequest(
       CLIENT_002_ID,
       'plan-002',
       canceledRoute.id,
     )
 
-    const declined = await store.declineSearchRequest(declinedRequest.id)
-    const canceled = await store.cancelSearchRequest(canceledRequest.id)
+    const declined = await store.declineRouteRequest(declinedRequest.id)
+    const canceled = await store.cancelRouteRequest(canceledRequest.id)
     const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
     const transactions = await store.listDriverWalletTransactions(DRIVER_001_ID, 20)
 
@@ -1074,14 +1074,14 @@ describe('wallet-gated accept and cancel transitions', () => {
       ).id,
     )
 
-    const request = await store.createSearchRequest(
+    const request = await store.createRouteRequest(
       CLIENT_001_ID,
       'plan-001',
       route.id,
     )
 
-    const accepted = await store.acceptSearchRequest(request.id)
-    const retry = await store.acceptSearchRequest(request.id)
+    const accepted = await store.acceptRouteRequest(request.id)
+    const retry = await store.acceptRouteRequest(request.id)
     const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
     const transactions = await store.listDriverWalletTransactions(
       DRIVER_001_ID,
@@ -1167,16 +1167,16 @@ describe('wallet-gated accept and cancel transitions', () => {
       ).id,
     )
 
-    const request = await store.createSearchRequest(
+    const request = await store.createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       route.id,
     )
-    await store.acceptSearchRequest(request.id)
+    await store.acceptRouteRequest(request.id)
 
     const canceled = await store.cancelTrip(plan.id)
     const wallet = await store.getDriverWalletSummary(DRIVER_001_ID)
-    const requests = await store.listSearchRequestsByRoute(route.id)
+    const requests = await store.listRouteRequestsByRoute(route.id)
     const canceledRequest = requests.find((item) => item.id === request.id)
     const transactions = await store.listDriverWalletTransactions(
       DRIVER_001_ID,

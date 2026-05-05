@@ -17,11 +17,11 @@ BEGIN
     ALTER TABLE group_offers RENAME COLUMN trip_plan_id TO plan_id;
   END IF;
 
-  -- Rename FK column in search_requests
+  -- Rename FK column in route_requests
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'search_requests' AND column_name = 'trip_plan_id'
+    WHERE table_name = 'route_requests' AND column_name = 'trip_plan_id'
   ) THEN
-    ALTER TABLE search_requests RENAME COLUMN trip_plan_id TO plan_id;
+    ALTER TABLE route_requests RENAME COLUMN trip_plan_id TO plan_id;
   END IF;
 END $$;

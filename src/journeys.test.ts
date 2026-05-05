@@ -54,7 +54,7 @@ const BASE_PLAN: Plan = {
 describe('buildJourneySummary', () => {
   it('preserves a route payload and adds accepted search-request state', () => {
     const accepted: JourneyAcceptedState = {
-      type: 'search_request',
+      type: 'route_request',
       requestId: 'sreq-001',
       tripPrice: 150000,
       status: 'accepted',
@@ -66,7 +66,7 @@ describe('buildJourneySummary', () => {
 
     assert.equal(summary.id, BASE_ROUTE.id)
     assert.equal(summary.departureTime, BASE_ROUTE.departureTime)
-    assert.equal(summary.accepted?.type, 'search_request')
+    assert.equal(summary.accepted?.type, 'route_request')
     assert.equal(summary.accepted?.requestId, 'sreq-001')
     assert.equal(summary.accepted?.plan?.id, BASE_PLAN.id)
   })
