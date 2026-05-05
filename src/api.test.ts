@@ -111,6 +111,94 @@ describe('POST /api/client/trip-plans', () => {
     const res = await request(server, 'POST', '/api/client/trip-plans', {})
     assert.equal(res.status, 400)
   })
+
+  it('rejects creating or updating a plan with a past service date', async () => {
+    const pastDate = formatLocalDateValue(addDays(new Date(), -1))
+    const futureDate = formatLocalDateValue(addDays(new Date(), 7))
+
+    const createRes = await request(server, 'POST', '/api/client/trip-plans', {
+      clientId: CLIENT_001_ID,
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-plan-past-create',
+      dropoffWardId: 'ward-plan-past-create-dest',
+      serviceDate: pastDate,
+      departureBlockStart: `${pastDate}T08:00:00.000Z`,
+      departureBlockEnd: `${pastDate}T08:30:00.000Z`,
+      passengerCount: 1,
+    })
+    assert.equal(createRes.status, 400)
+    assert.equal(createRes.body.message, 'serviceDate cannot be in the past')
+
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-plan-past-update',
+      dropoffWardId: 'ward-plan-past-update-dest',
+      serviceDate: futureDate,
+      departureBlockStart: `${futureDate}T08:00:00.000Z`,
+      departureBlockEnd: `${futureDate}T08:30:00.000Z`,
+      passengerCount: 1,
+    })
+
+    const updateRes = await request(
+      server,
+      'PUT',
+      `/api/client/trip-plans/${plan.id}`,
+      {
+        clientId: CLIENT_001_ID,
+        serviceDate: pastDate,
+        departureBlockStart: `${pastDate}T08:00:00.000Z`,
+        departureBlockEnd: `${pastDate}T08:30:00.000Z`,
+      },
+    )
+    assert.equal(updateRes.status, 400)
+    assert.equal(updateRes.body.message, 'serviceDate cannot be in the past')
+  })
+})
+
+describe('POST /api/driver/routes', () => {
+  it('rejects creating, updating, or publishing a route with a past service date', async () => {
+    const pastDate = formatLocalDateValue(addDays(new Date(), -1))
+    const futureDate = formatLocalDateValue(addDays(new Date(), 7))
+
+    const createRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: DRIVER_001_ID,
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: pastDate,
+      departureTime: `${pastDate}T07:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    assert.equal(createRes.status, 400)
+    assert.equal(createRes.body.message, 'serviceDate cannot be in the past')
+
+    const route = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate: futureDate,
+      departureTime: `${futureDate}T07:00:00.000Z`,
+      tripPrice: 100000,
+    })
+
+    const updateRes = await request(server, 'PUT', `/api/driver/routes/${route.id}`, {
+      driverId: DRIVER_001_ID,
+      serviceDate: pastDate,
+      departureTime: `${pastDate}T07:00:00.000Z`,
+    })
+    assert.equal(updateRes.status, 400)
+    assert.equal(updateRes.body.message, 'serviceDate cannot be in the past')
+
+    await query('UPDATE routes SET service_date = $1 WHERE id = $2', [pastDate, route.id])
+    const publishRes = await request(server, 'PUT', `/api/driver/routes/${route.id}`, {
+      driverId: DRIVER_001_ID,
+      status: 'published',
+    })
+    assert.equal(publishRes.status, 400)
+    assert.equal(publishRes.body.message, 'serviceDate cannot be in the past')
+  })
 })
 
 describe('DELETE /api/client/trip-plans/:id', () => {
@@ -605,11 +693,11 @@ describe('work queue visibility endpoints', () => {
     )
   })
 
-  it('hides expired completed routes from driver work queue', async () => {
+  it('keeps future-dated completed routes visible until driver submits review', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const serviceDate = formatLocalDateValue(addDays(new Date(), -1))
+    const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
     const route = await store.createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
@@ -626,10 +714,7 @@ describe('work queue visibility endpoints', () => {
       `/api/driver/routes?driverId=${DRIVER_001_ID}`,
     )
     assert.equal(res.status, 200)
-    assert.equal(
-      res.body.some((item: { id: string }) => item.id === route.id),
-      false,
-    )
+    assert.equal(res.body.some((item: { id: string }) => item.id === route.id), true)
   })
 
   it('keeps same-day completed plans visible until client submits review', async () => {
@@ -680,11 +765,11 @@ describe('work queue visibility endpoints', () => {
     )
   })
 
-  it('hides expired completed plans from client work queue', async () => {
+  it('keeps future-dated completed plans visible until client submits review', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const serviceDate = formatLocalDateValue(addDays(new Date(), -1))
+    const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
     const plan = await store.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -703,9 +788,106 @@ describe('work queue visibility endpoints', () => {
       `/api/client/trip-plans?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(res.status, 200)
-    assert.equal(
-      res.body.some((item: { id: string }) => item.id === plan.id),
-      false,
+    assert.equal(res.body.some((item: { id: string }) => item.id === plan.id), true)
+  })
+
+  it('separates active and history scopes for terminal driver routes', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
+    const reviewed = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Reviewed Origin' },
+      destination: { lat: 10.85, lng: 106.75, label: 'Reviewed Dest' },
+      serviceDate,
+      departureTime: `${serviceDate}T07:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    const unreviewed = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Unreviewed Origin' },
+      destination: { lat: 10.85, lng: 106.75, label: 'Unreviewed Dest' },
+      serviceDate,
+      departureTime: `${serviceDate}T08:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    const canceled = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Canceled Origin' },
+      destination: { lat: 10.85, lng: 106.75, label: 'Canceled Dest' },
+      serviceDate,
+      departureTime: `${serviceDate}T09:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    await store.updateRoute(reviewed.id, { status: 'completed' })
+    await store.updateRoute(unreviewed.id, { status: 'completed' })
+    await store.updateRoute(canceled.id, { status: 'canceled' })
+    await store.createReview({
+      tripId: reviewed.id,
+      reviewerId: DRIVER_001_ID,
+      revieweeId: CLIENT_001_ID,
+      rating: 5,
+      comment: 'done',
+    })
+
+    const active = await request(server, 'GET', `/api/driver/routes?driverId=${DRIVER_001_ID}`)
+    const history = await request(server, 'GET', `/api/driver/routes?driverId=${DRIVER_001_ID}&scope=history`)
+
+    assert.equal(active.status, 200)
+    assert.deepEqual(
+      active.body.map((item: { id: string }) => item.id).sort(),
+      [unreviewed.id].sort(),
+    )
+    assert.equal(history.status, 200)
+    assert.deepEqual(
+      history.body.map((item: { id: string }) => item.id).sort(),
+      [reviewed.id, unreviewed.id, canceled.id].sort(),
+    )
+  })
+
+  it('separates active and history scopes for terminal client plans', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
+    const makePlan = (suffix: string) =>
+      store.createPlan(CLIENT_001_ID, {
+        pickup: { lat: 10.77, lng: 106.7, label: `${suffix} Pickup` },
+        dropoff: { lat: 10.85, lng: 106.75, label: `${suffix} Dropoff` },
+        pickupWardId: `ward-${suffix}`,
+        dropoffWardId: `ward-${suffix}-dest`,
+        serviceDate,
+        departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+        departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+        passengerCount: 1,
+      })
+    const reviewed = await makePlan('reviewed')
+    const unreviewed = await makePlan('unreviewed')
+    const canceled = await makePlan('canceled')
+    await store.updatePlan(reviewed.id, { status: 'completed' })
+    await store.updatePlan(unreviewed.id, { status: 'completed' })
+    await store.updatePlan(canceled.id, { status: 'canceled' })
+    await store.createReview({
+      tripId: reviewed.id,
+      reviewerId: CLIENT_001_ID,
+      revieweeId: DRIVER_001_ID,
+      rating: 5,
+      comment: 'done',
+    })
+
+    const active = await request(server, 'GET', `/api/client/trip-plans?clientId=${CLIENT_001_ID}`)
+    const history = await request(server, 'GET', `/api/client/trip-plans?clientId=${CLIENT_001_ID}&scope=history`)
+
+    assert.equal(active.status, 200)
+    assert.deepEqual(
+      active.body.map((item: { id: string }) => item.id).sort(),
+      [unreviewed.id].sort(),
+    )
+    assert.equal(history.status, 200)
+    assert.deepEqual(
+      history.body.map((item: { id: string }) => item.id).sort(),
+      [reviewed.id, unreviewed.id, canceled.id].sort(),
     )
   })
 })
@@ -1559,7 +1741,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     assert.equal(reportsByUser.body.items[0].reason, 'spam')
   })
 
-  it('rejects review submission after review window expires', async () => {
+  it('allows reviewing a future-dated completed trip but rejects duplicate and incomplete reviews', async () => {
     const reviewer = await request(server, 'POST', '/api/users/bootstrap', {
       mauid: 'zalo-reviewer-expired-001',
       displayName: 'Expired Reviewer',
@@ -1571,7 +1753,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       avatarUrl: '',
     })
 
-    const serviceDate = formatLocalDateValue(addDays(new Date(), -1))
+    const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
     const route = await store.createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
@@ -1587,11 +1769,39 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       reviewerId: reviewer.body.id,
       revieweeId: reviewee.body.id,
       rating: 5,
-      comment: 'Too late',
+      comment: 'Future completed trip',
     })
 
-    assert.equal(res.status, 400)
-    assert.equal(res.body.message, 'Review window has expired for this trip')
+    assert.equal(res.status, 201)
+
+    const duplicate = await request(server, 'POST', '/api/reviews', {
+      tripId: route.id,
+      reviewerId: reviewer.body.id,
+      revieweeId: reviewee.body.id,
+      rating: 4,
+      comment: 'Duplicate',
+    })
+
+    assert.equal(duplicate.status, 409)
+
+    const incomplete = await store.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      serviceDate,
+      departureTime: `${serviceDate}T08:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    const incompleteRes = await request(server, 'POST', '/api/reviews', {
+      tripId: incomplete.id,
+      reviewerId: reviewer.body.id,
+      revieweeId: reviewee.body.id,
+      rating: 5,
+      comment: 'Not done',
+    })
+
+    assert.equal(incompleteRes.status, 400)
+    assert.equal(incompleteRes.body.message, 'Trip must be completed before review')
   })
 
   it('blocks, unblocks, lists notifications, and marks them read', async () => {

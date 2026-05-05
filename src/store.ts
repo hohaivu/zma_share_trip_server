@@ -60,11 +60,15 @@ function isTerminalTripStatus(status?: string | null): boolean {
   return status === 'completed' || status === 'canceled'
 }
 
-function isSameDayReviewWindowOpen(
-  serviceDate: string,
-  now: Date = new Date(),
-): boolean {
-  return serviceDate === formatLocalDateValue(now)
+function isPastServiceDate(serviceDate?: string | null): boolean {
+  if (!serviceDate) return false
+  return serviceDate < formatLocalDateValue(new Date())
+}
+
+function assertServiceDateIsNotPast(serviceDate?: string | null): void {
+  if (isPastServiceDate(serviceDate)) {
+    throw new HttpError(400, 'serviceDate cannot be in the past')
+  }
 }
 
 export function generateId(prefix: string): string {
@@ -953,11 +957,8 @@ export async function createReview(
   const route = await getRoute(payload.tripId)
   const plan = route ? null : await getPlan(payload.tripId)
   const trip = route ?? plan
-  const hasOpenReviewWindow =
-    trip?.status === 'completed' && isSameDayReviewWindowOpen(trip.serviceDate)
-
-  if (!trip || !hasOpenReviewWindow) {
-    throw new HttpError(400, 'Review window has expired for this trip')
+  if (!trip || trip.status !== 'completed') {
+    throw new HttpError(400, 'Trip must be completed before review')
   }
 
   try {
@@ -1290,6 +1291,8 @@ export async function createRoute(
   driverId: string,
   data: CreateRoutePayload,
 ): Promise<Route> {
+  assertServiceDateIsNotPast(data.serviceDate)
+
   const fields = data as unknown as Record<string, unknown>
   const origin = extractWardFields(fields, 'origin', data.origin)
   const dest = extractWardFields(fields, 'destination', data.destination)
@@ -1353,10 +1356,7 @@ async function isTripVisibleInWorkQueue(
     return true
   }
 
-  if (
-    trip.status !== 'completed' ||
-    !isSameDayReviewWindowOpen(trip.serviceDate)
-  ) {
+  if (trip.status !== 'completed') {
     return false
   }
 
@@ -1389,6 +1389,8 @@ export async function updateRoute(
   const existing = await getRoute(id)
   if (!existing) return null
 
+  assertServiceDateIsNotPast(data.serviceDate)
+
   if (
     existing.status === 'published' &&
     existing.walletFeeStatus &&
@@ -1416,6 +1418,8 @@ export async function publishRoute(
   id: string,
   data: UpdateRoutePayload = {},
 ): Promise<Route> {
+  assertServiceDateIsNotPast(data.serviceDate)
+
   return withTransaction(async (tx) => {
     const route = await loadRouteForWalletTx(tx, id)
     if (route.status === 'published') {
@@ -1496,6 +1500,8 @@ export async function createPlan(
   clientId: string,
   data: CreatePlanPayload,
 ): Promise<Plan> {
+  assertServiceDateIsNotPast(data.serviceDate)
+
   const res = await query(
     `
     INSERT INTO plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
@@ -1537,6 +1543,8 @@ export async function updatePlan(
   id: string,
   data: UpdatePlanPayload,
 ): Promise<Plan | null> {
+  assertServiceDateIsNotPast(data.serviceDate)
+
   return dynamicUpdate<Plan>(
     'plans',
     id,
@@ -1582,8 +1590,25 @@ export async function cancelPlanByClient(
 
 const listRoutesByDriverRaw = listByColumn<Route>('routes', 'driver_id')
 
-export async function listRoutesByDriver(driverId: string): Promise<Route[]> {
+export type TripListScope = 'active' | 'history'
+
+function normalizeTripListScope(scope?: string): TripListScope {
+  return scope === 'history' ? 'history' : 'active'
+}
+
+function isTripVisibleInHistory(trip: Pick<Route | Plan, 'status'>): boolean {
+  return isTerminalTripStatus(trip.status)
+}
+
+export async function listRoutesByDriver(
+  driverId: string,
+  scope: TripListScope = 'active',
+): Promise<Route[]> {
   const routes = await listRoutesByDriverRaw(driverId)
+  if (normalizeTripListScope(scope) === 'history') {
+    return routes.filter(isTripVisibleInHistory)
+  }
+
   const visible = await Promise.all(
     routes.map(async (route) => ({
       route,
@@ -1595,8 +1620,15 @@ export async function listRoutesByDriver(driverId: string): Promise<Route[]> {
 
 const listPlansByClientRaw = listByColumn<Plan>('plans', 'client_id')
 
-export async function listPlansByClient(clientId: string): Promise<Plan[]> {
+export async function listPlansByClient(
+  clientId: string,
+  scope: TripListScope = 'active',
+): Promise<Plan[]> {
   const plans = await listPlansByClientRaw(clientId)
+  if (normalizeTripListScope(scope) === 'history') {
+    return plans.filter(isTripVisibleInHistory)
+  }
+
   const visible = await Promise.all(
     plans.map(async (plan) => ({
       plan,

@@ -61,10 +61,15 @@ router.post(
 router.get(
   '/routes',
   asyncHandler(async (req: Request, res: Response) => {
-    const { driverId } = req.query
+    const { driverId, scope } = req.query
     requireParam(driverId as string, 'driverId query is required')
 
-    res.json(await store.listRoutesByDriver(driverId as string))
+    res.json(
+      await store.listRoutesByDriver(
+        driverId as string,
+        scope === 'history' ? 'history' : 'active',
+      ),
+    )
   }),
 )
 

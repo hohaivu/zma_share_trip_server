@@ -27,10 +27,15 @@ router.post(
 router.get(
   '/trip-plans',
   asyncHandler(async (req: Request, res: Response) => {
-    const { clientId } = req.query
+    const { clientId, scope } = req.query
     requireParam(clientId as string, 'clientId query is required')
 
-    res.json(await store.listPlansByClient(clientId as string))
+    res.json(
+      await store.listPlansByClient(
+        clientId as string,
+        scope === 'history' ? 'history' : 'active',
+      ),
+    )
   }),
 )
 
