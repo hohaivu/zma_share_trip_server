@@ -438,6 +438,14 @@ describe('first-accept-wins', () => {
       const sibling = clientOffers.find((o) => o.id === offer.id)
       assert.equal(sibling!.status, 'closed', 'Sibling should be closed')
     }
+
+    const sentRequests = await store.listGroupRequestsByDriver(DRIVER_001_ID)
+    const parent = sentRequests.find((request) => request.id === result.groupRequest.id)
+    assert.ok(parent, 'Parent group request should exist')
+    assert.equal(parent.status, 'accepted')
+    assert.equal(parent.acceptedClientUserId, accepted.clientId)
+    assert.equal(parent.clientId, accepted.clientId)
+    assert.equal(parent.acceptedPlanId, accepted.planId)
   })
 
   it('route becomes unavailable after acceptance', async () => {

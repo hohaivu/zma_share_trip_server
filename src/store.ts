@@ -1884,6 +1884,18 @@ export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
     const siblings = mapRows<GroupOffer>(siblingsRes.rows)
 
     await tx.query(
+      `
+      UPDATE group_requests
+      SET status = 'accepted',
+          accepted_client_user_id = $1,
+          accepted_plan_id = $2,
+          client_id = $1
+      WHERE id = $3
+    `,
+      [updatedOffer.clientId, updatedOffer.planId, updatedOffer.groupRequestId],
+    )
+
+    await tx.query(
       "UPDATE search_requests SET status = 'closed' WHERE route_id = $1 AND status = 'pending'",
       [offer.routeId],
     )

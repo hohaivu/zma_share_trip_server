@@ -138,6 +138,9 @@ export interface GroupRequest {
   demandGroupId: string
   note?: string | null
   status: string
+  acceptedClientUserId?: string | null
+  acceptedPlanId?: string | null
+  clientId?: string | null
   createdAt?: string
 }
 
