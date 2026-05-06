@@ -814,6 +814,85 @@ describe('single active search request invariant', () => {
   }
 })
 
+describe('matched trip status backfill', () => {
+  it('backfills accepted direct requests and group offers without changing terminal trips', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    await query(
+      `
+        INSERT INTO route_requests (
+          id,
+          client_id,
+          plan_id,
+          route_id,
+          driver_id,
+          trip_price,
+          note,
+          status,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, '', 'accepted', NOW())
+      `,
+      ['sreq-backfill', CLIENT_001_ID, 'plan-001', 'route-001', DRIVER_001_ID, 100000],
+    )
+    await query(
+      `
+        INSERT INTO group_offers (
+          id,
+          group_request_id,
+          route_id,
+          driver_id,
+          client_id,
+          plan_id,
+          trip_price,
+          status,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'accepted', NOW())
+      `,
+      ['go-backfill', 'greq-001', 'route-002', DRIVER_002_ID, CLIENT_002_ID, 'plan-002', 100000],
+    )
+    await query("UPDATE routes SET status = 'completed' WHERE id = 'route-003'")
+    await query("UPDATE plans SET status = 'canceled' WHERE id = 'plan-003'")
+    await query(
+      `
+        INSERT INTO route_requests (
+          id,
+          client_id,
+          plan_id,
+          route_id,
+          driver_id,
+          trip_price,
+          note,
+          status,
+          created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, '', 'accepted', NOW())
+      `,
+      ['sreq-backfill-terminal', CLIENT_001_ID, 'plan-003', 'route-003', DRIVER_001_ID, 100000],
+    )
+
+    const migrationSql = fs.readFileSync(
+      path.join(
+        __dirname,
+        'db',
+        'migrations',
+        '09_backfill_matched_trip_status.sql',
+      ),
+      'utf8',
+    )
+    await query(migrationSql)
+
+    assert.equal((await store.getRoute('route-001'))?.status, 'matched')
+    assert.equal((await store.getPlan('plan-001'))?.status, 'matched')
+    assert.equal((await store.getRoute('route-002'))?.status, 'matched')
+    assert.equal((await store.getPlan('plan-002'))?.status, 'matched')
+    assert.equal((await store.getRoute('route-003'))?.status, 'completed')
+    assert.equal((await store.getPlan('plan-003'))?.status, 'canceled')
+  })
+})
+
 describe('wallet-gated route publish', () => {
   it('publishing a draft reserves the route fee and appends a ledger entry', async () => {
     await setupTestDb()
@@ -1045,6 +1124,8 @@ describe('wallet-gated accept and cancel transitions', () => {
 
     assert.equal(accepted.status, 'accepted')
     assert.equal(retry.status, 'accepted')
+    assert.equal((await store.getRoute(route.id))?.status, 'matched')
+    assert.equal((await store.getPlan(accepted.planId!))?.status, 'matched')
     assert.equal(wallet.balanceVnd, 495000)
     assert.equal(wallet.reservedBalanceVnd, 0)
     assert.equal(
@@ -1090,6 +1171,8 @@ describe('wallet-gated accept and cancel transitions', () => {
 
     assert.equal(accepted.status, 'accepted')
     assert.equal(retry.status, 'accepted')
+    assert.equal((await store.getRoute(route.id))?.status, 'matched')
+    assert.equal((await store.getPlan(request.planId!))?.status, 'matched')
     assert.equal(wallet.balanceVnd, 495000)
     assert.equal(wallet.reservedBalanceVnd, 0)
     assert.equal(

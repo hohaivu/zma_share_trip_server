@@ -62,6 +62,10 @@ function isTerminalTripStatus(status?: string | null): boolean {
   return status === 'completed' || status === 'canceled'
 }
 
+function isActiveTripStatus(status?: string | null): boolean {
+  return status === 'draft' || status === 'published' || status === 'matched'
+}
+
 function isPastServiceDate(serviceDate?: string | null): boolean {
   if (!serviceDate) return false
   return serviceDate < formatLocalDateValue(new Date())
@@ -1492,7 +1496,7 @@ async function isTripVisibleInWorkQueue(
   trip: Pick<Route | Plan, 'id' | 'status' | 'serviceDate'>,
   reviewerId: string,
 ): Promise<boolean> {
-  if (trip.status === 'draft' || trip.status === 'published') {
+  if (isActiveTripStatus(trip.status)) {
     return true
   }
 
@@ -2042,6 +2046,16 @@ export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
     const updatedOffer = toCamelCase<GroupOffer>(offerRes.rows[0])
     if (!updatedOffer) throw new Error('Failed to update group offer')
 
+    await tx.query("UPDATE routes SET status = 'matched' WHERE id = $1", [
+      offer.routeId,
+    ])
+    if (updatedOffer.planId) {
+      await tx.query(
+        "UPDATE plans SET status = 'matched' WHERE id = $1 AND status = 'published'",
+        [updatedOffer.planId],
+      )
+    }
+
     await chargeRouteFeeTx(tx, route, {
       description: 'Route fee charged on accepted group offer',
     })
@@ -2289,6 +2303,16 @@ export async function acceptRouteRequest(
     )
     sreq = toCamelCase<RouteRequest>(updatedRes.rows[0])
     if (!sreq) throw new Error('Failed to accept search request')
+
+    await tx.query("UPDATE routes SET status = 'matched' WHERE id = $1", [
+      sreq.routeId,
+    ])
+    if (sreq.planId) {
+      await tx.query(
+        "UPDATE plans SET status = 'matched' WHERE id = $1 AND status = 'published'",
+        [sreq.planId],
+      )
+    }
 
     await chargeRouteFeeTx(tx, route, {
       description: 'Route fee charged on accepted search request',
