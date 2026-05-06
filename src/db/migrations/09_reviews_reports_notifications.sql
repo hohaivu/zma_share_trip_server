@@ -54,5 +54,5 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS notifications_recipient_id_created_at_idx
   ON notifications (recipient_id, created_at DESC, id DESC);
 
-ALTER TABLE users
-  ALTER COLUMN mauid SET NOT NULL;
+-- users.mauid remains nullable for legacy/denormalized data.
+-- Identity/persona model enforces external MAUID on identities.mauid.
