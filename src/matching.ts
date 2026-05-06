@@ -1,5 +1,5 @@
 import * as store from './store'
-import { Location, Route, User } from './types/entities'
+import { Location, User } from './types/entities'
 import {
   DemandGroupResult,
   DemandGroupSummary,
@@ -203,9 +203,10 @@ async function passesHardFiltersWithBearings(
         store.getUser(clientId),
         store.getBlockedUsers(clientId),
       ])
+      if (!client) continue
       if (
-        client &&
-        (driverBlockedIds.includes(clientId) || clientBlockedIds.includes(driver.id))
+        driverBlockedIds.includes(clientId) ||
+        clientBlockedIds.includes(driver.id)
       ) {
         return false
       }
@@ -251,6 +252,21 @@ export async function passesHardFilters(
 
 // ─── Score computation ────────────────────────────────────────────────────────
 
+function weightedMatchScore(
+  direction: number,
+  pickup: number,
+  dropoff: number,
+  time: number,
+): number {
+  return Math.round(
+    (direction * W_DIRECTION +
+      pickup * W_PICKUP +
+      dropoff * W_DROPOFF +
+      time * W_TIME) *
+      100,
+  )
+}
+
 /**
  * Core match-score logic with pre-computed bearings.
  */
@@ -268,16 +284,13 @@ function computeMatchScoreWithBearings(
 
   if (!hasUsableGeometry(route, planLike)) {
     const fallbackFit = hasExactAdminMatch(route, planLike) ? 1 : 0
-    const matchScore = Math.round(
-      (fallbackFit * W_DIRECTION +
-        fallbackFit * W_PICKUP +
-        fallbackFit * W_DROPOFF +
-        time * W_TIME) *
-        100,
-    )
-
     return {
-      matchScore,
+      matchScore: weightedMatchScore(
+        fallbackFit,
+        fallbackFit,
+        fallbackFit,
+        time,
+      ),
       pickupFit: fallbackFit,
       dropoffFit: fallbackFit,
       timeFit: time,
@@ -291,22 +304,13 @@ function computeMatchScoreWithBearings(
   const dir = directionScore(routeBearing, planBearing)
   const pickup = proximityScore(pickupDist, MAX_PICKUP_KM)
   const dropoff = proximityScore(dropoffDist, MAX_DROPOFF_KM)
-  const detour = estimateDetour(pickupDist, dropoffDist)
-
-  const matchScore = Math.round(
-    (dir * W_DIRECTION +
-      pickup * W_PICKUP +
-      dropoff * W_DROPOFF +
-      time * W_TIME) *
-      100,
-  )
 
   return {
-    matchScore,
+    matchScore: weightedMatchScore(dir, pickup, dropoff, time),
     pickupFit: pickup,
     dropoffFit: dropoff,
     timeFit: time,
-    detourEstimate: detour,
+    detourEstimate: estimateDetour(pickupDist, dropoffDist),
   }
 }
 

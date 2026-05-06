@@ -764,17 +764,27 @@ export async function topUpDriverWallet(
   return result
 }
 
+async function withOwnedRouteTx(
+  routeId: string,
+  driverId: string,
+  apply: (tx: DbQueryExecutor, route: Route) => Promise<Route>,
+): Promise<Route> {
+  return withTransaction(async (tx) => {
+    const route = await loadRouteForWalletTx(tx, routeId)
+    assertDriverOwnsRoute(route, driverId)
+    return apply(tx, route)
+  })
+}
+
 export async function reserveRouteFee(
   routeId: string,
   driverId: string,
   feeRequiredVnd: number,
   meta?: { description?: string },
 ): Promise<Route> {
-  return withTransaction(async (tx) => {
-    const route = await loadRouteForWalletTx(tx, routeId)
-    assertDriverOwnsRoute(route, driverId)
-    return reserveRouteFeeTx(tx, route, feeRequiredVnd, meta)
-  })
+  return withOwnedRouteTx(routeId, driverId, (tx, route) =>
+    reserveRouteFeeTx(tx, route, feeRequiredVnd, meta),
+  )
 }
 
 export async function releaseRouteFee(
@@ -782,13 +792,9 @@ export async function releaseRouteFee(
   driverId: string,
   meta?: { description?: string },
 ): Promise<Route> {
-  return withTransaction(async (tx) => {
-    const route = await loadRouteForWalletTx(tx, routeId)
-    if (route.driverId !== driverId) {
-      throw new HttpError(404, 'Route not found')
-    }
-    return releaseRouteFeeTx(tx, route, meta)
-  })
+  return withOwnedRouteTx(routeId, driverId, (tx, route) =>
+    releaseRouteFeeTx(tx, route, meta),
+  )
 }
 
 export async function chargeRouteFee(
@@ -796,13 +802,9 @@ export async function chargeRouteFee(
   driverId: string,
   meta?: { description?: string },
 ): Promise<Route> {
-  return withTransaction(async (tx) => {
-    const route = await loadRouteForWalletTx(tx, routeId)
-    if (route.driverId !== driverId) {
-      throw new HttpError(404, 'Route not found')
-    }
-    return chargeRouteFeeTx(tx, route, meta)
-  })
+  return withOwnedRouteTx(routeId, driverId, (tx, route) =>
+    chargeRouteFeeTx(tx, route, meta),
+  )
 }
 
 export async function refundRouteFee(
@@ -810,13 +812,9 @@ export async function refundRouteFee(
   driverId: string,
   meta?: { description?: string },
 ): Promise<Route> {
-  return withTransaction(async (tx) => {
-    const route = await loadRouteForWalletTx(tx, routeId)
-    if (route.driverId !== driverId) {
-      throw new HttpError(404, 'Route not found')
-    }
-    return refundRouteFeeTx(tx, route, meta)
-  })
+  return withOwnedRouteTx(routeId, driverId, (tx, route) =>
+    refundRouteFeeTx(tx, route, meta),
+  )
 }
 
 /**
@@ -916,16 +914,20 @@ async function getIdentity(identityId: string): Promise<Identity | null> {
   return result.rows[0] ? mapIdentity(result.rows[0]) : null
 }
 
-async function listPersonasByIdentity(identityId: string): Promise<User[]> {
-  const result = await query(
-    `
-    SELECT u.*, i.mauid, i.display_name, i.avatar_url, i.phone,
-           i.preferred_mode, i.mode_selected_at
-    FROM users u
-    JOIN identities i ON i.id = u.identity_id
-    WHERE u.identity_id = $1
-    ORDER BY u.role
-  `,
+const PERSONA_SELECT_SQL = `
+  SELECT u.*, i.mauid, i.display_name, i.avatar_url, i.phone,
+         i.preferred_mode, i.mode_selected_at
+  FROM users u
+  JOIN identities i ON i.id = u.identity_id
+  WHERE u.identity_id = $1
+`
+
+async function listPersonasByIdentity(
+  identityId: string,
+  executor: DbQueryExecutor = { query },
+): Promise<User[]> {
+  const result = await executor.query(
+    `${PERSONA_SELECT_SQL} ORDER BY u.role`,
     [identityId],
   )
   return result.rows.map(mapUser)
@@ -1055,23 +1057,9 @@ export async function bootstrapUser(
       )
     }
 
-    const personasResult = await tx.query(
-      `
-      SELECT u.*, i.mauid, i.display_name, i.avatar_url, i.phone,
-             i.preferred_mode, i.mode_selected_at
-      FROM users u
-      JOIN identities i ON i.id = u.identity_id
-      WHERE u.identity_id = $1
-    `,
-      [identity.id],
-    )
-
+    const personas = await listPersonasByIdentity(identity.id, tx)
     return {
-      session: buildSession(
-        identity,
-        personasResult.rows.map(mapUser),
-        wasCreated,
-      ),
+      session: buildSession(identity, personas, wasCreated),
       wasCreated,
     }
   })
@@ -1753,23 +1741,25 @@ function isTripVisibleInHistory(trip: Pick<Route | Plan, 'status'>): boolean {
   return isTerminalTripStatus(trip.status)
 }
 
+async function filterTripsByScope<
+  T extends Pick<Route | Plan, 'id' | 'status' | 'serviceDate'>,
+>(trips: T[], scope: TripListScope, viewerId: string): Promise<T[]> {
+  if (normalizeTripListScope(scope) === 'history') {
+    return trips.filter(isTripVisibleInHistory)
+  }
+  const visibility = await Promise.all(
+    trips.map((trip) => isTripVisibleInWorkQueue(trip, viewerId)),
+  )
+  return trips.filter((_, index) => visibility[index])
+}
+
 export async function listRoutesByDriver(
   driverId: string,
   scope: TripListScope = 'active',
 ): Promise<Route[]> {
   await assertUserRole(driverId, 'driver')
   const routes = await listRoutesByDriverRaw(driverId)
-  if (normalizeTripListScope(scope) === 'history') {
-    return routes.filter(isTripVisibleInHistory)
-  }
-
-  const visible = await Promise.all(
-    routes.map(async (route) => ({
-      route,
-      visible: await isTripVisibleInWorkQueue(route, driverId),
-    })),
-  )
-  return visible.filter((item) => item.visible).map((item) => item.route)
+  return filterTripsByScope(routes, scope, driverId)
 }
 
 const listPlansByClientRaw = listByColumn<Plan>('plans', 'client_id')
@@ -1780,17 +1770,7 @@ export async function listPlansByClient(
 ): Promise<Plan[]> {
   await assertUserRole(clientId, 'client')
   const plans = await listPlansByClientRaw(clientId)
-  if (normalizeTripListScope(scope) === 'history') {
-    return plans.filter(isTripVisibleInHistory)
-  }
-
-  const visible = await Promise.all(
-    plans.map(async (plan) => ({
-      plan,
-      visible: await isTripVisibleInWorkQueue(plan, clientId),
-    })),
-  )
-  return visible.filter((item) => item.visible).map((item) => item.plan)
+  return filterTripsByScope(plans, scope, clientId)
 }
 
 // --- Departure Block ---
@@ -2413,6 +2393,48 @@ async function findAcceptedPlanMatchTx(
   return null
 }
 
+async function unwindRouteFeeOnMatchedCancel(
+  executor: DbQueryExecutor,
+  route: Route,
+): Promise<Route> {
+  switch (route.walletFeeStatus) {
+    case 'charged':
+      return refundRouteFeeTx(executor, route, {
+        description: 'Route fee refunded on trip cancel',
+      })
+    case 'reserved':
+      return releaseRouteFeeTx(executor, route, {
+        description: 'Route fee released on trip cancel',
+      })
+    case 'refunded':
+    case 'released':
+    case 'none':
+      return route
+    default:
+      throw new HttpError(
+        409,
+        `Cannot cancel matched route in fee state: ${route.walletFeeStatus}`,
+      )
+  }
+}
+
+async function cancelAcceptedJourneyMatchTx(
+  executor: DbQueryExecutor,
+  accepted: AcceptedJourneyMatch,
+): Promise<void> {
+  if (accepted.kind === 'route_request') {
+    await executor.query(
+      "UPDATE route_requests SET status = 'canceled' WHERE id = $1",
+      [accepted.request.id],
+    )
+  } else {
+    await executor.query(
+      "UPDATE group_offers SET status = 'canceled' WHERE id = $1",
+      [accepted.offer.id],
+    )
+  }
+}
+
 async function cancelRouteTripTx(
   executor: DbQueryExecutor,
   route: Route,
@@ -2423,36 +2445,8 @@ async function cancelRouteTripTx(
 
   const accepted = await findAcceptedRouteMatchTx(executor, route.id)
   if (accepted) {
-    if (route.walletFeeStatus === 'charged') {
-      route = await refundRouteFeeTx(executor, route, {
-        description: 'Route fee refunded on trip cancel',
-      })
-    } else if (route.walletFeeStatus === 'reserved') {
-      route = await releaseRouteFeeTx(executor, route, {
-        description: 'Route fee released on trip cancel',
-      })
-    } else if (
-      route.walletFeeStatus !== 'refunded' &&
-      route.walletFeeStatus !== 'released' &&
-      route.walletFeeStatus !== 'none'
-    ) {
-      throw new HttpError(
-        409,
-        `Cannot cancel matched route in fee state: ${route.walletFeeStatus}`,
-      )
-    }
-
-    if (accepted.kind === 'route_request') {
-      await executor.query(
-        "UPDATE route_requests SET status = 'canceled' WHERE id = $1",
-        [accepted.request.id],
-      )
-    } else {
-      await executor.query(
-        "UPDATE group_offers SET status = 'canceled' WHERE id = $1",
-        [accepted.offer.id],
-      )
-    }
+    route = await unwindRouteFeeOnMatchedCancel(executor, route)
+    await cancelAcceptedJourneyMatchTx(executor, accepted)
   } else if (route.walletFeeStatus === 'reserved') {
     route = await releaseRouteFeeTx(executor, route, {
       description: 'Route fee released on route cancel',
@@ -2481,42 +2475,13 @@ async function cancelPlanTripTx(
 
   const accepted = await findAcceptedPlanMatchTx(executor, plan)
   if (accepted) {
-    const route = await loadRouteForWalletTx(
-      executor,
+    const routeId =
       accepted.kind === 'route_request'
         ? accepted.request.routeId
-        : accepted.offer.routeId,
-    )
-    if (route.walletFeeStatus === 'charged') {
-      await refundRouteFeeTx(executor, route, {
-        description: 'Route fee refunded on trip cancel',
-      })
-    } else if (route.walletFeeStatus === 'reserved') {
-      await releaseRouteFeeTx(executor, route, {
-        description: 'Route fee released on trip cancel',
-      })
-    } else if (
-      route.walletFeeStatus !== 'refunded' &&
-      route.walletFeeStatus !== 'released' &&
-      route.walletFeeStatus !== 'none'
-    ) {
-      throw new HttpError(
-        409,
-        `Cannot cancel matched route in fee state: ${route.walletFeeStatus}`,
-      )
-    }
-
-    if (accepted.kind === 'route_request') {
-      await executor.query(
-        "UPDATE route_requests SET status = 'canceled' WHERE id = $1",
-        [accepted.request.id],
-      )
-    } else {
-      await executor.query(
-        "UPDATE group_offers SET status = 'canceled' WHERE id = $1",
-        [accepted.offer.id],
-      )
-    }
+        : accepted.offer.routeId
+    const route = await loadRouteForWalletTx(executor, routeId)
+    await unwindRouteFeeOnMatchedCancel(executor, route)
+    await cancelAcceptedJourneyMatchTx(executor, accepted)
   }
 
   const updatedPlan = await executor.query(
@@ -2678,6 +2643,15 @@ export async function listGroupRequestsByDriver(
   return listGroupRequestsByDriverRaw(driverId)
 }
 
+async function filterVisibleForActiveTrip<
+  T extends Pick<RouteRequest, 'routeId' | 'planId'>,
+>(items: T[]): Promise<T[]> {
+  const visibility = await Promise.all(
+    items.map((item) => shouldHideRequestForTerminalTrip(item)),
+  )
+  return items.filter((_, index) => !visibility[index])
+}
+
 export async function listGroupOffersByClient(
   clientId: string,
 ): Promise<GroupOffer[]> {
@@ -2686,14 +2660,7 @@ export async function listGroupOffersByClient(
     'SELECT * FROM group_offers WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
     [clientId],
   )
-  const offers = mapRows<GroupOffer>(offersRes.rows)
-  const visible = await Promise.all(
-    offers.map(async (offer) => ({
-      offer,
-      hidden: await shouldHideRequestForTerminalTrip(offer),
-    })),
-  )
-  return visible.filter((item) => !item.hidden).map((item) => item.offer)
+  return filterVisibleForActiveTrip(mapRows<GroupOffer>(offersRes.rows))
 }
 
 export async function listRouteRequestsByDriver(
@@ -2704,14 +2671,7 @@ export async function listRouteRequestsByDriver(
     'SELECT * FROM route_requests WHERE driver_id = $1 ORDER BY created_at DESC, id DESC',
     [driverId],
   )
-  const requests = mapRows<RouteRequest>(requestsRes.rows)
-  const visible = await Promise.all(
-    requests.map(async (request) => ({
-      request,
-      hidden: await shouldHideRequestForTerminalTrip(request),
-    })),
-  )
-  return visible.filter((item) => !item.hidden).map((item) => item.request)
+  return filterVisibleForActiveTrip(mapRows<RouteRequest>(requestsRes.rows))
 }
 
 export async function listRouteRequestsByClient(
@@ -2722,14 +2682,7 @@ export async function listRouteRequestsByClient(
     'SELECT * FROM route_requests WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
     [clientId],
   )
-  const requests = mapRows<RouteRequest>(requestsRes.rows)
-  const visible = await Promise.all(
-    requests.map(async (request) => ({
-      request,
-      hidden: await shouldHideRequestForTerminalTrip(request),
-    })),
-  )
-  return visible.filter((item) => !item.hidden).map((item) => item.request)
+  return filterVisibleForActiveTrip(mapRows<RouteRequest>(requestsRes.rows))
 }
 
 export async function listRouteRequestsByPlan(

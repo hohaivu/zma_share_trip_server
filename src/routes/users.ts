@@ -61,17 +61,21 @@ router.get(
   }),
 )
 
+async function resolveIdentityId(userId: string): Promise<string | null> {
+  const user = await store.getUser(userId)
+  return user?.identityId ?? null
+}
+
 router.post(
   '/users/:id/mode',
   asyncHandler(async (req: Request, res: Response) => {
     const { preferredMode } = req.body || {}
     requireParam(preferredMode, 'preferredMode is required')
 
-    const user = await store.getUser(req.params.id as string)
-    if (!user?.identityId) {
-      return res.status(404).json({ message: 'User not found' })
-    }
-    const result = await store.setUserMode(user.identityId, preferredMode)
+    const identityId = await resolveIdentityId(req.params.id as string)
+    const result = identityId
+      ? await store.setUserMode(identityId, preferredMode)
+      : null
     if (!result) {
       return res.status(404).json({ message: 'User not found' })
     }
@@ -83,11 +87,8 @@ router.post(
 router.get(
   '/users/:id/mode',
   asyncHandler(async (req: Request, res: Response) => {
-    const user = await store.getUser(req.params.id as string)
-    if (!user?.identityId) {
-      return res.status(404).json({ message: 'User not found' })
-    }
-    const result = await store.getUserMode(user.identityId)
+    const identityId = await resolveIdentityId(req.params.id as string)
+    const result = identityId ? await store.getUserMode(identityId) : null
     if (!result) {
       return res.status(404).json({ message: 'User not found' })
     }

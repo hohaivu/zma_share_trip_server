@@ -5,7 +5,7 @@ import * as store from '../store'
 import { asyncHandler } from './helpers'
 
 const router = Router()
-const ACTIONABLE_SEARCH_REQUEST_STATUS = 'pending'
+const ACTIONABLE_ROUTE_REQUEST_STATUS = 'pending'
 
 // GET /api/driver/routes/:id/matched-demand-groups
 router.get(
@@ -37,7 +37,7 @@ router.get(
     )
     res.json(
       results.filter(
-        (request) => request.status === ACTIONABLE_SEARCH_REQUEST_STATUS,
+        (request) => request.status === ACTIONABLE_ROUTE_REQUEST_STATUS,
       ),
     )
   }),

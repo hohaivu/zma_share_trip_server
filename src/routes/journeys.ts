@@ -20,10 +20,7 @@ export function buildJourneySummary<T extends Route | Plan>(
   entity: T,
   accepted: JourneyAcceptedState | null,
 ): T & Pick<JourneySummary, 'accepted'> {
-  return {
-    ...entity,
-    accepted,
-  }
+  return { ...entity, accepted }
 }
 
 /**
@@ -150,15 +147,7 @@ router.post(
 router.post(
   '/trips/:id/complete',
   asyncHandler(async (req: Request, res: Response) => {
-    const tripId = req.params.id as string
-    const route = await store.getRoute(tripId)
-    const plan = await store.getPlan(tripId)
-
-    if (!route && !plan) {
-      return res.status(404).json({ message: 'Trip not found' })
-    }
-
-    const updated = await store.completeTrip(tripId)
+    const updated = await store.completeTrip(req.params.id as string)
     res.json(updated)
   }),
 )

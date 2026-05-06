@@ -31,33 +31,29 @@ app.use(
   }),
 )
 
-const sharedRoutes = [
-  zaloRoutesRoute,
-  journeysRoute,
-  usersRoute,
-  bootstrapRoute,
+const routeGroups: Array<[string, express.Router[]]> = [
+  ['/api', [zaloRoutesRoute, journeysRoute, usersRoute, bootstrapRoute]],
+  [
+    '/api/driver',
+    [
+      carsRoute,
+      driverRoutesRoute,
+      driverWalletRoute,
+      groupRequestsRoute,
+      demandGroupsRoute,
+      driverMatchesRoute,
+      driverRouteRequestsRoute,
+    ],
+  ],
+  [
+    '/api/client',
+    [clientPlansRoute, groupOffersRoute, clientMatchesRoute, clientRouteRequestsRoute],
+  ],
 ]
 
-const driverRoutes = [
-  carsRoute,
-  driverRoutesRoute,
-  driverWalletRoute,
-  groupRequestsRoute,
-  demandGroupsRoute,
-  driverMatchesRoute,
-  driverRouteRequestsRoute,
-]
-
-const clientRoutes = [
-  clientPlansRoute,
-  groupOffersRoute,
-  clientMatchesRoute,
-  clientRouteRequestsRoute,
-]
-
-for (const route of sharedRoutes) app.use('/api', route)
-for (const route of driverRoutes) app.use('/api/driver', route)
-for (const route of clientRoutes) app.use('/api/client', route)
+for (const [prefix, routers] of routeGroups) {
+  for (const router of routers) app.use(prefix, router)
+}
 
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })

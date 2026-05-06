@@ -17,11 +17,8 @@ export function validateRouteLocations(
     return 'Validation Error: Origin and destination are required'
   }
 
-  const locs = [origin, destination].filter(Boolean)
-  for (const loc of locs) {
-    if (!hasUsablePoint(loc)) {
-      return 'Validation Error: Unresolved exact-point coordinates are not allowed'
-    }
+  if ((origin && !hasUsablePoint(origin)) || (destination && !hasUsablePoint(destination))) {
+    return 'Validation Error: Unresolved exact-point coordinates are not allowed'
   }
 
   return null
