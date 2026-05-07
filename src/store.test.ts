@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import path from 'node:path'
 import { after, before, describe, it as nodeIt } from 'node:test'
 
 import { query } from './db/connection'
@@ -664,93 +662,6 @@ describe('single active search request invariant', () => {
     if (!isDbAvailable()) return
   })
 
-  it('migration closes older active duplicates and preserves terminal rows', async () => {
-    const route = await store.createRoute(DRIVER_001_ID, {
-      carId: 'car-001',
-      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      serviceDate: '2030-04-20',
-      departureTime: '2030-04-20T07:00:00.000Z',
-      tripPrice: 100000,
-    })
-
-    await query('DROP INDEX IF EXISTS route_requests_active_client_route_idx')
-    await query(
-      `
-        INSERT INTO route_requests (
-          id,
-          client_id,
-          plan_id,
-          route_id,
-          driver_id,
-          trip_price,
-          note,
-          status,
-          created_at
-        )
-        VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8, $9),
-          ($10, $11, $12, $13, $14, $15, $16, $17, $18),
-          ($19, $20, $21, $22, $23, $24, $25, $26, $27)
-      `,
-      [
-        'sreq-mig-old',
-        CLIENT_001_ID,
-        null,
-        route.id,
-        route.driverId,
-        route.tripPrice,
-        'older active request',
-        'pending',
-        '2030-04-20T06:00:00.000Z',
-        'sreq-mig-new',
-        CLIENT_001_ID,
-        null,
-        route.id,
-        route.driverId,
-        route.tripPrice,
-        'newest active request',
-        'accepted',
-        '2030-04-20T07:00:00.000Z',
-        'sreq-mig-terminal',
-        CLIENT_001_ID,
-        null,
-        route.id,
-        route.driverId,
-        route.tripPrice,
-        'terminal request',
-        'declined',
-        '2030-04-20T05:00:00.000Z',
-      ],
-    )
-
-    const migrationSql = fs.readFileSync(
-      path.join(
-        __dirname,
-        'db',
-        'migrations',
-        '06_single_active_route_request.sql',
-      ),
-      'utf8',
-    )
-    await query(migrationSql)
-
-    const requests = await store.listRouteRequestsByRoute(route.id)
-    const olderRequest = requests.find(
-      (request) => request.id === 'sreq-mig-old',
-    )
-    const newestRequest = requests.find(
-      (request) => request.id === 'sreq-mig-new',
-    )
-    const terminalRequest = requests.find(
-      (request) => request.id === 'sreq-mig-terminal',
-    )
-
-    assert.equal(olderRequest?.status, 'closed')
-    assert.equal(newestRequest?.status, 'accepted')
-    assert.equal(terminalRequest?.status, 'declined')
-  })
-
   it('rejects duplicate active search requests for same route and client', async () => {
     const sreq1 = await store.createRouteRequest(
       CLIENT_001_ID,
@@ -812,85 +723,6 @@ describe('single active search request invariant', () => {
       )
     })
   }
-})
-
-describe('matched trip status backfill', () => {
-  it('backfills accepted direct requests and group offers without changing terminal trips', async () => {
-    await setupTestDb()
-    if (!isDbAvailable()) return
-
-    await query(
-      `
-        INSERT INTO route_requests (
-          id,
-          client_id,
-          plan_id,
-          route_id,
-          driver_id,
-          trip_price,
-          note,
-          status,
-          created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, '', 'accepted', NOW())
-      `,
-      ['sreq-backfill', CLIENT_001_ID, 'plan-001', 'route-001', DRIVER_001_ID, 100000],
-    )
-    await query(
-      `
-        INSERT INTO group_offers (
-          id,
-          group_request_id,
-          route_id,
-          driver_id,
-          client_id,
-          plan_id,
-          trip_price,
-          status,
-          created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'accepted', NOW())
-      `,
-      ['go-backfill', 'greq-001', 'route-002', DRIVER_002_ID, CLIENT_002_ID, 'plan-002', 100000],
-    )
-    await query("UPDATE routes SET status = 'completed' WHERE id = 'route-003'")
-    await query("UPDATE plans SET status = 'canceled' WHERE id = 'plan-003'")
-    await query(
-      `
-        INSERT INTO route_requests (
-          id,
-          client_id,
-          plan_id,
-          route_id,
-          driver_id,
-          trip_price,
-          note,
-          status,
-          created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, '', 'accepted', NOW())
-      `,
-      ['sreq-backfill-terminal', CLIENT_001_ID, 'plan-003', 'route-003', DRIVER_001_ID, 100000],
-    )
-
-    const migrationSql = fs.readFileSync(
-      path.join(
-        __dirname,
-        'db',
-        'migrations',
-        '09_backfill_matched_trip_status.sql',
-      ),
-      'utf8',
-    )
-    await query(migrationSql)
-
-    assert.equal((await store.getRoute('route-001'))?.status, 'matched')
-    assert.equal((await store.getPlan('plan-001'))?.status, 'matched')
-    assert.equal((await store.getRoute('route-002'))?.status, 'matched')
-    assert.equal((await store.getPlan('plan-002'))?.status, 'matched')
-    assert.equal((await store.getRoute('route-003'))?.status, 'completed')
-    assert.equal((await store.getPlan('plan-003'))?.status, 'canceled')
-  })
 })
 
 describe('wallet-gated route publish', () => {

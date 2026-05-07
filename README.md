@@ -26,7 +26,7 @@ The trip matching capabilities are split across three distinct API namespaces ba
 cd zma_share_trip_server
 cp .env.example .env   # fill in ZALO_APP_ID, ZALO_APP_SECRET, DATABASE_URL
 yarn install
-yarn db:migrate        # initialize Postgres schema
+yarn db:schema        # initialize Postgres schema
 yarn db:seed           # insert demo data
 yarn dev
 ```
@@ -45,12 +45,12 @@ yarn build
 
 ```bash
 yarn build
-yarn db:migrate:dist   # run schema setup from the built artifact
+yarn db:schema:dist   # run schema setup from the built artifact
 yarn db:seed:dist      # seed demo data from the built artifact
 yarn start:dist        # serves dist/index.js
 ```
 
-The build copies SQL migrations into `dist/db/migrations` so the compiled migration command stays runnable outside the source tree.
+The build copies `src/db/schema.sql` into `dist/db/schema.sql` so the compiled schema setup command stays runnable outside the source tree.
 
 ## Environment Variables
 
@@ -67,7 +67,7 @@ The build copies SQL migrations into `dist/db/migrations` so the compiled migrat
 1. Push to GitHub/GitLab
 2. Render Dashboard → **New** → **Blueprint**
 3. Connect repo → Render reads `render.yaml`
-4. Render installs with `npm install`, then runs `npm run db:migrate` and `npm run db:seed`
+4. Render installs with `npm install`, then runs `npm run db:schema` and `npm run db:seed`
 5. The web service starts from `npm start`
 6. Set `ZALO_APP_ID` and `ZALO_APP_SECRET` in dashboard (Postgres connects automatically via Blueprint)
 7. Deploy 🚀
@@ -77,7 +77,7 @@ This deploy path runs the TypeScript source directly through `tsx`, so it does n
 If you create a manual Node service instead of a Blueprint, use the same commands:
 
 ```bash
-npm install && npm run db:migrate && npm run db:seed
+npm install && npm run db:schema && npm run db:seed
 ```
 
 and keep the start command as `npm start`. The package `start` script runs via `tsx`, so it does not require a separate build step.

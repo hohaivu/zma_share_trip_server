@@ -7,12 +7,12 @@
     "start": "tsx src/index.ts",
     "start:dist": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && node scripts/copy-migrations.mjs",
+    "build": "tsc && node scripts/copy-schema.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test --test-concurrency=1 src/*.test.ts",
-    "db:migrate": "tsx src/db/migrate.ts",
+    "db:schema": "tsx src/db/setup-schema.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:migrate:dist": "node dist/db/migrate.js",
+    "db:schema:dist": "node dist/db/setup-schema.js",
     "db:seed:dist": "node dist/db/seed.js"
   },
   "dependencies": {

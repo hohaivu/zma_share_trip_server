@@ -61,19 +61,9 @@ export async function setupTestDb() {
     pool = initPool()
     await query(TRUNCATE_ALL_SQL)
 
-    const migrationsDir = path.join(__dirname, 'db', 'migrations')
-    const migrationFiles = fs
-      .readdirSync(migrationsDir)
-      .filter((file) => file.endsWith('.sql'))
-      .sort()
-
-    for (const migrationFile of migrationFiles) {
-      const migrationSql = fs.readFileSync(
-        path.join(migrationsDir, migrationFile),
-        'utf8',
-      )
-      await query(migrationSql)
-    }
+    const schemaPath = path.join(__dirname, 'db', 'schema.sql')
+    const schemaSql = fs.readFileSync(schemaPath, 'utf8')
+    await query(schemaSql)
     await query(TRUNCATE_ALL_SQL)
 
     await seed()

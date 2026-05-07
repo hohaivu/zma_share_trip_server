@@ -3,7 +3,7 @@ services:
     name: cung-tuyen-api
     runtime: node
     plan: free
-    buildCommand: npm install && npm run db:migrate && npm run db:seed
+    buildCommand: npm install && npm run db:schema && npm run db:seed
     startCommand: npm start
     envVars:
       - key: ZALO_APP_ID
