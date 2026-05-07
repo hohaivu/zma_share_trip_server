@@ -735,6 +735,18 @@ describe('work queue visibility endpoints', () => {
       departureTime: `${serviceDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-route-review',
+      dropoffWardId: 'ward-route-review-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await store.acceptRouteRequest(routeRequest.id)
     await store.updateRoute(route.id, { status: 'completed' })
 
     const beforeReview = await request(
@@ -781,6 +793,18 @@ describe('work queue visibility endpoints', () => {
       departureTime: `${serviceDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-route-future-review',
+      dropoffWardId: 'ward-route-future-review-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await store.acceptRouteRequest(routeRequest.id)
     await store.updateRoute(route.id, { status: 'completed' })
 
     const res = await request(
@@ -807,6 +831,20 @@ describe('work queue visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate,
+          departureTime: `${serviceDate}T07:00:00.000Z`,
+          tripPrice: 100000,
+        })
+      ).id,
+    )
+    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await store.acceptRouteRequest(routeRequest.id)
     await store.updatePlan(plan.id, { status: 'completed' })
 
     const beforeReview = await request(
@@ -855,6 +893,20 @@ describe('work queue visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate,
+          departureTime: `${serviceDate}T07:00:00.000Z`,
+          tripPrice: 100000,
+        })
+      ).id,
+    )
+    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await store.acceptRouteRequest(routeRequest.id)
     await store.updatePlan(plan.id, { status: 'completed' })
 
     const res = await request(
@@ -1858,43 +1910,44 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     assert.equal(reportsByUser.body.items[0].reason, 'spam')
   })
 
-  it('allows reviewing a future-dated completed trip but rejects duplicate and incomplete reviews', async () => {
-    const reviewer = await request(server, 'POST', '/api/users/bootstrap', {
-      mauid: 'zalo-reviewer-expired-001',
-      displayName: 'Expired Reviewer',
-      avatarUrl: '',
-    })
-    const reviewee = await request(server, 'POST', '/api/users/bootstrap', {
-      mauid: 'zalo-reviewee-expired-001',
-      displayName: 'Expired Reviewee',
-      avatarUrl: '',
-    })
-
+  it('allows reviewing an eligible completed trip but rejects duplicate and incomplete reviews', async () => {
     const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
-    const route = await store.createRoute(DRIVER_001_ID, {
+    const route = await store.publishRoute((await store.createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       serviceDate,
       departureTime: `${serviceDate}T07:00:00.000Z`,
       tripPrice: 100000,
+    })).id)
+    const plan = await store.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-review-eligible',
+      dropoffWardId: 'ward-review-eligible-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
     })
+    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await store.acceptRouteRequest(routeRequest.id)
     await store.updateRoute(route.id, { status: 'completed' })
 
     const res = await request(server, 'POST', '/api/reviews', {
       tripId: route.id,
-      reviewerId: reviewer.body.activeUser.id,
-      revieweeId: reviewee.body.activeUser.id,
+      reviewerId: DRIVER_001_ID,
+      revieweeId: CLIENT_001_ID,
       rating: 5,
-      comment: 'Future completed trip',
+      comment: 'Eligible completed trip',
     })
 
     assert.equal(res.status, 201)
 
     const duplicate = await request(server, 'POST', '/api/reviews', {
       tripId: route.id,
-      reviewerId: reviewer.body.activeUser.id,
-      revieweeId: reviewee.body.activeUser.id,
+      reviewerId: DRIVER_001_ID,
+      revieweeId: CLIENT_001_ID,
       rating: 4,
       comment: 'Duplicate',
     })
@@ -1911,14 +1964,14 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     })
     const incompleteRes = await request(server, 'POST', '/api/reviews', {
       tripId: incomplete.id,
-      reviewerId: reviewer.body.activeUser.id,
-      revieweeId: reviewee.body.activeUser.id,
+      reviewerId: DRIVER_001_ID,
+      revieweeId: CLIENT_001_ID,
       rating: 5,
       comment: 'Not done',
     })
 
     assert.equal(incompleteRes.status, 400)
-    assert.equal(incompleteRes.body.message, 'Trip must be completed before review')
+    assert.equal(incompleteRes.body.message, 'Review is not allowed: missing_counterpart')
   })
 
   it('blocks, unblocks, lists notifications, and marks them read', async () => {

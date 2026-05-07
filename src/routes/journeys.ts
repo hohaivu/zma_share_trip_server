@@ -19,8 +19,9 @@ type AcceptedGroupSummary = Extract<
 export function buildJourneySummary<T extends Route | Plan>(
   entity: T,
   accepted: JourneyAcceptedState | null,
-): T & Pick<JourneySummary, 'accepted'> {
-  return { ...entity, accepted }
+  reviewEligibility?: JourneySummary['reviewEligibility'],
+): T & Pick<JourneySummary, 'accepted' | 'reviewEligibility'> {
+  return { ...entity, accepted, ...(reviewEligibility ? { reviewEligibility } : {}) }
 }
 
 /**
@@ -126,8 +127,12 @@ const getJourneySummaryHandler = asyncHandler(
     const counterpart = route
       ? await findAcceptedForRoute(route)
       : await findAcceptedForPlan(plan!)
+    const viewerId = req.query.viewerId as string | undefined
+    const reviewEligibility = viewerId
+      ? await store.getReviewEligibility(entity.id, viewerId)
+      : undefined
 
-    res.json(buildJourneySummary(entity, counterpart))
+    res.json(buildJourneySummary(entity, counterpart, reviewEligibility))
   },
 )
 

@@ -36,12 +36,14 @@ import {
   CreateRoutePayload,
   DemandGroupSummary,
   ManualTopUpPayload,
+  ReviewEligibility,
   ManualTopUpResult,
   UpdateCarPayload,
   UpdatePlanPayload,
   UpdateRoutePayload,
   UpdateUserPayload,
   WalletSummary,
+  WithReviewEligibility,
 } from './types/payloads'
 
 // --- Helpers ---
@@ -1080,11 +1082,19 @@ export async function createReview(
     throw new HttpError(400, 'rating must be an integer between 1 and 5')
   }
 
-  const route = await getRoute(payload.tripId)
-  const plan = route ? null : await getPlan(payload.tripId)
-  const trip = route ?? plan
-  if (!trip || trip.status !== 'completed') {
-    throw new HttpError(400, 'Trip must be completed before review')
+  const eligibility = await getReviewEligibility(payload.tripId, payload.reviewerId)
+  if (!eligibility.canSubmit) {
+    const status = eligibility.reason === 'already_submitted' ? 409 : 400
+    const message =
+      eligibility.reason === 'outside_window'
+        ? 'Review window has closed'
+        : eligibility.reason === 'already_submitted'
+          ? 'Review already exists for this trip'
+          : `Review is not allowed: ${eligibility.reason}`
+    throw new HttpError(status, message)
+  }
+  if (eligibility.revieweeId !== payload.revieweeId) {
+    throw new HttpError(400, 'Reviewee must be the accepted counterpart')
   }
 
   try {
@@ -1492,6 +1502,105 @@ async function hasReviewerSubmittedTripReview(
   return result.rows.length > 0
 }
 
+function buildReviewEligibility(
+  values: Partial<ReviewEligibility> & Pick<ReviewEligibility, 'reason'>,
+): ReviewEligibility {
+  return {
+    canSubmit: values.reason === 'eligible',
+    hasSubmitted: values.hasSubmitted ?? false,
+    reason: values.reason,
+    windowClosesAt: values.windowClosesAt ?? null,
+    revieweeId: values.revieweeId ?? null,
+  }
+}
+
+function getAcceptedCounterpartId(
+  accepted: AcceptedJourneyMatch | null,
+  viewerId: string,
+): string | null {
+  if (!accepted) return null
+  const driverId =
+    accepted.kind === 'route_request'
+      ? accepted.request.driverId
+      : accepted.offer.driverId
+  const clientId =
+    accepted.kind === 'route_request'
+      ? accepted.request.clientId
+      : accepted.offer.clientId
+  if (viewerId === driverId) return clientId
+  if (viewerId === clientId) return driverId
+  return null
+}
+
+function getWindowClosesAt(completedAt?: string | null): string | null {
+  if (!completedAt) return null
+  const completedTime = new Date(completedAt).getTime()
+  if (!Number.isFinite(completedTime)) return null
+  return new Date(completedTime + 24 * 60 * 60 * 1000).toISOString()
+}
+
+export async function getReviewEligibility(
+  tripId: string,
+  viewerId: string,
+  now: Date = new Date(),
+): Promise<ReviewEligibility> {
+  const route = await getRoute(tripId)
+  const plan = route ? null : await getPlan(tripId)
+  const trip = route ?? plan
+  if (!trip) throw new HttpError(404, 'Trip not found')
+
+  const accepted = route
+    ? await findAcceptedRouteMatchTx({ query }, route.id)
+    : await findAcceptedPlanMatchTx({ query }, plan!)
+  const revieweeId = getAcceptedCounterpartId(accepted, viewerId)
+  if (!accepted) return buildReviewEligibility({ reason: 'missing_counterpart' })
+  if (!revieweeId) return buildReviewEligibility({ reason: 'not_participant' })
+
+  const hasSubmitted = await hasReviewerSubmittedTripReview(trip.id, viewerId)
+  const windowClosesAt = getWindowClosesAt(trip.completedAt)
+  if (hasSubmitted) {
+    return buildReviewEligibility({
+      reason: 'already_submitted',
+      hasSubmitted,
+      windowClosesAt,
+      revieweeId,
+    })
+  }
+  if (trip.status !== 'completed') {
+    return buildReviewEligibility({ reason: 'not_completed', revieweeId })
+  }
+  if (!trip.completedAt) {
+    return buildReviewEligibility({ reason: 'missing_completed_at', revieweeId })
+  }
+  const completedTime = new Date(trip.completedAt).getTime()
+  const nowTime = now.getTime()
+  if (!Number.isFinite(completedTime) || completedTime > nowTime) {
+    return buildReviewEligibility({ reason: 'missing_completed_at', revieweeId })
+  }
+  if (nowTime > completedTime + 24 * 60 * 60 * 1000) {
+    return buildReviewEligibility({
+      reason: 'outside_window',
+      windowClosesAt,
+      revieweeId,
+    })
+  }
+  return buildReviewEligibility({
+    reason: 'eligible',
+    windowClosesAt,
+    revieweeId,
+  })
+}
+
+export async function withReviewEligibility<T extends Route | Plan>(
+  trip: T,
+  viewerId: string,
+): Promise<WithReviewEligibility<T>> {
+  return {
+    ...trip,
+    reviewEligibility: await getReviewEligibility(trip.id, viewerId),
+  }
+}
+
 async function isTripVisibleInWorkQueue(
   trip: Pick<Route | Plan, 'id' | 'status' | 'serviceDate'>,
   reviewerId: string,
@@ -1504,7 +1613,7 @@ async function isTripVisibleInWorkQueue(
     return false
   }
 
-  return !(await hasReviewerSubmittedTripReview(trip.id, reviewerId))
+  return (await getReviewEligibility(trip.id, reviewerId)).canSubmit
 }
 
 async function shouldHideRequestForTerminalTrip(
@@ -1760,10 +1869,11 @@ async function filterTripsByScope<
 export async function listRoutesByDriver(
   driverId: string,
   scope: TripListScope = 'active',
-): Promise<Route[]> {
+): Promise<Array<WithReviewEligibility<Route>>> {
   await assertUserRole(driverId, 'driver')
   const routes = await listRoutesByDriverRaw(driverId)
-  return filterTripsByScope(routes, scope, driverId)
+  const filtered = await filterTripsByScope(routes, scope, driverId)
+  return Promise.all(filtered.map((route) => withReviewEligibility(route, driverId)))
 }
 
 const listPlansByClientRaw = listByColumn<Plan>('plans', 'client_id')
@@ -1771,10 +1881,11 @@ const listPlansByClientRaw = listByColumn<Plan>('plans', 'client_id')
 export async function listPlansByClient(
   clientId: string,
   scope: TripListScope = 'active',
-): Promise<Plan[]> {
+): Promise<Array<WithReviewEligibility<Plan>>> {
   await assertUserRole(clientId, 'client')
   const plans = await listPlansByClientRaw(clientId)
-  return filterTripsByScope(plans, scope, clientId)
+  const filtered = await filterTripsByScope(plans, scope, clientId)
+  return Promise.all(filtered.map((plan) => withReviewEligibility(plan, clientId)))
 }
 
 // --- Departure Block ---

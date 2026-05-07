@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 
 import { buildJourneySummary } from './routes/journeys'
 import { Plan, Route, User } from './types/entities'
-import { JourneyAcceptedState } from './types/payloads'
+import { JourneyAcceptedState, ReviewEligibility } from './types/payloads'
 
 const BASE_USER: User = {
   id: 'user-001',
@@ -78,5 +78,19 @@ describe('buildJourneySummary', () => {
     assert.equal(summary.departureBlockStart, BASE_PLAN.departureBlockStart)
     assert.equal(summary.pickup.label, BASE_PLAN.pickup.label)
     assert.equal(summary.accepted, null)
+  })
+
+  it('includes viewer-scoped review eligibility when supplied', () => {
+    const reviewEligibility: ReviewEligibility = {
+      canSubmit: true,
+      hasSubmitted: false,
+      reason: 'eligible',
+      windowClosesAt: '2030-04-02T07:00:00.000Z',
+      revieweeId: 'client-001',
+    }
+
+    const summary = buildJourneySummary(BASE_ROUTE, null, reviewEligibility)
+
+    assert.deepEqual(summary.reviewEligibility, reviewEligibility)
   })
 })

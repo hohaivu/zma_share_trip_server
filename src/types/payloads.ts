@@ -240,8 +240,30 @@ export type JourneyAcceptedState =
   | AcceptedRouteRequestSummary
   | AcceptedGroupOfferSummary
 
+export type ReviewEligibilityReason =
+  | 'eligible'
+  | 'not_completed'
+  | 'missing_completed_at'
+  | 'outside_window'
+  | 'already_submitted'
+  | 'missing_counterpart'
+  | 'not_participant'
+
+export interface ReviewEligibility {
+  canSubmit: boolean
+  hasSubmitted: boolean
+  reason: ReviewEligibilityReason
+  windowClosesAt: string | null
+  revieweeId: string | null
+}
+
+export type WithReviewEligibility<T> = T & {
+  reviewEligibility?: ReviewEligibility
+}
+
 export type JourneySummary = (Route | Plan) & {
   accepted: JourneyAcceptedState | null
+  reviewEligibility?: ReviewEligibility
 }
 
 export interface WalletSummary extends Wallet {
