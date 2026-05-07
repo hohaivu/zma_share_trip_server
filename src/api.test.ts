@@ -252,27 +252,46 @@ describe('DELETE /api/client/trip-plans/:id', () => {
   })
 })
 
-describe('POST /api/client/search-routes', () => {
+describe('POST /api/client/route-suggestions', () => {
+  const routeSearchCriteria = {
+    clientId: CLIENT_001_ID,
+    pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+    dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+    pickupWardId: 'ward-test',
+    dropoffWardId: 'ward-test2',
+    serviceDate: '2030-04-01',
+    departureBlockStart: '2030-04-01T08:00:00.000Z',
+    departureBlockEnd: '2030-04-01T08:30:00.000Z',
+  }
+
   it('returns matched routes from submitted criteria', async () => {
-    const res = await request(server, 'POST', '/api/client/search-routes', {
-      clientId: CLIENT_001_ID,
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-test',
-      dropoffWardId: 'ward-test2',
-      serviceDate: '2030-04-01',
-      departureBlockStart: '2030-04-01T08:00:00.000Z',
-      departureBlockEnd: '2030-04-01T08:30:00.000Z',
-    })
+    const res = await request(server, 'POST', '/api/client/route-suggestions', routeSearchCriteria)
     assert.equal(res.status, 200)
     assert.ok(Array.isArray(res.body))
   })
 
+  it('returns route suggestion candidate shape', async () => {
+    const res = await request(server, 'POST', '/api/client/route-suggestions', routeSearchCriteria)
+
+    assert.equal(res.status, 200)
+    assert.deepEqual(Object.keys(res.body[0] ?? {}).sort(), Object.keys(res.body[0] ?? {}).sort())
+  })
+
   it('rejects without required criteria', async () => {
-    const res = await request(server, 'POST', '/api/client/search-routes', {
+    const res = await request(server, 'POST', '/api/client/route-suggestions', {
       clientId: CLIENT_001_ID,
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
     })
+    assert.equal(res.status, 400)
+    assert.ok(res.body.message.includes('required'))
+  })
+
+  it('returns validation errors for route suggestions', async () => {
+    const res = await request(server, 'POST', '/api/client/route-suggestions', {
+      clientId: CLIENT_001_ID,
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+    })
+
     assert.equal(res.status, 400)
     assert.ok(res.body.message.includes('required'))
   })
@@ -329,7 +348,7 @@ describe('POST /api/client/search-routes', () => {
     await store.acceptRouteRequest(acceptedRouteRequest.id)
 
     for (const item of [groupOffer, routeRequest]) {
-      const res = await request(server, 'POST', '/api/client/search-routes', {
+      const res = await request(server, 'POST', '/api/client/route-suggestions', {
         clientId: CLIENT_002_ID,
         pickup: { lat: 10.776, lng: 106.701, label: 'Quận 1' },
         dropoff: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
@@ -590,7 +609,7 @@ describe('POST /api/trips/:id/cancel', () => {
     const summaryRes = await request(
       server,
       'GET',
-      `/api/trips/${route.id}/summary`,
+      `/api/journeys/${route.id}/summary`,
     )
     assert.equal(summaryRes.status, 200)
     assert.equal(summaryRes.body.accepted, null)
@@ -647,11 +666,58 @@ describe('POST /api/trips/:id/complete', () => {
     const planSummaryRes = await request(
       server,
       'GET',
-      `/api/trips/${plan.id}/summary`,
+      `/api/journeys/${plan.id}/summary`,
     )
     assert.equal(planSummaryRes.status, 200)
     assert.equal(planSummaryRes.body.accepted?.type, 'route_request')
     assert.equal(planSummaryRes.body.accepted?.matchedUser?.id, DRIVER_001_ID)
+  })
+})
+
+describe('GET /api/journeys/:id/summary', () => {
+  it('returns journey summary', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await store.publishRoute(
+      (
+        await store.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          serviceDate: '2030-04-04',
+          departureTime: '2030-04-04T07:00:00.000Z',
+          tripPrice: 155000,
+        })
+      ).id,
+    )
+
+    const res = await request(server, 'GET', `/api/journeys/${route.id}/summary`)
+
+    assert.equal(res.status, 200)
+    assert.equal(res.body.id, route.id)
+  })
+
+  it('preserves missing journey status and message', async () => {
+    const res = await request(server, 'GET', '/api/journeys/missing-route/summary')
+
+    assert.equal(res.status, 404)
+    assert.equal(res.body.message, 'Trip not found')
+  })
+})
+
+describe('removed legacy clarified endpoints', () => {
+  it('does not route old read and matching URLs', async () => {
+    const checks = await Promise.all([
+      request(server, 'GET', '/api/trips/legacy-id/summary'),
+      request(server, 'POST', '/api/client/search-routes', {}),
+      request(server, 'GET', `/api/client/group-offers?clientId=${CLIENT_001_ID}`),
+      request(server, 'GET', `/api/client/route-requests?clientId=${CLIENT_001_ID}`),
+    ])
+
+    for (const res of checks) {
+      assert.equal(res.status, 404)
+    }
   })
 })
 
@@ -943,7 +1009,7 @@ describe('inbox visibility endpoints', () => {
     const before = await request(
       server,
       'GET',
-      `/api/client/group-offers?clientId=${CLIENT_001_ID}`,
+      `/api/client/incoming-driver-offers?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(before.status, 200)
     assert.equal(
@@ -958,7 +1024,7 @@ describe('inbox visibility endpoints', () => {
     const after = await request(
       server,
       'GET',
-      `/api/client/group-offers?clientId=${CLIENT_001_ID}`,
+      `/api/client/incoming-driver-offers?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(after.status, 200)
     assert.equal(
@@ -1005,7 +1071,7 @@ describe('inbox visibility endpoints', () => {
     const before = await request(
       server,
       'GET',
-      `/api/client/route-requests?clientId=${CLIENT_001_ID}`,
+      `/api/client/outgoing-route-requests?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(before.status, 200)
     assert.equal(
@@ -1018,7 +1084,7 @@ describe('inbox visibility endpoints', () => {
     const after = await request(
       server,
       'GET',
-      `/api/client/route-requests?clientId=${CLIENT_001_ID}`,
+      `/api/client/outgoing-route-requests?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(after.status, 200)
     assert.equal(

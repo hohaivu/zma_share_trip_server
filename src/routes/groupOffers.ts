@@ -5,16 +5,17 @@ import { asyncHandler, requireParam } from './helpers'
 
 const router = Router()
 
-// GET /api/client/group-offers?clientId= — client inbox
-router.get(
-  '/group-offers',
-  asyncHandler(async (req: Request, res: Response) => {
+const listGroupOffersHandler = asyncHandler(
+  async (req: Request, res: Response) => {
     const { clientId } = req.query
     requireParam(clientId as string, 'clientId query is required')
 
     res.json(await store.listGroupOffersByClient(clientId as string))
-  }),
+  },
 )
+
+// GET /api/client/incoming-driver-offers?clientId= — client inbox
+router.get('/incoming-driver-offers', listGroupOffersHandler)
 
 // POST /api/client/group-offers/:id/accept
 router.post(

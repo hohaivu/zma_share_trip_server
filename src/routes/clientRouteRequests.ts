@@ -24,16 +24,17 @@ router.post(
   }),
 )
 
-// GET /api/client/route-requests?clientId= — client's sent requests
-router.get(
-  '/route-requests',
-  asyncHandler(async (req: Request, res: Response) => {
+const listRouteRequestsByClientHandler = asyncHandler(
+  async (req: Request, res: Response) => {
     const { clientId } = req.query
     requireParam(clientId as string, 'clientId query is required')
 
     res.json(await store.listRouteRequestsByClient(clientId as string))
-  }),
+  },
 )
+
+// GET /api/client/outgoing-route-requests?clientId= — client's sent requests
+router.get('/outgoing-route-requests', listRouteRequestsByClientHandler)
 
 // POST /api/client/route-requests/:id/cancel
 router.post(

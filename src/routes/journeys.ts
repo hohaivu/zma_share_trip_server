@@ -112,10 +112,8 @@ async function findAcceptedForPlan(
   )
 }
 
-// GET /api/trips/:id/summary
-router.get(
-  '/trips/:id/summary',
-  asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
+const getJourneySummaryHandler = asyncHandler(
+  async (req: Request<{ id: string }>, res: Response) => {
     const tripId = req.params.id
     const route = await store.getRoute(tripId)
     const plan = await store.getPlan(tripId)
@@ -130,8 +128,11 @@ router.get(
       : await findAcceptedForPlan(plan!)
 
     res.json(buildJourneySummary(entity, counterpart))
-  }),
+  },
 )
+
+// GET /api/journeys/:id/summary
+router.get('/journeys/:id/summary', getJourneySummaryHandler)
 
 // POST /api/trips/:id/cancel
 router.post(
