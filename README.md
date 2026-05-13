@@ -11,6 +11,9 @@ TypeScript-authored Express API backed by Postgres for bootstrap, matching, trip
 | POST   | `/api/user-info`    | Get user profile from access token         |
 | POST   | `/api/phone-number` | Exchange phone token → phone number        |
 | POST   | `/api/location`     | Exchange location token → GPS coords       |
+| GET    | `/api/vnmap/place/autocomplete` | Proxy VNMap autocomplete      |
+| GET    | `/api/vnmap/place/details`      | Proxy VNMap place detail       |
+| GET    | `/api/vnmap/directions`         | Proxy VNMap directions         |
 
 ### App Ecosystem Namespaces
 
@@ -24,7 +27,7 @@ The trip matching capabilities are split across three distinct API namespaces ba
 
 ```bash
 cd zma_share_trip_server
-cp .env.example .env   # fill in ZALO_APP_ID, ZALO_APP_SECRET, DATABASE_URL
+cp .env.example .env   # fill in ZALO_APP_ID, ZALO_APP_SECRET, VNMAP_API_KEY, DATABASE_URL
 yarn install
 yarn db:schema        # initialize Postgres schema
 yarn db:seed           # insert demo data
@@ -59,6 +62,7 @@ The build copies `src/db/schema.sql` into `dist/db/schema.sql` so the compiled s
 | `DATABASE_URL`    | ✅       | —       | Postgres connection string                            |
 | `ZALO_APP_ID`     | ✅       | —       | From [developers.zalo.me](https://developers.zalo.me) |
 | `ZALO_APP_SECRET` | ✅       | —       | Secret key from app dashboard                         |
+| `VNMAP_API_KEY`   | ✅       | —       | VNMap provider key used only by backend proxy         |
 | `PORT`            | ❌       | `3010`  | Server port                                           |
 | `ALLOWED_ORIGINS` | ❌       | `*`     | Comma-separated CORS origins                          |
 
@@ -69,7 +73,7 @@ The build copies `src/db/schema.sql` into `dist/db/schema.sql` so the compiled s
 3. Connect repo → Render reads `render.yaml`
 4. Render installs with `npm install`, then runs `npm run db:schema` and `npm run db:seed`
 5. The web service starts from `npm start`
-6. Set `ZALO_APP_ID` and `ZALO_APP_SECRET` in dashboard (Postgres connects automatically via Blueprint)
+6. Set `ZALO_APP_ID`, `ZALO_APP_SECRET`, and `VNMAP_API_KEY` in dashboard (Postgres connects automatically via Blueprint)
 7. Deploy 🚀
 
 This deploy path runs the TypeScript source directly through `tsx`, so it does not require a separate build step on Render.

@@ -18,6 +18,7 @@ import groupOffersRoute from './routes/groupOffers'
 import groupRequestsRoute from './routes/groupRequests'
 import journeysRoute from './routes/journeys'
 import usersRoute from './routes/users'
+import vnmapRoutesRoute from './routes/vnmapRoutes'
 import zaloRoutesRoute from './routes/zaloRoutes'
 
 const app: Express = express()
@@ -32,7 +33,7 @@ app.use(
 )
 
 const routeGroups: Array<[string, express.Router[]]> = [
-  ['/api', [zaloRoutesRoute, journeysRoute, usersRoute, bootstrapRoute]],
+  ['/api', [zaloRoutesRoute, vnmapRoutesRoute, journeysRoute, usersRoute, bootstrapRoute]],
   [
     '/api/driver',
     [
@@ -81,6 +82,7 @@ async function start() {
     if (!process.env.ZALO_APP_ID) console.warn('⚠ ZALO_APP_ID is not set')
     if (!process.env.ZALO_APP_SECRET)
       console.warn('⚠ ZALO_APP_SECRET is not set')
+    if (!process.env.VNMAP_API_KEY) console.warn('⚠ VNMAP_API_KEY is not set')
     console.log(`✓ cung-tuyen-api listening on :${PORT}`)
   })
 }
