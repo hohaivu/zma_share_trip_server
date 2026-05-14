@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import { after, before, describe, it } from 'node:test'
 
-import app from './index'
+import app from './index.js'
 
 function request(path: string): Promise<{ status: number; body: string; headers: http.IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {

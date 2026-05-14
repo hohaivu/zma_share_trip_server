@@ -3,7 +3,7 @@ import http from 'node:http'
 import { after, before, describe } from 'node:test'
 
 import { query } from './db/connection'
-import app from './index'
+import app from './index.js'
 import * as matching from './matching'
 import * as store from './store'
 import {
