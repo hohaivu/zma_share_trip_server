@@ -3,7 +3,7 @@ import { NextFunction, Request, Response } from 'express'
 import { hasUsablePoint } from '../matching'
 import * as store from '../store'
 import { CreateRouteRequestBody, UpdateRoutePayload } from '../types/payloads'
-import { requireParam } from '../routes/helpers'
+import { notFound, requireBodyOrQueryString, requireQueryString } from './helpers'
 
 export interface DriverRoutesController {
   rejectUnresolvedCoordinates(req: Request, res: Response, next: NextFunction): void | Response
@@ -48,19 +48,23 @@ export function createDriverRoutesController(): DriverRoutesController {
 
     async createRoute(req, res) {
       const { driverId, ...data } = req.body
-      requireParam(driverId, 'driverId is required')
+      const driverIdValue = requireBodyOrQueryString(
+        driverId,
+        undefined,
+        'driverId is required',
+      )
 
-      const route = await store.createRoute(driverId, data)
+      const route = await store.createRoute(driverIdValue, data)
       res.status(201).json(route)
     },
 
     async listRoutes(req, res) {
       const { driverId, scope } = req.query
-      requireParam(driverId as string, 'driverId query is required')
+      const driverIdValue = requireQueryString(driverId, 'driverId query is required')
 
       res.json(
         await store.listRoutesByDriver(
-          driverId as string,
+          driverIdValue,
           scope === 'history' ? 'history' : 'active',
         ),
       )
@@ -69,7 +73,7 @@ export function createDriverRoutesController(): DriverRoutesController {
     async getRoute(req, res) {
       const route = await store.getRoute(req.params.id as string)
       if (!route) {
-        return res.status(404).json({ message: 'Route not found' })
+        return notFound(res, 'Route not found')
       }
 
       res.json(route)
@@ -81,7 +85,7 @@ export function createDriverRoutesController(): DriverRoutesController {
           ? await store.publishRoute(req.params.id, req.body)
           : await store.updateRoute(req.params.id, req.body)
       if (!route) {
-        return res.status(404).json({ message: 'Route not found' })
+        return notFound(res, 'Route not found')
       }
 
       res.json(route)

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 
 import * as store from '../store'
-import { requireParam } from '../routes/helpers'
+import { requireQueryString } from './helpers'
 
 export interface GroupOffersController {
   listGroupOffers(req: Request, res: Response): Promise<void>
@@ -13,9 +13,9 @@ export function createGroupOffersController(): GroupOffersController {
   return {
     async listGroupOffers(req, res) {
       const { clientId } = req.query
-      requireParam(clientId as string, 'clientId query is required')
+      const clientIdValue = requireQueryString(clientId, 'clientId query is required')
 
-      res.json(await store.listGroupOffersByClient(clientId as string))
+      res.json(await store.listGroupOffersByClient(clientIdValue))
     },
 
     async acceptGroupOffer(req, res) {

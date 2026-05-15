@@ -2,7 +2,7 @@ import { Request, Response } from 'express'
 
 import * as store from '../store'
 import { CreatePlanRequestBody, UpdatePlanPayload } from '../types/payloads'
-import { requireParam } from '../routes/helpers'
+import { notFound, requireBodyOrQueryString, requireQueryString } from './helpers'
 
 export interface ClientPlansController {
   createPlan(
@@ -22,19 +22,23 @@ export function createClientPlansController(): ClientPlansController {
   return {
     async createPlan(req, res) {
       const { clientId, ...data } = req.body
-      requireParam(clientId, 'clientId is required')
+      const clientIdValue = requireBodyOrQueryString(
+        clientId,
+        undefined,
+        'clientId is required',
+      )
 
-      const plan = await store.createPlan(clientId, data)
+      const plan = await store.createPlan(clientIdValue, data)
       res.status(201).json(plan)
     },
 
     async listPlans(req, res) {
       const { clientId, scope } = req.query
-      requireParam(clientId as string, 'clientId query is required')
+      const clientIdValue = requireQueryString(clientId, 'clientId query is required')
 
       res.json(
         await store.listPlansByClient(
-          clientId as string,
+          clientIdValue,
           scope === 'history' ? 'history' : 'active',
         ),
       )
@@ -43,7 +47,7 @@ export function createClientPlansController(): ClientPlansController {
     async getPlan(req, res) {
       const plan = await store.getPlan(req.params.id as string)
       if (!plan) {
-        return res.status(404).json({ message: 'Plan not found' })
+        return notFound(res, 'Plan not found')
       }
 
       res.json(plan)
@@ -52,15 +56,18 @@ export function createClientPlansController(): ClientPlansController {
     async updatePlan(req, res) {
       const plan = await store.updatePlan(req.params.id, req.body)
       if (!plan) {
-        return res.status(404).json({ message: 'Plan not found' })
+        return notFound(res, 'Plan not found')
       }
 
       res.json(plan)
     },
 
     async cancelPlan(req, res) {
-      const clientId = (req.body?.clientId ?? req.query.clientId) as string
-      requireParam(clientId, 'clientId is required')
+      const clientId = requireBodyOrQueryString(
+        req.body?.clientId,
+        req.query.clientId,
+        'clientId is required',
+      )
 
       const plan = await store.cancelPlanByClient(req.params.id, clientId)
       res.json(plan)
