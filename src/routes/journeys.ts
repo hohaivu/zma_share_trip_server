@@ -1,6 +1,6 @@
 import { Request, Response, Router } from 'express'
 
-import * as store from '../store'
+import { journeyService } from '../services/domainServices'
 import { GroupOffer, Plan, Route, RouteRequest } from '../types/entities'
 import { JourneyAcceptedState, JourneySummary } from '../types/payloads'
 import { asyncHandler } from './helpers'
@@ -62,22 +62,22 @@ async function findAcceptedForRoute(
     return null
   }
   return findAccepted(
-    () => store.listRouteRequestsByRoute(route.id),
-    () => store.listGroupOffersByRoute(route.id),
+    () => journeyService.listRouteRequestsByRoute(route.id),
+    () => journeyService.listGroupOffersByRoute(route.id),
     null,
     async (accepted) => ({
       type: 'route_request',
       requestId: accepted.id,
-      matchedUser: (await store.getUser(accepted.clientId)) || null,
-      plan: accepted.planId ? await store.getPlan(accepted.planId) : null,
+      matchedUser: (await journeyService.getUser(accepted.clientId)) || null,
+      plan: accepted.planId ? await journeyService.getPlan(accepted.planId) : null,
       tripPrice: accepted.tripPrice ?? 0,
       status: accepted.status,
     }),
     async (accepted) => ({
       type: 'group_offer',
       offerId: accepted.id,
-      matchedUser: (await store.getUser(accepted.clientId)) || null,
-      route: await store.getRoute(accepted.routeId),
+      matchedUser: (await journeyService.getUser(accepted.clientId)) || null,
+      route: await journeyService.getRoute(accepted.routeId),
       tripPrice: accepted.tripPrice,
       status: accepted.status,
     }),
@@ -91,22 +91,22 @@ async function findAcceptedForPlan(
     return null
   }
   return findAccepted(
-    () => store.listRouteRequestsByPlan(plan.id),
-    () => store.listGroupOffersByPlan(plan.id),
+    () => journeyService.listRouteRequestsByPlan(plan.id),
+    () => journeyService.listGroupOffersByPlan(plan.id),
     plan.id,
     async (accepted) => ({
       type: 'route_request',
       requestId: accepted.id,
-      matchedUser: (await store.getUser(accepted.driverId)) || null,
-      plan: accepted.planId ? await store.getPlan(accepted.planId) : null,
+      matchedUser: (await journeyService.getUser(accepted.driverId)) || null,
+      plan: accepted.planId ? await journeyService.getPlan(accepted.planId) : null,
       tripPrice: accepted.tripPrice ?? 0,
       status: accepted.status,
     }),
     async (accepted) => ({
       type: 'group_offer',
       offerId: accepted.id,
-      matchedUser: (await store.getUser(accepted.driverId)) || null,
-      route: (await store.getRoute(accepted.routeId)) || null,
+      matchedUser: (await journeyService.getUser(accepted.driverId)) || null,
+      route: (await journeyService.getRoute(accepted.routeId)) || null,
       tripPrice: accepted.tripPrice,
       status: accepted.status,
     }),
@@ -116,8 +116,8 @@ async function findAcceptedForPlan(
 const getJourneySummaryHandler = asyncHandler(
   async (req: Request<{ id: string }>, res: Response) => {
     const tripId = req.params.id
-    const route = await store.getRoute(tripId)
-    const plan = await store.getPlan(tripId)
+    const route = await journeyService.getRoute(tripId)
+    const plan = await journeyService.getPlan(tripId)
 
     if (!route && !plan) {
       return res.status(404).json({ message: 'Trip not found' })
@@ -129,7 +129,7 @@ const getJourneySummaryHandler = asyncHandler(
       : await findAcceptedForPlan(plan!)
     const viewerId = req.query.viewerId as string | undefined
     const reviewEligibility = viewerId
-      ? await store.getReviewEligibility(entity.id, viewerId)
+      ? await journeyService.getReviewEligibility(entity.id, viewerId)
       : undefined
 
     res.json(buildJourneySummary(entity, counterpart, reviewEligibility))
@@ -144,7 +144,7 @@ router.post(
   '/trips/:id/cancel',
   asyncHandler(async (req: Request, res: Response) => {
     const tripId = req.params.id as string
-    const canceled = await store.cancelTrip(tripId)
+    const canceled = await journeyService.cancelTrip(tripId)
     res.json(canceled)
   }),
 )
@@ -153,7 +153,7 @@ router.post(
 router.post(
   '/trips/:id/complete',
   asyncHandler(async (req: Request, res: Response) => {
-    const updated = await store.completeTrip(req.params.id as string)
+    const updated = await journeyService.completeTrip(req.params.id as string)
     res.json(updated)
   }),
 )
@@ -163,14 +163,14 @@ router.post(
 router.get(
   '/trips/saved-locations',
   asyncHandler(async (_req: Request, res: Response) => {
-    res.json(await store.listSavedLocations())
+    res.json(await journeyService.listSavedLocations())
   }),
 )
 
 router.post(
   '/trips/saved-locations',
   asyncHandler(async (req: Request, res: Response) => {
-    const location = await store.createSavedLocation(req.body || {})
+    const location = await journeyService.createSavedLocation(req.body || {})
     res.status(201).json(location)
   }),
 )
@@ -178,7 +178,7 @@ router.post(
 router.delete(
   '/trips/saved-locations/:id',
   asyncHandler(async (req: Request, res: Response) => {
-    const deleted = await store.deleteSavedLocation(req.params.id as string)
+    const deleted = await journeyService.deleteSavedLocation(req.params.id as string)
     if (!deleted) {
       return res.status(404).json({ message: 'Saved location not found' })
     }

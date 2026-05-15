@@ -7,34 +7,15 @@ import {
   singleQueryValue,
 } from '../shared/requestHelpers'
 import { HttpError } from '../http-error'
-import * as store from '../store'
-import {
-  ManualTopUpPayload,
-  ManualTopUpResult,
-  WalletSummary,
-  WalletTransactionListPayload,
-} from '../types/payloads'
+import { walletService } from '../services/domainServices'
+import { ManualTopUpPayload } from '../types/payloads'
 import { asyncHandler, requireParam } from './helpers'
 
 const router = Router()
 
-interface DriverWalletStoreApi {
-  getDriverWalletSummary(driverId: string): Promise<WalletSummary>
-  listDriverWalletTransactions(
-    driverId: string,
-    limit?: number,
-  ): Promise<WalletTransactionListPayload['items']>
-  topUpDriverWallet(
-    driverId: string,
-    payload: ManualTopUpPayload,
-  ): Promise<ManualTopUpResult>
-}
-
 interface ManualTopUpRequestBody extends ManualTopUpPayload {
   driverId: string
 }
-
-const walletStore = store as unknown as DriverWalletStoreApi
 
 // GET /api/driver/wallet?driverId=
 router.get(
@@ -46,7 +27,7 @@ router.get(
       'Wallet validation error: driverId query is required',
     )
 
-    res.json(await walletStore.getDriverWalletSummary(driverId))
+    res.json(await walletService.getDriverWalletSummary(driverId))
   }),
 )
 
@@ -65,7 +46,7 @@ router.get(
       'limit',
     )
 
-    const items = await walletStore.listDriverWalletTransactions(
+    const items = await walletService.listDriverWalletTransactions(
       driverId,
       limit,
     )
@@ -99,7 +80,7 @@ router.post(
       }
 
       try {
-        const result = await walletStore.topUpDriverWallet(driverIdValue, {
+        const result = await walletService.topUpDriverWallet(driverIdValue, {
           amountVnd,
           description,
         })

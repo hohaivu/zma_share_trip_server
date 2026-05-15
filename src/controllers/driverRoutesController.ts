@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express'
 
 import { hasUsablePoint } from '../matching'
-import * as store from '../store'
+import { routeService } from '../services/domainServices'
 import { CreateRouteRequestBody, UpdateRoutePayload } from '../types/payloads'
 import { notFound, requireBodyOrQueryString, requireQueryString } from './helpers'
 
@@ -54,7 +54,7 @@ export function createDriverRoutesController(): DriverRoutesController {
         'driverId is required',
       )
 
-      const route = await store.createRoute(driverIdValue, data)
+      const route = await routeService.createRoute(driverIdValue, data)
       res.status(201).json(route)
     },
 
@@ -63,7 +63,7 @@ export function createDriverRoutesController(): DriverRoutesController {
       const driverIdValue = requireQueryString(driverId, 'driverId query is required')
 
       res.json(
-        await store.listRoutesByDriver(
+        await routeService.listRoutesByDriver(
           driverIdValue,
           scope === 'history' ? 'history' : 'active',
         ),
@@ -71,7 +71,7 @@ export function createDriverRoutesController(): DriverRoutesController {
     },
 
     async getRoute(req, res) {
-      const route = await store.getRoute(req.params.id as string)
+      const route = await routeService.getRoute(req.params.id as string)
       if (!route) {
         return notFound(res, 'Route not found')
       }
@@ -82,8 +82,8 @@ export function createDriverRoutesController(): DriverRoutesController {
     async updateRoute(req, res) {
       const route =
         req.body.status === 'published'
-          ? await store.publishRoute(req.params.id, req.body)
-          : await store.updateRoute(req.params.id, req.body)
+          ? await routeService.publishRoute(req.params.id, req.body)
+          : await routeService.updateRoute(req.params.id, req.body)
       if (!route) {
         return notFound(res, 'Route not found')
       }

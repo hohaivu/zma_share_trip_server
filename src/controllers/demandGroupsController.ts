@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 
-import * as store from '../store'
+import { demandGroupService } from '../services/domainServices'
 import { notFound } from './helpers'
 
 export interface DemandGroupsController {
@@ -11,7 +11,7 @@ export interface DemandGroupsController {
 export function createDemandGroupsController(): DemandGroupsController {
   return {
     async getDemandGroup(req, res) {
-      const group = await store.getDemandGroup(req.params.id as string)
+      const group = await demandGroupService.getDemandGroup(req.params.id as string)
       if (!group) {
         return notFound(res, 'Demand group not found')
       }
@@ -20,7 +20,7 @@ export function createDemandGroupsController(): DemandGroupsController {
     },
 
     async getDemandGroupMembers(req, res) {
-      const members = await store.getDemandGroupMembers(req.params.id as string)
+      const members = await demandGroupService.getDemandGroupMembers(req.params.id as string)
       if (!members) {
         return notFound(res, 'Demand group not found')
       }

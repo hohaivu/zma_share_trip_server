@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 
-import * as store from '../store'
+import { planService } from '../services/domainServices'
 import { CreatePlanRequestBody, UpdatePlanPayload } from '../types/payloads'
 import { notFound, requireBodyOrQueryString, requireQueryString } from './helpers'
 
@@ -28,7 +28,7 @@ export function createClientPlansController(): ClientPlansController {
         'clientId is required',
       )
 
-      const plan = await store.createPlan(clientIdValue, data)
+      const plan = await planService.createPlan(clientIdValue, data)
       res.status(201).json(plan)
     },
 
@@ -37,7 +37,7 @@ export function createClientPlansController(): ClientPlansController {
       const clientIdValue = requireQueryString(clientId, 'clientId query is required')
 
       res.json(
-        await store.listPlansByClient(
+        await planService.listPlansByClient(
           clientIdValue,
           scope === 'history' ? 'history' : 'active',
         ),
@@ -45,7 +45,7 @@ export function createClientPlansController(): ClientPlansController {
     },
 
     async getPlan(req, res) {
-      const plan = await store.getPlan(req.params.id as string)
+      const plan = await planService.getPlan(req.params.id as string)
       if (!plan) {
         return notFound(res, 'Plan not found')
       }
@@ -54,7 +54,7 @@ export function createClientPlansController(): ClientPlansController {
     },
 
     async updatePlan(req, res) {
-      const plan = await store.updatePlan(req.params.id, req.body)
+      const plan = await planService.updatePlan(req.params.id, req.body)
       if (!plan) {
         return notFound(res, 'Plan not found')
       }
@@ -69,7 +69,7 @@ export function createClientPlansController(): ClientPlansController {
         'clientId is required',
       )
 
-      const plan = await store.cancelPlanByClient(req.params.id, clientId)
+      const plan = await planService.cancelPlanByClient(req.params.id, clientId)
       res.json(plan)
     },
   }

@@ -1,6 +1,6 @@
 import { Request, Response, Router } from 'express'
 
-import * as store from '../store'
+import { groupRequestService } from '../services/domainServices'
 import { asyncHandler, requireParam } from './helpers'
 
 const router = Router()
@@ -14,7 +14,7 @@ router.post(
     requireParam(routeId, 'routeId is required')
     requireParam(demandGroupId, 'demandGroupId is required')
 
-    const result = await store.createGroupRequest(
+    const result = await groupRequestService.createGroupRequest(
       driverId,
       routeId,
       demandGroupId,
@@ -31,7 +31,7 @@ router.get(
     const { driverId } = req.query
     requireParam(driverId as string, 'driverId query is required')
 
-    res.json(await store.listGroupRequestsByDriver(driverId as string))
+    res.json(await groupRequestService.listGroupRequestsByDriver(driverId as string))
   }),
 )
 
@@ -39,7 +39,7 @@ router.get(
 router.post(
   '/group-requests/:id/cancel',
   asyncHandler(async (req: Request, res: Response) => {
-    const result = await store.cancelGroupRequest(req.params.id as string)
+    const result = await groupRequestService.cancelGroupRequest(req.params.id as string)
     res.json(result)
   }),
 )

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 
-import * as store from '../store'
+import { groupOfferService } from '../services/domainServices'
 import { requireQueryString } from './helpers'
 
 export interface GroupOffersController {
@@ -15,16 +15,16 @@ export function createGroupOffersController(): GroupOffersController {
       const { clientId } = req.query
       const clientIdValue = requireQueryString(clientId, 'clientId query is required')
 
-      res.json(await store.listGroupOffersByClient(clientIdValue))
+      res.json(await groupOfferService.listGroupOffersByClient(clientIdValue))
     },
 
     async acceptGroupOffer(req, res) {
-      const result = await store.acceptGroupOffer(req.params.id as string)
+      const result = await groupOfferService.acceptGroupOffer(req.params.id as string)
       res.json(result)
     },
 
     async declineGroupOffer(req, res) {
-      const result = await store.declineGroupOffer(req.params.id as string)
+      const result = await groupOfferService.declineGroupOffer(req.params.id as string)
       res.json(result)
     },
   }
