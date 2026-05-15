@@ -1,5 +1,6 @@
 import { Request, Response, Router } from 'express'
 
+import { usersController } from '../controllers/usersController'
 import * as store from '../store'
 import { asyncHandler, requireParam } from './helpers'
 
@@ -7,94 +8,34 @@ const router = Router()
 
 router.get(
   '/users/:id',
-  asyncHandler(async (req: Request, res: Response) => {
-    const user = await store.getUser(req.params.id as string)
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' })
-    }
-
-    res.json(user)
-  }),
+  asyncHandler(usersController.getUser),
 )
 
 router.patch(
   '/users/:id',
-  asyncHandler(async (req: Request, res: Response) => {
-    const user = await store.updateUser(req.params.id as string, req.body || {})
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' })
-    }
-
-    res.json(user)
-  }),
+  asyncHandler(usersController.updateUser),
 )
 
 // POST /api/users/:id/mode — save preferred mode
 router.post(
   '/identities/:id/mode',
-  asyncHandler(async (req: Request, res: Response) => {
-    const { preferredMode } = req.body || {}
-    requireParam(preferredMode, 'preferredMode is required')
-
-    const result = await store.setUserMode(
-      req.params.id as string,
-      preferredMode,
-    )
-    if (!result) {
-      return res.status(404).json({ message: 'User not found' })
-    }
-
-    res.json(result)
-  }),
+  asyncHandler(usersController.setIdentityMode),
 )
 
 // GET /api/users/:id/mode — read preferred mode
 router.get(
   '/identities/:id/mode',
-  asyncHandler(async (req: Request, res: Response) => {
-    const result = await store.getUserMode(req.params.id as string)
-    if (!result) {
-      return res.status(404).json({ message: 'User not found' })
-    }
-
-    res.json(result)
-  }),
+  asyncHandler(usersController.getIdentityMode),
 )
-
-async function resolveIdentityId(userId: string): Promise<string | null> {
-  const user = await store.getUser(userId)
-  return user?.identityId ?? null
-}
 
 router.post(
   '/users/:id/mode',
-  asyncHandler(async (req: Request, res: Response) => {
-    const { preferredMode } = req.body || {}
-    requireParam(preferredMode, 'preferredMode is required')
-
-    const identityId = await resolveIdentityId(req.params.id as string)
-    const result = identityId
-      ? await store.setUserMode(identityId, preferredMode)
-      : null
-    if (!result) {
-      return res.status(404).json({ message: 'User not found' })
-    }
-
-    res.json(result)
-  }),
+  asyncHandler(usersController.setUserMode),
 )
 
 router.get(
   '/users/:id/mode',
-  asyncHandler(async (req: Request, res: Response) => {
-    const identityId = await resolveIdentityId(req.params.id as string)
-    const result = identityId ? await store.getUserMode(identityId) : null
-    if (!result) {
-      return res.status(404).json({ message: 'User not found' })
-    }
-
-    res.json(result)
-  }),
+  asyncHandler(usersController.getUserMode),
 )
 
 router.get(

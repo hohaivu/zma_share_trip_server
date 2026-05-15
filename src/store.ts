@@ -1,4 +1,6 @@
 import { query, withTransaction } from './db/connection'
+import { groupRequestService as mvcGroupRequestService } from './services/groupRequestService'
+import * as userService from './services/userService'
 import {
   mapRows,
   normalizeUtc,
@@ -30,9 +32,16 @@ import {
   updateWalletRowTx,
   type DbQueryExecutor,
 } from './repositories/walletRepository'
+import { mapCar } from './repositories/carRepository'
+import {
+  createCar as createCarService,
+  deleteCar as deleteCarService,
+  getCarById as getCarByIdService,
+  listCarsByOwner as listCarsByOwnerService,
+  updateCar as updateCarService,
+} from './services/carService'
 import {
   AppNotification,
-  Car,
   ClientRequestSource,
   GroupOffer,
   BootstrapSession,
@@ -172,21 +181,6 @@ const VALID_REPORT_REASONS = new Set([
   'fake_profile',
 ])
 
-const EDITABLE_USER_FIELDS = new Set<keyof UpdateUserPayload>([
-  'displayName',
-  'avatarUrl',
-  'phone',
-  'preferredMode',
-])
-
-function assertEditableUserUpdate(data: UpdateUserPayload): void {
-  for (const key of Object.keys(data)) {
-    if (!EDITABLE_USER_FIELDS.has(key as keyof UpdateUserPayload)) {
-      throw new HttpError(400, `Field is not editable: ${key}`)
-    }
-  }
-}
-
 function inferRequestSource(type: string): ClientRequestSource | undefined {
   if (type.startsWith('group_')) return 'group_offer'
   if (type.startsWith('route_')) return 'route_request'
@@ -288,28 +282,7 @@ export function listByColumn<T>(
   }
 }
 
-const CAR_COLORS: Record<string, string> = {
-  'Xanh dương': '#006AF5',
-  Trắng: '#FFFFFF',
-  Đen: '#1A1A1A',
-  Đỏ: '#CC0000',
-  'Xanh lá': '#00C853',
-  Cam: '#FFA000',
-  Tím: '#9C27B0',
-  Nâu: '#795548',
-  Bạc: '#C0C0C0',
-  'Xanh đậm': '#1565C0',
-  Xám: '#757575',
-}
-
-export function mapCar(
-  row: Record<string, unknown>,
-): Car & { colorHex?: string } {
-  const c = toCamelCase<Car & { colorHex?: string }>(row)
-  if (!c) throw new Error('Cannot map null row to Car')
-  if (c.color) c.colorHex = CAR_COLORS[c.color] || c.color
-  return c
-}
+export { mapCar } from './repositories/carRepository'
 
 // --- Wallet ---
 
@@ -466,17 +439,7 @@ export async function listNotifications(
 // --- User ---
 
 export async function getUser(userId: string): Promise<User | null> {
-  const result = await query(
-    `
-    SELECT u.*, i.mauid, i.display_name, i.avatar_url, i.phone,
-           i.preferred_mode, i.mode_selected_at
-    FROM users u
-    LEFT JOIN identities i ON i.id = u.identity_id
-    WHERE u.id = $1
-  `,
-    [userId],
-  )
-  return result.rows[0] ? mapUser(result.rows[0]) : null
+  return userService.getUser(userId)
 }
 
 async function getIdentity(identityId: string): Promise<Identity | null> {
@@ -525,63 +488,20 @@ export async function updateUser(
   userId: string,
   data: UpdateUserPayload,
 ): Promise<User | null> {
-  assertEditableUserUpdate(data)
-  const user = await getUser(userId)
-  if (!user?.identityId) return null
-  const result = await query(
-    `
-    UPDATE identities
-    SET display_name = COALESCE($2, display_name),
-        avatar_url = COALESCE($3, avatar_url),
-        phone = COALESCE($4, phone),
-        preferred_mode = COALESCE($5, preferred_mode),
-        mode_selected_at = CASE WHEN $5::text IS NULL THEN mode_selected_at ELSE NOW() END,
-        updated_at = NOW()
-    WHERE id = $1
-    RETURNING *
-  `,
-    [
-      user.identityId,
-      data.displayName ?? null,
-      data.avatarUrl ?? null,
-      data.phone ?? null,
-      data.preferredMode ?? null,
-    ],
-  )
-  if (result.rowCount === 0) return null
-  return getUser(userId)
+  return userService.updateUser(userId, data)
 }
 
 export async function setUserMode(
   identityId: string,
   mode: string,
 ): Promise<BootstrapSession | null> {
-  if (mode !== 'driver' && mode !== 'client') {
-    throw new HttpError(400, 'preferredMode must be driver or client')
-  }
-  const result = await query(
-    'UPDATE identities SET preferred_mode = $1, mode_selected_at = NOW(), updated_at = NOW() WHERE id = $2 RETURNING *',
-    [mode, identityId],
-  )
-  if (result.rowCount === 0) return null
-  return buildSession(
-    mapIdentity(result.rows[0]),
-    await listPersonasByIdentity(identityId),
-    false,
-  )
+  return userService.setUserMode(identityId, mode)
 }
 
 export async function getUserMode(
   identityId: string,
 ): Promise<{ preferredMode: string; modeSelectedAt: string } | null> {
-  const result = await query(
-    'SELECT preferred_mode, mode_selected_at FROM identities WHERE id = $1',
-    [identityId],
-  )
-  if (result.rowCount === 0) return null
-  return toCamelCase<{ preferredMode: string; modeSelectedAt: string }>(
-    result.rows[0],
-  )
+  return userService.getUserMode(identityId)
 }
 
 export async function bootstrapUser(
@@ -846,69 +766,31 @@ export async function markAllNotificationsRead(
 export async function createCar(
   ownerId: string,
   data: CreateCarPayload,
-): Promise<Car & { colorHex?: string }> {
-  await assertUserRole(ownerId, 'driver')
-  const result = await query(
-    `
-    INSERT INTO cars (id, owner_id, nickname, plate_number_masked, plate_number_full, brand, model, color, seat_capacity, verification_status, photos, created_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-    RETURNING *
-  `,
-    [
-      generateId('car'),
-      ownerId,
-      data.nickname,
-      data.plateNumberMasked,
-      data.plateNumberFull,
-      data.brand,
-      data.model,
-      data.color,
-      data.seatCapacity,
-      data.verificationStatus || 'unverified',
-      JSON.stringify(data.photos || []),
-    ],
-  )
-  return mapCar(result.rows[0])
+): ReturnType<typeof createCarService> {
+  return createCarService(ownerId, data)
 }
 
 export async function listCarsByOwner(
   ownerId: string,
-): Promise<(Car & { colorHex?: string })[]> {
-  await assertUserRole(ownerId, 'driver')
-  const result = await query('SELECT * FROM cars WHERE owner_id = $1', [
-    ownerId,
-  ])
-  return result.rows.map(mapCar)
+): ReturnType<typeof listCarsByOwnerService> {
+  return listCarsByOwnerService(ownerId)
 }
 
 export async function getCarById(
   id: string,
-): Promise<(Car & { colorHex?: string }) | null> {
-  const result = await query('SELECT * FROM cars WHERE id = $1', [id])
-  return result.rows[0] ? mapCar(result.rows[0]) : null
+): ReturnType<typeof getCarByIdService> {
+  return getCarByIdService(id)
 }
 
 export async function updateCar(
   id: string,
   data: UpdateCarPayload,
-): Promise<(Car & { colorHex?: string }) | null> {
-  const result = await dynamicUpdate<Car & { colorHex?: string }>(
-    'cars',
-    id,
-    data as unknown as Record<string, unknown>,
-    ['photos'],
-  )
-  if (result && result.color) {
-    result.colorHex = CAR_COLORS[result.color] || result.color
-  }
-  return result
+): ReturnType<typeof updateCarService> {
+  return updateCarService(id, data)
 }
 
 export async function deleteCar(id: string): Promise<boolean> {
-  const result = await query('DELETE FROM cars WHERE id = $1 RETURNING id', [
-    id,
-  ])
-  return result.rowCount !== null && result.rowCount > 0
+  return deleteCarService(id)
 }
 
 // --- Route ---
@@ -1606,84 +1488,12 @@ export async function createGroupRequest(
   demandGroupId: string,
   note?: string,
 ): Promise<{ groupRequest: GroupRequest; offers: GroupOffer[] }> {
-  await assertUserRole(driverId, 'driver')
-
-  const resData = await withTransaction(async (tx) => {
-    // Acquire a lock on the route so concurrent requests won't conflict
-    const routeRes = await tx.query(
-      'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
-      [routeId],
-    )
-    const route = mapRoute(routeRes.rows[0])
-    if (!route) throw new HttpError(404, 'Route not found')
-
-    if (!(await checkRouteAvailability(tx, routeId))) {
-      throw new HttpError(
-        409,
-        'Route is not available — already has an accepted client',
-      )
-    }
-
-    const group = await getDemandGroup(demandGroupId)
-    if (!group) throw new HttpError(404, 'Demand group not found')
-
-    const greqId = generateId('greq')
-
-    const greqRes = await tx.query(
-      `
-      INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
-      RETURNING *
-    `,
-      [greqId, driverId, routeId, demandGroupId, note || '', 'pending'],
-    )
-
-    const greq = toCamelCase<GroupRequest>(greqRes.rows[0])
-    if (!greq) throw new Error('Failed to create group request')
-    const createdOffers: GroupOffer[] = []
-
-    for (const tpId of group.memberPlanIds) {
-      const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [tpId])
-      const tp = toCamelCase<Plan>(tpRes.rows[0])
-      if (!tp) continue
-      const offerId = generateId('goffer')
-
-      const offerRes = await tx.query(
-        `
-        INSERT INTO group_offers (id, group_request_id, route_id, driver_id, client_id, plan_id, trip_price, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-        RETURNING *
-      `,
-        [
-          offerId,
-          greq.id,
-          routeId,
-          driverId,
-          tp.clientId,
-          tpId,
-          route.tripPrice,
-          'pending',
-        ],
-      )
-
-      const offer = toCamelCase<GroupOffer>(offerRes.rows[0])
-      if (offer) createdOffers.push(offer)
-    }
-
-    return { groupRequest: greq, offers: createdOffers }
-  })
-
-  // Outside transaction
-  for (const offer of resData.offers) {
-    emitNotification('group_offer_received', offer.clientId, {
-      groupOfferId: offer.id,
-      groupRequestId: resData.groupRequest.id,
-      driverId,
-      routeId,
-    })
-  }
-
-  return resData
+  return mvcGroupRequestService.createGroupRequest(
+    driverId,
+    routeId,
+    demandGroupId,
+    note,
+  )
 }
 
 export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
@@ -1807,44 +1617,7 @@ export async function declineGroupOffer(offerId: string): Promise<GroupOffer> {
 export async function cancelGroupRequest(
   requestId: string,
 ): Promise<GroupRequest> {
-  const result = await withTransaction(async (tx) => {
-    const greqRes = await tx.query(
-      'SELECT * FROM group_requests WHERE id = $1 FOR UPDATE',
-      [requestId],
-    )
-    let greq = toCamelCase<GroupRequest>(greqRes.rows[0])
-    if (!greq) throw new Error('Group request not found')
-    if (greq.status !== 'pending') {
-      throw new Error(`Cannot cancel request in status: ${greq.status}`)
-    }
-
-    const updatedRes = await tx.query(
-      "UPDATE group_requests SET status = 'canceled' WHERE id = $1 RETURNING *",
-      [requestId],
-    )
-    greq = toCamelCase<GroupRequest>(updatedRes.rows[0])
-    if (!greq) throw new Error('Failed to cancel group request')
-
-    const offersRes = await tx.query(
-      "UPDATE group_offers SET status = 'closed' WHERE group_request_id = $1 AND status = 'pending' RETURNING *",
-      [requestId],
-    )
-    const offers = mapRows<GroupOffer>(offersRes.rows)
-    return { greq, offers }
-  })
-
-  for (const offer of result.offers) {
-    emitNotification('sibling_offer_closed', offer.clientId, {
-      groupOfferId: offer.id,
-      reason: 'group_request_canceled',
-    })
-  }
-
-  emitNotification('group_request_canceled', result.greq.driverId, {
-    groupRequestId: requestId,
-  })
-
-  return result.greq
+  return mvcGroupRequestService.cancelGroupRequest(requestId)
 }
 
 export async function createRouteRequest(
@@ -1853,167 +1626,15 @@ export async function createRouteRequest(
   routeId: string,
   note?: string,
 ): Promise<RouteRequest> {
-  await assertUserRole(clientId, 'client')
-
-  const resData = await withTransaction(async (tx) => {
-    const existingRes = await tx.query(
-      `SELECT * FROM route_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
-      [clientId, routeId],
-    )
-    if (existingRes.rows.length > 0) {
-      const existingReq = toCamelCase<RouteRequest>(existingRes.rows[0])
-      throw new HttpError<{ existingRequest: RouteRequest }>(
-        409,
-        'Duplicate active request already exists',
-        { existingRequest: existingReq! },
-      )
-    }
-
-    const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [planId])
-    const tp = toCamelCase<Plan>(tpRes.rows[0])
-    if (!tp) {
-      throw new HttpError(400, 'Plan not found')
-    }
-
-    const routeRes = await tx.query(
-      'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
-      [routeId],
-    )
-    const route = mapRoute(routeRes.rows[0])
-    if (!route) throw new HttpError(404, 'Route not found')
-
-    if (!(await checkRouteAvailability(tx, routeId))) {
-      throw new HttpError(
-        409,
-        'Route is not available — already has an accepted client',
-      )
-    }
-
-    const sreqId = generateId('sreq')
-
-    try {
-      const sreqRes = await tx.query(
-        `
-        INSERT INTO route_requests (id, client_id, plan_id, route_id, driver_id, trip_price, note, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-        RETURNING *
-      `,
-        [
-          sreqId,
-          clientId,
-          planId,
-          routeId,
-          route.driverId,
-          route.tripPrice,
-          note || '',
-          'pending',
-        ],
-      )
-
-      return { sreq: toCamelCase<RouteRequest>(sreqRes.rows[0]), route }
-    } catch (e: unknown) {
-      if (isPgUniqueViolation(e, 'route_requests_active_client_route_idx')) {
-        const raceRes = await tx.query(
-          `SELECT * FROM route_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
-          [clientId, routeId],
-        )
-        const existingReqRace = toCamelCase<RouteRequest>(raceRes.rows[0])
-        throw new HttpError<{ existingRequest: RouteRequest }>(
-          409,
-          'Duplicate active request already exists (race)',
-          { existingRequest: existingReqRace! },
-        )
-      }
-      throw e
-    }
-  })
-
-  if (!resData.sreq) throw new Error('Failed to create search request')
-
-  emitNotification('route_request_received', resData.route.driverId, {
-    routeRequestId: resData.sreq.id,
-    clientId,
-    routeId,
-  })
-
-  return resData.sreq
+  const routeRequestDomainService = require('./services/routeRequestService') as typeof import('./services/routeRequestService')
+  return routeRequestDomainService.createRouteRequest(clientId, planId, routeId, note)
 }
 
 export async function acceptRouteRequest(
   requestId: string,
 ): Promise<RouteRequest> {
-  const sreq = await withTransaction(async (tx) => {
-    const sreqRes = await tx.query(
-      'SELECT * FROM route_requests WHERE id = $1 FOR UPDATE',
-      [requestId],
-    )
-    let sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
-    if (!sreq) throw new HttpError(404, 'Search request not found')
-    if (sreq.status === 'accepted') {
-      return sreq
-    }
-    if (sreq.status !== 'pending') {
-      throw new HttpError(
-        409,
-        `Cannot accept search request in status: ${sreq.status}`,
-      )
-    }
-
-    const route = await loadRouteForWalletTx(tx, sreq.routeId, mapRoute)
-    if (route.status !== 'published') {
-      throw new HttpError(
-        409,
-        `Cannot accept search request on route in status: ${route.status}`,
-      )
-    }
-
-    if (!(await checkRouteAvailability(tx, sreq.routeId))) {
-      throw new HttpError(
-        409,
-        'Route is no longer available — another client was accepted first',
-      )
-    }
-
-    const updatedRes = await tx.query(
-      "UPDATE route_requests SET status = 'accepted' WHERE id = $1 RETURNING *",
-      [requestId],
-    )
-    sreq = toCamelCase<RouteRequest>(updatedRes.rows[0])
-    if (!sreq) throw new Error('Failed to accept search request')
-
-    await tx.query("UPDATE routes SET status = 'matched' WHERE id = $1", [
-      sreq.routeId,
-    ])
-    if (sreq.planId) {
-      await tx.query(
-        "UPDATE plans SET status = 'matched' WHERE id = $1 AND status = 'published'",
-        [sreq.planId],
-      )
-    }
-
-    await chargeRouteFeeTx(tx, route, mapRoute, {
-      description: 'Route fee charged on accepted search request',
-    })
-
-    await tx.query(
-      "UPDATE group_offers SET status = 'closed' WHERE route_id = $1 AND status = 'pending'",
-      [sreq.routeId],
-    )
-    await tx.query(
-      "UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND id != $2 AND status = 'pending'",
-      [sreq.routeId, requestId],
-    )
-
-    return sreq
-  })
-
-  emitNotification('route_request_accepted', sreq.clientId, {
-    routeRequestId: requestId,
-    routeId: sreq.routeId,
-    driverId: sreq.driverId,
-  })
-
-  return sreq
+  const routeRequestDomainService = require('./services/routeRequestService') as typeof import('./services/routeRequestService')
+  return routeRequestDomainService.acceptRouteRequest(requestId)
 }
 
 type AcceptedJourneyMatch =
@@ -2282,66 +1903,21 @@ export async function completeTrip(tripId: string): Promise<Route | Plan> {
 export async function declineRouteRequest(
   requestId: string,
 ): Promise<RouteRequest> {
-  const sreqRes = await query('SELECT * FROM route_requests WHERE id = $1', [
-    requestId,
-  ])
-  const sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
-  if (!sreq) throw new Error('Search request not found')
-  if (sreq.status !== 'pending') {
-    throw new Error(`Cannot decline search request in status: ${sreq.status}`)
-  }
-  const updatedRes = await query(
-    "UPDATE route_requests SET status = 'declined' WHERE id = $1 RETURNING *",
-    [requestId],
-  )
-  const updated = toCamelCase<RouteRequest>(updatedRes.rows[0])
-  if (!updated) throw new Error('Failed to decline search request')
-
-  emitNotification('route_request_declined', updated.clientId, {
-    routeRequestId: requestId,
-  })
-
-  return updated
+  const routeRequestDomainService = require('./services/routeRequestService') as typeof import('./services/routeRequestService')
+  return routeRequestDomainService.declineRouteRequest(requestId)
 }
 
 export async function cancelRouteRequest(
   requestId: string,
 ): Promise<RouteRequest> {
-  const sreqRes = await query('SELECT * FROM route_requests WHERE id = $1', [
-    requestId,
-  ])
-  const sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
-  if (!sreq) throw new Error('Search request not found')
-  if (sreq.status !== 'pending') {
-    throw new HttpError(
-      409,
-      `Cannot cancel search request in status: ${sreq.status}`,
-    )
-  }
-  const updatedRes = await query(
-    "UPDATE route_requests SET status = 'canceled' WHERE id = $1 RETURNING *",
-    [requestId],
-  )
-  const updated = toCamelCase<RouteRequest>(updatedRes.rows[0])
-  if (!updated) throw new Error('Failed to cancel search request')
-
-  emitNotification('route_request_canceled', updated.driverId, {
-    routeRequestId: requestId,
-  })
-
-  return updated
+  const routeRequestDomainService = require('./services/routeRequestService') as typeof import('./services/routeRequestService')
+  return routeRequestDomainService.cancelRouteRequest(requestId)
 }
-
-const listGroupRequestsByDriverRaw = listByColumn<GroupRequest>(
-  'group_requests',
-  'driver_id',
-)
 
 export async function listGroupRequestsByDriver(
   driverId: string,
 ): Promise<GroupRequest[]> {
-  await assertUserRole(driverId, 'driver')
-  return listGroupRequestsByDriverRaw(driverId)
+  return mvcGroupRequestService.listGroupRequestsByDriver(driverId)
 }
 
 async function filterVisibleForActiveTrip<
@@ -2367,23 +1943,15 @@ export async function listGroupOffersByClient(
 export async function listRouteRequestsByDriver(
   driverId: string,
 ): Promise<RouteRequest[]> {
-  await assertUserRole(driverId, 'driver')
-  const requestsRes = await query(
-    'SELECT * FROM route_requests WHERE driver_id = $1 ORDER BY created_at DESC, id DESC',
-    [driverId],
-  )
-  return filterVisibleForActiveTrip(mapRows<RouteRequest>(requestsRes.rows))
+  const routeRequestDomainService = require('./services/routeRequestService') as typeof import('./services/routeRequestService')
+  return routeRequestDomainService.listRouteRequestsByDriver(driverId)
 }
 
 export async function listRouteRequestsByClient(
   clientId: string,
 ): Promise<RouteRequest[]> {
-  await assertUserRole(clientId, 'client')
-  const requestsRes = await query(
-    'SELECT * FROM route_requests WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
-    [clientId],
-  )
-  return filterVisibleForActiveTrip(mapRows<RouteRequest>(requestsRes.rows))
+  const routeRequestDomainService = require('./services/routeRequestService') as typeof import('./services/routeRequestService')
+  return routeRequestDomainService.listRouteRequestsByClient(clientId)
 }
 
 export async function listRouteRequestsByPlan(

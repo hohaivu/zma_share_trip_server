@@ -1,47 +1,26 @@
-import { Request, Response, Router } from 'express'
+import { Router } from 'express'
 
-import { groupRequestService } from '../services/domainServices'
-import { asyncHandler, requireParam } from './helpers'
+import { groupRequestsController } from '../controllers/groupRequestsController'
+import { asyncHandler } from './helpers'
 
 const router = Router()
 
 // POST /api/driver/group-requests — create group request + fan-out
 router.post(
   '/group-requests',
-  asyncHandler(async (req: Request, res: Response) => {
-    const { driverId, routeId, demandGroupId, note } = req.body || {}
-    requireParam(driverId, 'driverId is required')
-    requireParam(routeId, 'routeId is required')
-    requireParam(demandGroupId, 'demandGroupId is required')
-
-    const result = await groupRequestService.createGroupRequest(
-      driverId,
-      routeId,
-      demandGroupId,
-      note,
-    )
-    res.status(201).json(result)
-  }),
+  asyncHandler(groupRequestsController.createGroupRequest),
 )
 
 // GET /api/driver/group-requests?driverId= — driver's sent requests
 router.get(
   '/group-requests',
-  asyncHandler(async (req: Request, res: Response) => {
-    const { driverId } = req.query
-    requireParam(driverId as string, 'driverId query is required')
-
-    res.json(await groupRequestService.listGroupRequestsByDriver(driverId as string))
-  }),
+  asyncHandler(groupRequestsController.listGroupRequests),
 )
 
 // POST /api/driver/group-requests/:id/cancel — cancel + close pending offers
 router.post(
   '/group-requests/:id/cancel',
-  asyncHandler(async (req: Request, res: Response) => {
-    const result = await groupRequestService.cancelGroupRequest(req.params.id as string)
-    res.json(result)
-  }),
+  asyncHandler(groupRequestsController.cancelGroupRequest),
 )
 
 export default router

@@ -23,6 +23,15 @@ The trip matching capabilities are split across three distinct API namespaces ba
 - **Driver (`/api/driver/`)**: Driver-owned operations (Cars, Routes, inbound Demand Groups, handling Client Search Requests, sending Group Requests).
 - **Client (`/api/client/`)**: Client-owned operations (Trip Plans, viewing matching Routes, handling inbound Group Offers, sending Client Search Requests).
 
+
+## MVC Architecture Contract
+
+Wave 0 of ALI-37 defines the shared MVC rules for upcoming route/controller/service/repository refactor work. See [`docs/mvc-contract.md`](docs/mvc-contract.md) before adding or moving endpoints.
+
+New endpoints should be wired in `src/routes`, orchestrated through `src/controllers`, implemented in `src/services`, and use `src/repositories` for persistence access when needed. Keep imports flowing top-down (`routes -> controllers -> services -> repositories`) and preserve existing API response shapes unless `API.md` is updated as part of a coordinated API change.
+
+ALI-37 is not complete in Wave 0: automated import guardrails, lint/test/script checks, and source refactors are explicitly pending future closing work.
+
 ## Quick Start
 
 ```bash
