@@ -8,6 +8,29 @@ import {
 } from './db/utils'
 import { HttpError } from './http-error'
 import {
+  chargeRouteFee as chargeRouteFeeRepo,
+  chargeRouteFeeTx,
+  computeAvailableBalanceVnd,
+  computeRouteFeeRequiredVnd,
+  getDriverWalletSummary as getDriverWalletSummaryRepo,
+  getOrCreateDriverWallet as getOrCreateDriverWalletRepo,
+  getOrCreateDriverWalletTx,
+  insertWalletTransactionTx,
+  listDriverWalletTransactions as listDriverWalletTransactionsRepo,
+  loadRouteForWalletTx,
+  mapWallet,
+  mapWalletTransaction,
+  refundRouteFee as refundRouteFeeRepo,
+  refundRouteFeeTx,
+  releaseRouteFee as releaseRouteFeeRepo,
+  releaseRouteFeeTx,
+  reserveRouteFee as reserveRouteFeeRepo,
+  reserveRouteFeeTx,
+  topUpDriverWallet as topUpDriverWalletRepo,
+  updateWalletRowTx,
+  type DbQueryExecutor,
+} from './repositories/walletRepository'
+import {
   AppNotification,
   Car,
   ClientRequestSource,
@@ -103,6 +126,14 @@ function mapIdentity(row: Record<string, unknown>): Identity {
   if (!identity) throw new Error('Cannot map null row to Identity')
   identity.preferredMode = identity.preferredMode || 'client'
   return identity
+}
+
+function mapRoute(row: Record<string, unknown>): Route {
+  const route = toCamelCase<Route>(row)
+  if (!route) throw new Error('Cannot map null row to Route')
+  route.tripPrice = parseNumeric(route.tripPrice)
+  route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd)
+  return route
 }
 
 function buildSession(
@@ -282,435 +313,31 @@ export function mapCar(
 
 // --- Wallet ---
 
-const DEFAULT_WALLET_FEE_VND_PER_KM = 500
-const DEFAULT_WALLET_TRANSACTION_LIMIT = 20
-
-type DbQueryExecutor = {
-  query: (
-    sql: string,
-    params: unknown[],
-  ) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
-}
-
-function getWalletFeeRateVndPerKm(): number {
-  const raw = process.env.WALLET_FEE_VND_PER_KM
-  const parsed = raw ? Number(raw) : DEFAULT_WALLET_FEE_VND_PER_KM
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_WALLET_FEE_VND_PER_KM
-  }
-  return Math.floor(parsed)
-}
-
-function mapWallet(row: Record<string, unknown>): Wallet {
-  const wallet = toCamelCase<Wallet>(row)
-  if (!wallet) throw new Error('Cannot map null row to Wallet')
-  wallet.balanceVnd = parseNumeric(wallet.balanceVnd)
-  wallet.reservedBalanceVnd = parseNumeric(wallet.reservedBalanceVnd)
-  return wallet
-}
-
-function mapWalletTransaction(row: Record<string, unknown>): WalletTransaction {
-  const transaction = toCamelCase<WalletTransaction>(row)
-  if (!transaction) throw new Error('Cannot map null row to WalletTransaction')
-  transaction.amountVnd = parseNumeric(transaction.amountVnd)
-  transaction.balanceAfterVnd = parseNumeric(transaction.balanceAfterVnd)
-  transaction.reservedBalanceAfterVnd = parseNumeric(
-    transaction.reservedBalanceAfterVnd,
-  )
-  return transaction
-}
-
-function mapRoute(row: Record<string, unknown>): Route {
-  const route = toCamelCase<Route>(row)
-  if (!route) throw new Error('Cannot map null row to Route')
-  route.tripPrice = parseNumeric(route.tripPrice)
-  route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd)
-  return route
-}
-
-export function computeAvailableBalanceVnd(
-  wallet: Pick<Wallet, 'balanceVnd' | 'reservedBalanceVnd'>,
-): number {
-  return wallet.balanceVnd - wallet.reservedBalanceVnd
-}
-
-function computeMaxPublishableDistanceMeters(
-  availableBalanceVnd: number,
-  feeRateVndPerKm: number,
-): number {
-  if (feeRateVndPerKm <= 0) return 0
-  return (
-    Math.max(
-      0,
-      Math.floor(Math.max(availableBalanceVnd, 0) / feeRateVndPerKm),
-    ) * 1000
-  )
-}
-
-function buildWalletSummary(wallet: Wallet): WalletSummary {
-  const feeRateVndPerKm = getWalletFeeRateVndPerKm()
-  const availableBalanceVnd = computeAvailableBalanceVnd(wallet)
-  return {
-    ...wallet,
-    availableBalanceVnd,
-    feeRateVndPerKm,
-    maxPublishableDistanceMeters: computeMaxPublishableDistanceMeters(
-      availableBalanceVnd,
-      feeRateVndPerKm,
-    ),
-  }
-}
-
-async function getOrCreateDriverWalletTx(
-  executor: DbQueryExecutor,
-  driverId: string,
-): Promise<Wallet> {
-  const existing = await executor.query(
-    'SELECT * FROM wallets WHERE driver_id = $1 FOR UPDATE',
-    [driverId],
-  )
-  if (existing.rowCount && existing.rows[0]) {
-    return mapWallet(existing.rows[0])
-  }
-
-  try {
-    const inserted = await executor.query(
-      `
-      INSERT INTO wallets (
-        id, driver_id, balance_vnd, reserved_balance_vnd, created_at, updated_at
-      )
-      VALUES ($1, $2, 0, 0, NOW(), NOW())
-      RETURNING *
-    `,
-      [generateId('wallet'), driverId],
-    )
-    return mapWallet(inserted.rows[0])
-  } catch (error) {
-    if ((error as Record<string, unknown>)?.code === '23505') {
-      const retry = await executor.query(
-        'SELECT * FROM wallets WHERE driver_id = $1 FOR UPDATE',
-        [driverId],
-      )
-      if (retry.rowCount && retry.rows[0]) {
-        return mapWallet(retry.rows[0])
-      }
-    }
-    throw error
-  }
-}
-
-async function updateWalletRowTx(
-  executor: DbQueryExecutor,
-  walletId: string,
-  data: Partial<Pick<Wallet, 'balanceVnd' | 'reservedBalanceVnd'>>,
-): Promise<Wallet> {
-  const updated = await executor.query(
-    `
-    UPDATE wallets
-    SET balance_vnd = COALESCE($2, balance_vnd),
-        reserved_balance_vnd = COALESCE($3, reserved_balance_vnd),
-        updated_at = NOW()
-    WHERE id = $1
-    RETURNING *
-  `,
-    [walletId, data.balanceVnd ?? null, data.reservedBalanceVnd ?? null],
-  )
-  const wallet = mapWallet(updated.rows[0])
-  if (!wallet) throw new Error('Failed to update wallet')
-  return wallet
-}
-
-async function insertWalletTransactionTx(
-  executor: DbQueryExecutor,
-  data: {
-    walletId: string
-    driverId: string
-    routeId?: string | null
-    type: WalletTransaction['type']
-    amountVnd: number
-    balanceAfterVnd: number
-    reservedBalanceAfterVnd: number
-    description?: string | null
-    metadata?: Record<string, unknown>
-  },
-): Promise<WalletTransaction> {
-  const result = await executor.query(
-    `
-    INSERT INTO wallet_transactions (
-      id, wallet_id, driver_id, route_id, type, amount_vnd,
-      balance_after_vnd, reserved_balance_after_vnd, description, metadata, created_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-    RETURNING *
-  `,
-    [
-      generateId('wtx'),
-      data.walletId,
-      data.driverId,
-      data.routeId || null,
-      data.type,
-      data.amountVnd,
-      data.balanceAfterVnd,
-      data.reservedBalanceAfterVnd,
-      data.description ?? null,
-      JSON.stringify(data.metadata || {}),
-    ],
-  )
-  const transaction = mapWalletTransaction(result.rows[0])
-  if (!transaction) throw new Error('Failed to create wallet transaction')
-  return transaction
-}
-
-async function loadRouteForWalletTx(
-  executor: DbQueryExecutor,
-  routeId: string,
-): Promise<Route> {
-  const result = await executor.query(
-    'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
-    [routeId],
-  )
-  const route = mapRoute(result.rows[0])
-  if (!route) throw new HttpError(404, 'Route not found')
-  return route
-}
-
-function assertDriverOwnsRoute(route: Route, driverId: string): void {
-  if (route.driverId !== driverId) {
-    throw new HttpError(404, 'Route not found')
-  }
-}
-
-function computeRouteFeeRequiredVnd(distanceMeters: number): number {
-  if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) {
-    throw new HttpError(400, 'distanceMeters must be a positive integer')
-  }
-  if (!Number.isInteger(distanceMeters)) {
-    throw new HttpError(400, 'distanceMeters must be a whole number')
-  }
-
-  return Math.ceil((distanceMeters / 1000) * getWalletFeeRateVndPerKm())
-}
-
-async function reserveRouteFeeTx(
-  executor: DbQueryExecutor,
-  route: Route,
-  feeRequiredVnd: number,
-  meta?: { description?: string },
-): Promise<Route> {
-  if (!Number.isFinite(feeRequiredVnd) || feeRequiredVnd < 0) {
-    throw new HttpError(400, 'Route fee must be a non-negative number')
-  }
-  if (!Number.isInteger(feeRequiredVnd)) {
-    throw new HttpError(400, 'Route fee must be a whole number')
-  }
-  if (route.walletFeeStatus === 'reserved') {
-    return route
-  }
-  if (route.walletFeeStatus && route.walletFeeStatus !== 'none') {
-    throw new HttpError(
-      409,
-      `Cannot reserve fee in route fee state: ${route.walletFeeStatus}`,
-    )
-  }
-
-  const wallet = await getOrCreateDriverWalletTx(executor, route.driverId)
-  const availableBalanceVnd = computeAvailableBalanceVnd(wallet)
-  if (availableBalanceVnd < feeRequiredVnd) {
-    throw new HttpError(400, 'Insufficient wallet balance to reserve route fee')
-  }
-
-  const updatedWallet = await updateWalletRowTx(executor, wallet.id, {
-    reservedBalanceVnd: wallet.reservedBalanceVnd + feeRequiredVnd,
-  })
-
-  await insertWalletTransactionTx(executor, {
-    walletId: wallet.id,
-    driverId: route.driverId,
-    routeId: route.id,
-    type: 'reservation',
-    amountVnd: feeRequiredVnd,
-    balanceAfterVnd: updatedWallet.balanceVnd,
-    reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
-    description: meta?.description || 'Route fee reserved',
-    metadata: {
-      feeRequiredVnd,
-      feeRateVndPerKm: getWalletFeeRateVndPerKm(),
-    },
-  })
-
-  const feeRateVndPerKm = getWalletFeeRateVndPerKm()
-  const updatedRoute = await executor.query(
-    `
-    UPDATE routes
-    SET fee_rate_vnd_per_km = $1,
-        fee_required_vnd = $2,
-        wallet_fee_status = 'reserved',
-        wallet_reserved_at = NOW()
-    WHERE id = $3
-    RETURNING *
-  `,
-    [feeRateVndPerKm, feeRequiredVnd, route.id],
-  )
-  return mapRoute(updatedRoute.rows[0])
-}
-
-async function releaseRouteFeeTx(
-  executor: DbQueryExecutor,
-  route: Route,
-  meta?: { description?: string },
-): Promise<Route> {
-  if (route.walletFeeStatus === 'released') {
-    return route
-  }
-  if (route.walletFeeStatus !== 'reserved') {
-    throw new HttpError(
-      409,
-      `Cannot release fee in route fee state: ${route.walletFeeStatus}`,
-    )
-  }
-
-  const wallet = await getOrCreateDriverWalletTx(executor, route.driverId)
-  const feeRequiredVnd = route.feeRequiredVnd || 0
-  const updatedWallet = await updateWalletRowTx(executor, wallet.id, {
-    reservedBalanceVnd: wallet.reservedBalanceVnd - feeRequiredVnd,
-  })
-
-  await insertWalletTransactionTx(executor, {
-    walletId: wallet.id,
-    driverId: route.driverId,
-    routeId: route.id,
-    type: 'release',
-    amountVnd: feeRequiredVnd,
-    balanceAfterVnd: updatedWallet.balanceVnd,
-    reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
-    description: meta?.description || 'Route fee released',
-    metadata: {
-      feeRequiredVnd,
-    },
-  })
-
-  const updatedRoute = await executor.query(
-    `
-    UPDATE routes
-    SET wallet_fee_status = 'released',
-        wallet_released_at = NOW()
-    WHERE id = $1
-    RETURNING *
-  `,
-    [route.id],
-  )
-  return mapRoute(updatedRoute.rows[0])
-}
-
-async function chargeRouteFeeTx(
-  executor: DbQueryExecutor,
-  route: Route,
-  meta?: { description?: string },
-): Promise<Route> {
-  if (route.walletFeeStatus === 'charged') {
-    return route
-  }
-  if (route.walletFeeStatus !== 'reserved') {
-    throw new HttpError(
-      409,
-      `Cannot charge fee in route fee state: ${route.walletFeeStatus}`,
-    )
-  }
-
-  const wallet = await getOrCreateDriverWalletTx(executor, route.driverId)
-  const feeRequiredVnd = route.feeRequiredVnd || 0
-  const updatedWallet = await updateWalletRowTx(executor, wallet.id, {
-    balanceVnd: wallet.balanceVnd - feeRequiredVnd,
-    reservedBalanceVnd: wallet.reservedBalanceVnd - feeRequiredVnd,
-  })
-
-  await insertWalletTransactionTx(executor, {
-    walletId: wallet.id,
-    driverId: route.driverId,
-    routeId: route.id,
-    type: 'charge',
-    amountVnd: feeRequiredVnd,
-    balanceAfterVnd: updatedWallet.balanceVnd,
-    reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
-    description: meta?.description || 'Route fee charged',
-    metadata: {
-      feeRequiredVnd,
-    },
-  })
-
-  const updatedRoute = await executor.query(
-    `
-    UPDATE routes
-    SET wallet_fee_status = 'charged',
-        wallet_charged_at = NOW()
-    WHERE id = $1
-    RETURNING *
-  `,
-    [route.id],
-  )
-  return mapRoute(updatedRoute.rows[0])
-}
-
-async function refundRouteFeeTx(
-  executor: DbQueryExecutor,
-  route: Route,
-  meta?: { description?: string },
-): Promise<Route> {
-  if (route.walletFeeStatus === 'refunded') {
-    return route
-  }
-  if (route.walletFeeStatus !== 'charged') {
-    throw new HttpError(
-      409,
-      `Cannot refund fee in route fee state: ${route.walletFeeStatus}`,
-    )
-  }
-
-  const wallet = await getOrCreateDriverWalletTx(executor, route.driverId)
-  const feeRequiredVnd = route.feeRequiredVnd || 0
-  const updatedWallet = await updateWalletRowTx(executor, wallet.id, {
-    balanceVnd: wallet.balanceVnd + feeRequiredVnd,
-  })
-
-  await insertWalletTransactionTx(executor, {
-    walletId: wallet.id,
-    driverId: route.driverId,
-    routeId: route.id,
-    type: 'refund',
-    amountVnd: feeRequiredVnd,
-    balanceAfterVnd: updatedWallet.balanceVnd,
-    reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
-    description: meta?.description || 'Route fee refunded',
-    metadata: {
-      feeRequiredVnd,
-    },
-  })
-
-  const updatedRoute = await executor.query(
-    `
-    UPDATE routes
-    SET wallet_fee_status = 'refunded',
-        wallet_refunded_at = NOW()
-    WHERE id = $1
-    RETURNING *
-  `,
-    [route.id],
-  )
-  return mapRoute(updatedRoute.rows[0])
-}
+export {
+  computeAvailableBalanceVnd,
+  getOrCreateDriverWalletTx,
+  insertWalletTransactionTx,
+  mapWallet,
+  mapWalletTransaction,
+  refundRouteFeeTx,
+  releaseRouteFeeTx,
+  reserveRouteFeeTx,
+  updateWalletRowTx,
+  type DbQueryExecutor,
+} from './repositories/walletRepository'
 
 export async function getOrCreateDriverWallet(
   driverId: string,
 ): Promise<Wallet> {
   await assertUserRole(driverId, 'driver')
-  return withTransaction((tx) => getOrCreateDriverWalletTx(tx, driverId))
+  return getOrCreateDriverWalletRepo(driverId)
 }
 
 export async function getDriverWalletSummary(
   driverId: string,
 ): Promise<WalletSummary> {
-  const wallet = await getOrCreateDriverWallet(driverId)
-  return buildWalletSummary(wallet)
+  await assertUserRole(driverId, 'driver')
+  return getDriverWalletSummaryRepo(driverId)
 }
 
 export async function listDriverWalletTransactions(
@@ -718,21 +345,7 @@ export async function listDriverWalletTransactions(
   limit?: number,
 ): Promise<WalletTransaction[]> {
   await assertUserRole(driverId, 'driver')
-  const txLimit = Math.max(
-    1,
-    Math.min(100, Math.floor(limit ?? DEFAULT_WALLET_TRANSACTION_LIMIT)),
-  )
-  const result = await query(
-    `
-    SELECT *
-    FROM wallet_transactions
-    WHERE driver_id = $1
-    ORDER BY created_at DESC, id DESC
-    LIMIT $2
-  `,
-    [driverId, txLimit],
-  )
-  return result.rows.map(mapWalletTransaction)
+  return listDriverWalletTransactionsRepo(driverId, limit)
 }
 
 export async function topUpDriverWallet(
@@ -740,46 +353,7 @@ export async function topUpDriverWallet(
   payload: ManualTopUpPayload,
 ): Promise<ManualTopUpResult> {
   await assertUserRole(driverId, 'driver')
-  if (!Number.isFinite(payload.amountVnd) || payload.amountVnd <= 0) {
-    throw new HttpError(400, 'Top-up amount must be greater than zero')
-  }
-  if (!Number.isInteger(payload.amountVnd)) {
-    throw new HttpError(400, 'Top-up amount must be a whole number')
-  }
-
-  const result = await withTransaction(async (tx) => {
-    const wallet = await getOrCreateDriverWalletTx(tx, driverId)
-    const updatedWallet = await updateWalletRowTx(tx, wallet.id, {
-      balanceVnd: wallet.balanceVnd + payload.amountVnd,
-    })
-    const transaction = await insertWalletTransactionTx(tx, {
-      walletId: wallet.id,
-      driverId,
-      type: 'topup',
-      amountVnd: payload.amountVnd,
-      balanceAfterVnd: updatedWallet.balanceVnd,
-      reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
-      description: payload.description || 'Manual top-up',
-      metadata: {
-        source: 'manual_top_up',
-      },
-    })
-    return { summary: buildWalletSummary(updatedWallet), transaction }
-  })
-
-  return result
-}
-
-async function withOwnedRouteTx(
-  routeId: string,
-  driverId: string,
-  apply: (tx: DbQueryExecutor, route: Route) => Promise<Route>,
-): Promise<Route> {
-  return withTransaction(async (tx) => {
-    const route = await loadRouteForWalletTx(tx, routeId)
-    assertDriverOwnsRoute(route, driverId)
-    return apply(tx, route)
-  })
+  return topUpDriverWalletRepo(driverId, payload)
 }
 
 export async function reserveRouteFee(
@@ -788,9 +362,7 @@ export async function reserveRouteFee(
   feeRequiredVnd: number,
   meta?: { description?: string },
 ): Promise<Route> {
-  return withOwnedRouteTx(routeId, driverId, (tx, route) =>
-    reserveRouteFeeTx(tx, route, feeRequiredVnd, meta),
-  )
+  return reserveRouteFeeRepo(routeId, driverId, feeRequiredVnd, mapRoute, meta)
 }
 
 export async function releaseRouteFee(
@@ -798,9 +370,7 @@ export async function releaseRouteFee(
   driverId: string,
   meta?: { description?: string },
 ): Promise<Route> {
-  return withOwnedRouteTx(routeId, driverId, (tx, route) =>
-    releaseRouteFeeTx(tx, route, meta),
-  )
+  return releaseRouteFeeRepo(routeId, driverId, mapRoute, meta)
 }
 
 export async function chargeRouteFee(
@@ -808,9 +378,7 @@ export async function chargeRouteFee(
   driverId: string,
   meta?: { description?: string },
 ): Promise<Route> {
-  return withOwnedRouteTx(routeId, driverId, (tx, route) =>
-    chargeRouteFeeTx(tx, route, meta),
-  )
+  return chargeRouteFeeRepo(routeId, driverId, mapRoute, meta)
 }
 
 export async function refundRouteFee(
@@ -818,9 +386,7 @@ export async function refundRouteFee(
   driverId: string,
   meta?: { description?: string },
 ): Promise<Route> {
-  return withOwnedRouteTx(routeId, driverId, (tx, route) =>
-    refundRouteFeeTx(tx, route, meta),
-  )
+  return refundRouteFeeRepo(routeId, driverId, mapRoute, meta)
 }
 
 /**
@@ -1674,7 +1240,7 @@ export async function publishRoute(
   assertServiceDateIsNotPast(data.serviceDate)
 
   return withTransaction(async (tx) => {
-    const route = await loadRouteForWalletTx(tx, id)
+    const route = await loadRouteForWalletTx(tx, id, mapRoute)
     if (route.status === 'published') {
       return route
     }
@@ -1690,7 +1256,7 @@ export async function publishRoute(
       nextValues.distanceMeters ?? 0,
     )
 
-    await reserveRouteFeeTx(tx, route, feeRequiredVnd, {
+    await reserveRouteFeeTx(tx, route, feeRequiredVnd, mapRoute, {
       description: 'Route fee reserved on publish',
     })
 
@@ -2135,7 +1701,7 @@ export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
       throw new HttpError(409, `Cannot accept offer in status: ${offer.status}`)
     }
 
-    const route = await loadRouteForWalletTx(tx, offer.routeId)
+    const route = await loadRouteForWalletTx(tx, offer.routeId, mapRoute)
     if (route.status !== 'published') {
       throw new HttpError(
         409,
@@ -2167,7 +1733,7 @@ export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
       )
     }
 
-    await chargeRouteFeeTx(tx, route, {
+    await chargeRouteFeeTx(tx, route, mapRoute, {
       description: 'Route fee charged on accepted group offer',
     })
 
@@ -2393,7 +1959,7 @@ export async function acceptRouteRequest(
       )
     }
 
-    const route = await loadRouteForWalletTx(tx, sreq.routeId)
+    const route = await loadRouteForWalletTx(tx, sreq.routeId, mapRoute)
     if (route.status !== 'published') {
       throw new HttpError(
         409,
@@ -2425,7 +1991,7 @@ export async function acceptRouteRequest(
       )
     }
 
-    await chargeRouteFeeTx(tx, route, {
+    await chargeRouteFeeTx(tx, route, mapRoute, {
       description: 'Route fee charged on accepted search request',
     })
 
@@ -2534,11 +2100,11 @@ async function unwindRouteFeeOnMatchedCancel(
 ): Promise<Route> {
   switch (route.walletFeeStatus) {
     case 'charged':
-      return refundRouteFeeTx(executor, route, {
+      return refundRouteFeeTx(executor, route, mapRoute, {
         description: 'Route fee refunded on trip cancel',
       })
     case 'reserved':
-      return releaseRouteFeeTx(executor, route, {
+      return releaseRouteFeeTx(executor, route, mapRoute, {
         description: 'Route fee released on trip cancel',
       })
     case 'refunded':
@@ -2583,7 +2149,7 @@ async function cancelRouteTripTx(
     route = await unwindRouteFeeOnMatchedCancel(executor, route)
     await cancelAcceptedJourneyMatchTx(executor, accepted)
   } else if (route.walletFeeStatus === 'reserved') {
-    route = await releaseRouteFeeTx(executor, route, {
+    route = await releaseRouteFeeTx(executor, route, mapRoute, {
       description: 'Route fee released on route cancel',
     })
   } else if (route.walletFeeStatus === 'charged') {
@@ -2614,7 +2180,7 @@ async function cancelPlanTripTx(
       accepted.kind === 'route_request'
         ? accepted.request.routeId
         : accepted.offer.routeId
-    const route = await loadRouteForWalletTx(executor, routeId)
+    const route = await loadRouteForWalletTx(executor, routeId, mapRoute)
     await unwindRouteFeeOnMatchedCancel(executor, route)
     await cancelAcceptedJourneyMatchTx(executor, accepted)
   }
