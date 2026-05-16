@@ -1,6 +1,7 @@
 import * as store from '../store'
 import * as carServiceImpl from './carService'
 import * as userServiceImpl from './userService'
+import * as walletServiceImpl from './walletService'
 import { routeRequestService as routeRequestDomainService } from './routeRequestService'
 import { groupRequestService as mvcGroupRequestService } from './groupRequestService'
 
@@ -111,4 +112,4 @@ export const userService: UserService = {
 export const routeRequestService: RouteRequestService = routeRequestDomainService
 export const carService: CarService = carServiceImpl
 export const journeyService: JourneyService = store
-export const walletService: WalletService = store
+export const walletService: WalletService = walletServiceImpl

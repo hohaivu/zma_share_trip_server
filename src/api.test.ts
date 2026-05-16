@@ -1986,10 +1986,12 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       avatarUrl: '',
     })
     const ownerId = owner.body.activeUser.id
+    const ownerDriverId = owner.body.personas.driver.id
     const blockedId = blocked.body.activeUser.id
+    const blockedDriverId = blocked.body.personas.driver.id
     const blockedPersonaIds = [
       blocked.body.personas.client.id,
-      blocked.body.personas.driver.id,
+      blockedDriverId,
     ].sort()
 
     const blockRes = await request(
@@ -2008,6 +2010,17 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     )
     assert.equal(blockedListRes.status, 200)
     assert.deepEqual([...blockedListRes.body.blockedUserIds].sort(), blockedPersonaIds)
+
+    const blockedListViaDriverPersonaRes = await request(
+      server,
+      'GET',
+      `/api/users/${ownerDriverId}/blocked-users`,
+    )
+    assert.equal(blockedListViaDriverPersonaRes.status, 200)
+    assert.deepEqual(
+      [...blockedListViaDriverPersonaRes.body.blockedUserIds].sort(),
+      blockedPersonaIds,
+    )
 
     const notificationRes = await request(
       server,
@@ -2051,7 +2064,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     const unblockRes = await request(
       server,
       'DELETE',
-      `/api/users/${ownerId}/blocked-users/${blockedId}`,
+      `/api/users/${ownerId}/blocked-users/${blockedDriverId}`,
     )
     assert.equal(unblockRes.status, 200)
     assert.deepEqual(unblockRes.body.blockedUserIds, [])

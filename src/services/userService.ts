@@ -1,4 +1,7 @@
 import { HttpError } from '../http-error'
+import * as notificationService from './notificationService'
+import * as reportService from './reportService'
+import * as reviewService from './reviewService'
 import * as userRepository from '../repositories/userRepository'
 import { AppNotification, BootstrapSession, Report, Review, User } from '../types/entities'
 import {
@@ -90,23 +93,23 @@ export async function getModeForUser(
 }
 
 export async function listReviewsByReviewer(userId: string): Promise<Review[]> {
-  return userRepository.listReviewsByReviewer(userId)
+  return reviewService.listReviewsByReviewer(userId)
 }
 
 export async function createReview(
   payload: CreateReviewPayload,
 ): Promise<Review> {
-  return userRepository.createReview(payload)
+  return reviewService.createReview(payload)
 }
 
 export async function createReport(
   payload: CreateReportPayload,
 ): Promise<Report> {
-  return userRepository.createReport(payload)
+  return reportService.createReport(payload)
 }
 
 export async function listReportsByReporter(userId: string): Promise<Report[]> {
-  return userRepository.listReportsByReporter(userId)
+  return reportService.listReportsByReporter(userId)
 }
 
 export async function getBlockedUsers(userId: string): Promise<string[]> {
@@ -130,22 +133,22 @@ export async function unblockUser(
 export async function listNotifications(
   recipientId: string,
 ): Promise<AppNotification[]> {
-  return userRepository.listNotifications(recipientId)
+  return notificationService.listNotifications(recipientId)
 }
 
 export async function createNotification(
   payload: CreateNotificationPayload,
 ): Promise<AppNotification> {
-  return userRepository.createNotification(payload)
+  return notificationService.createNotification(payload)
 }
 
 export async function markNotificationRead(
   recipientId: string,
   notificationId: string,
 ): Promise<AppNotification | null> {
-  return userRepository.markNotificationRead(recipientId, notificationId)
+  return notificationService.markNotificationRead(recipientId, notificationId)
 }
 
 export async function markAllNotificationsRead(recipientId: string): Promise<void> {
-  return userRepository.markAllNotificationsRead(recipientId)
+  return notificationService.markAllNotificationsRead(recipientId)
 }

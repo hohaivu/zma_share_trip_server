@@ -1,13 +1,8 @@
 import { query, withTransaction } from '../db/connection'
 import { parseJsonb, parseNumeric, toCamelCase } from '../db/utils'
+import { HttpError } from '../http-error'
 import { BootstrapSession, Identity, User } from '../types/entities'
-import {
-  CreateNotificationPayload,
-  CreateReportPayload,
-  CreateReviewPayload,
-  BootstrapResult,
-  UpdateUserPayload,
-} from '../types/payloads'
+import { BootstrapResult, UpdateUserPayload } from '../types/payloads'
 
 export function mapUser(row: Record<string, unknown>): User {
   const user = toCamelCase<User>(row)
@@ -194,44 +189,64 @@ export function listReviewsByReviewer(userId: string) {
   return legacyStore().then((store) => store.listReviewsByReviewer(userId))
 }
 
-export function createReview(payload: CreateReviewPayload) {
-  return legacyStore().then((store) => store.createReview(payload))
-}
-
-export function createReport(payload: CreateReportPayload) {
-  return legacyStore().then((store) => store.createReport(payload))
-}
-
 export function listReportsByReporter(userId: string) {
   return legacyStore().then((store) => store.listReportsByReporter(userId))
 }
 
-export function getBlockedUsers(blockerId: string) {
-  return legacyStore().then((store) => store.getBlockedUsers(blockerId))
-}
+export async function getBlockedUsers(blockerId: string): Promise<string[]> {
+  const blocker = await findUserById(blockerId)
+  if (!blocker?.identityId) throw new HttpError(404, 'User not found')
 
-export function blockUser(blockerId: string, blockedId: string) {
-  return legacyStore().then((store) => store.blockUser(blockerId, blockedId))
-}
-
-export function unblockUser(blockerId: string, blockedId: string) {
-  return legacyStore().then((store) => store.unblockUser(blockerId, blockedId))
-}
-
-export function listNotifications(recipientId: string) {
-  return legacyStore().then((store) => store.listNotifications(recipientId))
-}
-
-export function createNotification(payload: CreateNotificationPayload) {
-  return legacyStore().then((store) => store.createNotification(payload))
-}
-
-export function markNotificationRead(recipientId: string, notificationId: string) {
-  return legacyStore().then((store) =>
-    store.markNotificationRead(recipientId, notificationId),
+  const result = await query(
+    `
+      SELECT u.id
+      FROM identity_blocks b
+      JOIN users u ON u.identity_id = b.blocked_identity_id
+      WHERE b.blocker_identity_id = $1
+      ORDER BY u.id
+    `,
+    [blocker.identityId],
   )
+  return result.rows.map((row) => String(row.id))
 }
 
-export function markAllNotificationsRead(recipientId: string) {
-  return legacyStore().then((store) => store.markAllNotificationsRead(recipientId))
+export async function blockUser(
+  blockerId: string,
+  blockedId: string,
+): Promise<string[]> {
+  const blocker = await findUserById(blockerId)
+  const blocked = await findUserById(blockedId)
+  if (!blocker?.identityId || !blocked?.identityId) {
+    throw new HttpError(404, 'User not found')
+  }
+
+  await query(
+    `
+      INSERT INTO identity_blocks (blocker_identity_id, blocked_identity_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT DO NOTHING
+    `,
+    [blocker.identityId, blocked.identityId],
+  )
+  return getBlockedUsers(blockerId)
+}
+
+export async function unblockUser(
+  blockerId: string,
+  blockedId: string,
+): Promise<string[]> {
+  const blocker = await findUserById(blockerId)
+  const blocked = await findUserById(blockedId)
+  if (!blocker?.identityId || !blocked?.identityId) {
+    throw new HttpError(404, 'User not found')
+  }
+
+  await query(
+    `
+      DELETE FROM identity_blocks
+      WHERE blocker_identity_id = $1 AND blocked_identity_id = $2
+    `,
+    [blocker.identityId, blocked.identityId],
+  )
+  return getBlockedUsers(blockerId)
 }
