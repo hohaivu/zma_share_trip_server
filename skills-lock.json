@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "mvc-master": {
+      "source": "gravito-framework/gravito",
+      "sourceType": "github",
+      "computedHash": "f36405c6a250916d2d20dd9adcca1dbe80ac5796f49ea4619bf5bff52b3afaa0"
+    }
+  }
+}
