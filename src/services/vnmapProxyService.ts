@@ -31,20 +31,17 @@ function getApiKey(): string {
 
 function buildProviderUrl(params: VnmapProxyParams, config: VnmapRouteConfig): string {
   const url = new URL(config.upstreamPath, VNMAP_API_BASE_URL)
+  const allParams = {
+    ...DEFAULT_VNMAP_PARAMS,
+    ...params,
+    ...config.extraParams,
+    key: getApiKey(),
+  }
 
-  for (const [key, value] of Object.entries(DEFAULT_VNMAP_PARAMS)) {
+  for (const [key, value] of Object.entries(allParams)) {
     url.searchParams.set(key, value)
   }
 
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value)
-  }
-
-  for (const [key, value] of Object.entries(config.extraParams ?? {})) {
-    url.searchParams.set(key, value)
-  }
-
-  url.searchParams.set('key', getApiKey())
   return url.toString()
 }
 
