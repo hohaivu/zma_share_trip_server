@@ -1,8 +1,7 @@
 import { query, withTransaction } from '../db/connection'
 import { mapRows, normalizeUtc, parseNumeric, toCamelCase } from '../db/utils'
-import { HttpError } from '../http-error'
 import { computeDepartureBlock } from '../domain/departureBlock'
-import { computeRouteFeeRequiredVnd, loadRouteForWalletTx, reserveRouteFeeTx } from './walletRepository'
+import { loadRouteForWalletTx, reserveRouteFeeTx } from './walletRepository'
 import * as planRepository from './planRepository'
 import {
   filterTripsByScope,
@@ -17,11 +16,8 @@ import { CreateRoutePayload, UpdateRoutePayload, WithReviewEligibility } from '.
 
 function generateId(prefix: string): string { return `${prefix}-${Date.now()}${Math.random().toString().slice(2, 6)}` }
 function toSnakeCase(key: string): string { return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`) }
-function formatLocalDateValue(date: Date): string { const year = date.getFullYear(); const month = `${date.getMonth() + 1}`.padStart(2, '0'); const day = `${date.getDate()}`.padStart(2, '0'); return `${year}-${month}-${day}` }
 function isTerminalTripStatus(status?: string | null): boolean { return status === 'completed' || status === 'canceled' }
 function isActiveTripStatus(status?: string | null): boolean { return status === 'draft' || status === 'published' || status === 'matched' }
-function isPastServiceDate(serviceDate?: string | null): boolean { if (!serviceDate) return false; return serviceDate < formatLocalDateValue(new Date()) }
-function assertServiceDateIsNotPast(serviceDate?: string | null): void { if (isPastServiceDate(serviceDate)) throw new HttpError(400, 'serviceDate cannot be in the past') }
 function mapRoute(row: Record<string, unknown>): Route { const route = toCamelCase<Route>(row); if (!route) throw new Error('Cannot map null row to Route'); route.tripPrice = parseNumeric(route.tripPrice); route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd); return route }
 async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> { const keys = Object.keys(data).filter((k) => data[k] !== undefined); if (keys.length === 0) { const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id]); return toCamelCase<T>(existing.rows[0]) } const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`); const timeFields = ['departureTime','windowStart','windowEnd','departureBlockStart','departureBlockEnd']; const vals = keys.map((k) => { const val = data[k]; if (jsonFields.includes(k)) return JSON.stringify(val); if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString(); return val }); const result = await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`, [id, ...vals]); return toCamelCase<T>(result.rows[0]) }
 
@@ -58,74 +54,38 @@ function extractWardFields(
   return { wardId, provinceId, wardKey }
 }
 
-const IMMUTABLE_PUBLISHED_ROUTE_FIELDS: Array<keyof UpdateRoutePayload> = [
-  'origin',
-  'destination',
-  'originWardKey',
-  'originWardId',
-  'originProvinceId',
-  'destinationWardKey',
-  'destinationWardId',
-  'destinationProvinceId',
-  'serviceDate',
-  'departureTime',
-  'windowStart',
-  'windowEnd',
-  'distanceMeters',
-]
-
-function hasImmutablePublishedRouteFieldUpdate(
-  data: UpdateRoutePayload,
-): boolean {
-  return IMMUTABLE_PUBLISHED_ROUTE_FIELDS.some(
-    (field) => data[field] !== undefined,
-  )
+export interface RouteWriteValues {
+  carId: string
+  origin: Location
+  destination: Location
+  originWardKey: string
+  originWardId: string
+  originProvinceId: string
+  destinationWardKey: string
+  destinationWardId: string
+  destinationProvinceId: string
+  serviceDate: string
+  departureTime: string
+  windowStart: string
+  windowEnd: string
+  tripPrice: number
+  distanceMeters: number | null
+  notes: string
 }
 
-function buildRouteWriteValues(
-  route: Route,
-  data: UpdateRoutePayload,
-) {
-  const departureTime = data.departureTime
-    ? (normalizeUtc(data.departureTime) as string)
-    : route.departureTime
-  const departureWindow = computeDepartureBlock(departureTime)
-
-  return {
-    carId: data.carId ?? route.carId,
-    origin: data.origin ?? route.origin,
-    destination: data.destination ?? route.destination,
-    originWardKey: data.originWardKey ?? route.originWardKey,
-    originWardId: data.originWardId ?? route.originWardId,
-    originProvinceId: data.originProvinceId ?? route.originProvinceId,
-    destinationWardKey: data.destinationWardKey ?? route.destinationWardKey,
-    destinationWardId: data.destinationWardId ?? route.destinationWardId,
-    destinationProvinceId:
-      data.destinationProvinceId ?? route.destinationProvinceId,
-    serviceDate: data.serviceDate ?? route.serviceDate,
-    departureTime,
-    windowStart: data.windowStart
-      ? (normalizeUtc(data.windowStart) as string)
-      : data.departureTime
-        ? departureWindow.start
-        : route.windowStart,
-    windowEnd: data.windowEnd
-      ? (normalizeUtc(data.windowEnd) as string)
-      : data.departureTime
-        ? departureWindow.end
-        : route.windowEnd,
-    tripPrice: data.tripPrice ?? route.tripPrice,
-    distanceMeters: data.distanceMeters ?? route.distanceMeters ?? null,
-    notes: data.notes ?? route.notes ?? '',
-  }
-}
+export type PublishTransitionDecision =
+  | { kind: 'idempotent'; route: Route }
+  | {
+      kind: 'proceed'
+      nextValues: RouteWriteValues
+      feeRequiredVnd: number
+      reservationDescription?: string
+    }
 
 export async function createRoute(
   driverId: string,
   data: CreateRoutePayload,
 ): Promise<Route> {
-  assertServiceDateIsNotPast(data.serviceDate)
-
   const fields = data as unknown as Record<string, unknown>
   const origin = extractWardFields(fields, 'origin', data.origin)
   const dest = extractWardFields(fields, 'destination', data.destination)
@@ -134,10 +94,10 @@ export async function createRoute(
   const res = await query(
     `
     INSERT INTO routes (
-      id, driver_id, car_id, origin, destination, 
+      id, driver_id, car_id, origin, destination,
       origin_ward_key, origin_ward_id, origin_province_id,
       destination_ward_key, destination_ward_id, destination_province_id,
-      service_date, departure_time, window_start, window_end, 
+      service_date, departure_time, window_start, window_end,
       trip_price, distance_meters, notes, status, created_at
     )
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
@@ -201,23 +161,6 @@ export async function updateRoute(
   id: string,
   data: UpdateRoutePayload,
 ): Promise<Route | null> {
-  const existing = await getRoute(id)
-  if (!existing) return null
-
-  assertServiceDateIsNotPast(data.serviceDate)
-
-  if (
-    existing.status === 'published' &&
-    existing.walletFeeStatus &&
-    existing.walletFeeStatus !== 'none' &&
-    hasImmutablePublishedRouteFieldUpdate(data)
-  ) {
-    throw new HttpError(
-      409,
-      'Published fee-bearing route fields cannot be edited. Cancel and recreate the route instead.',
-    )
-  }
-
   const updated = await dynamicUpdate<Route>(
     'routes',
     id,
@@ -229,31 +172,21 @@ export async function updateRoute(
     : null
 }
 
-export async function publishRoute(
+export async function runPublishTransition(
   id: string,
-  data: UpdateRoutePayload = {},
+  decide: (route: Route) => PublishTransitionDecision,
 ): Promise<Route> {
-  assertServiceDateIsNotPast(data.serviceDate)
-
   return withTransaction(async (tx) => {
     const route = await loadRouteForWalletTx(tx, id, mapRoute)
-    if (route.status === 'published') {
-      return route
-    }
-    if (route.status !== 'draft') {
-      throw new HttpError(
-        409,
-        `Cannot publish route in status: ${route.status}`,
-      )
+    const decision = decide(route)
+    if (decision.kind === 'idempotent') {
+      return decision.route
     }
 
-    const nextValues = buildRouteWriteValues(route, data)
-    const feeRequiredVnd = computeRouteFeeRequiredVnd(
-      nextValues.distanceMeters ?? 0,
-    )
+    const { nextValues, feeRequiredVnd, reservationDescription } = decision
 
     await reserveRouteFeeTx(tx, route, feeRequiredVnd, mapRoute, {
-      description: 'Route fee reserved on publish',
+      description: reservationDescription,
     })
 
     const updatedRoute = await tx.query(
