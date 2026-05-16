@@ -56,6 +56,18 @@ yarn test
 yarn build
 ```
 
+### Local Docker Test Database
+
+DB-backed tests skip automatically when Postgres is unavailable. To run them against a dedicated local test database, start the Docker Postgres service on host port `5433` and use the test DB script:
+
+```bash
+yarn test:db:up
+yarn test:db
+yarn test:db:down
+```
+
+The `test:db` script sets `DATABASE_URL=postgres://postgres:postgres@localhost:5433/share_trip_db` for the test process. The default `yarn test` command is unchanged and remains suitable when you want the existing environment/default behavior.
+
 ## Production-Style Artifact Workflow
 
 ```bash
@@ -77,6 +89,8 @@ The build copies `src/db/schema.sql` into `dist/db/schema.sql` so the compiled s
 | `VNMAP_API_KEY`   | ✅       | —       | VNMap provider key used only by backend proxy         |
 | `PORT`            | ❌       | `3010`  | Server port                                           |
 | `ALLOWED_ORIGINS` | ❌       | `*`     | Comma-separated CORS origins                          |
+
+For local Docker-backed tests, use `postgres://postgres:postgres@localhost:5433/share_trip_db`; see `docker-compose.test.yml` and `yarn test:db`.
 
 ## Deploy to Render
 
