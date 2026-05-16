@@ -2,29 +2,29 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import { after, before, describe } from 'node:test'
 
-import { query } from './db/connection'
-import app from './index.js'
-import * as matching from './matching'
-import * as groupRequestRepository from './repositories/groupRequestRepository'
-import * as reviewRepository from './repositories/reviewRepository'
-import { toCamelCase } from './db/utils'
-import * as walletRepository from './repositories/walletRepository'
-import * as carService from './services/carService'
-import * as walletService from './services/walletService'
-import * as driverRouteService from './services/driverRouteService'
-import * as groupOfferService from './services/groupOfferService'
-import * as groupRequestService from './services/groupRequestService'
-import * as planService from './services/planService'
-import * as routeRequestService from './services/routeRequestService'
-import * as userService from './services/userService'
+import { query } from '../src/db/connection'
+import app from '../src/index.js'
+import * as matching from '../src/matching'
+import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
+import * as reviewRepository from '../src/repositories/reviewRepository'
+import { toCamelCase } from '../src/db/utils'
+import * as walletRepository from '../src/repositories/walletRepository'
+import * as carService from '../src/services/carService'
+import * as walletService from '../src/services/walletService'
+import * as driverRouteService from '../src/services/driverRouteService'
+import * as groupOfferService from '../src/services/groupOfferService'
+import * as groupRequestService from '../src/services/groupRequestService'
+import * as planService from '../src/services/planService'
+import * as routeRequestService from '../src/services/routeRequestService'
+import * as userService from '../src/services/userService'
 import {
   createDbTest,
   isDbAvailable,
   setupTestDb,
   teardownTestDb,
-} from './test-db'
-import type { Route, RouteRequest } from './types/entities'
-import type { CreateReviewPayload, CreateRoutePayload, UpdatePlanPayload, UpdateRoutePayload } from './types/payloads'
+} from '../src/test-db'
+import type { Route, RouteRequest } from '../src/types/entities'
+import type { CreateReviewPayload, CreateRoutePayload, UpdatePlanPayload, UpdateRoutePayload } from '../src/types/payloads'
 
 const it = createDbTest('Postgres unavailable for DB-backed API tests')
 

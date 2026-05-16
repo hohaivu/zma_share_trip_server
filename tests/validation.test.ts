@@ -4,8 +4,8 @@ import { after, before, describe, it } from 'node:test'
 
 import express, { type Express, type Request, type Response } from 'express'
 
-import { validateSchema } from './middleware/validate'
-import { manualTopUpBodySchema } from './schemas/driverWallet'
+import { validateSchema } from '../src/middleware/validate'
+import { manualTopUpBodySchema } from '../src/schemas/driverWallet'
 
 /**
  * Smoke test for the zod-based request validation boundary.

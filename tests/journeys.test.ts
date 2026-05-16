@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { buildJourneySummary } from './services/journeyService'
-import { Plan, Route, User } from './types/entities'
-import { JourneyAcceptedState, ReviewEligibility } from './types/payloads'
+import { buildJourneySummary } from '../src/services/journeyService'
+import { Plan, Route, User } from '../src/types/entities'
+import { JourneyAcceptedState, ReviewEligibility } from '../src/types/payloads'
 
 const BASE_USER: User = {
   id: 'user-001',

@@ -1,26 +1,26 @@
 import assert from 'node:assert/strict'
 import { after, before, describe, it as nodeIt } from 'node:test'
 
-import { query } from './db/connection'
-import * as matching from './matching'
-import * as carService from './services/carService'
-import * as driverRouteRepository from './repositories/driverRouteRepository'
-import * as driverRouteService from './services/driverRouteService'
-import * as groupOfferService from './services/groupOfferService'
-import * as groupRequestRepository from './repositories/groupRequestRepository'
-import * as groupRequestService from './services/groupRequestService'
-import * as journeyRepository from './repositories/journeyRepository'
-import * as planService from './services/planService'
-import * as routeRequestService from './services/routeRequestService'
-import * as userService from './services/userService'
-import * as walletService from './services/walletService'
+import { query } from '../src/db/connection'
+import * as matching from '../src/matching'
+import * as carService from '../src/services/carService'
+import * as driverRouteRepository from '../src/repositories/driverRouteRepository'
+import * as driverRouteService from '../src/services/driverRouteService'
+import * as groupOfferService from '../src/services/groupOfferService'
+import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
+import * as groupRequestService from '../src/services/groupRequestService'
+import * as journeyRepository from '../src/repositories/journeyRepository'
+import * as planService from '../src/services/planService'
+import * as routeRequestService from '../src/services/routeRequestService'
+import * as userService from '../src/services/userService'
+import * as walletService from '../src/services/walletService'
 import {
   createDbTest,
   isDbAvailable,
   setupTestDb,
   teardownTestDb,
-} from './test-db'
-import { Plan, Route } from './types/entities'
+} from '../src/test-db'
+import { Plan, Route } from '../src/types/entities'
 
 const it = createDbTest('Postgres unavailable for DB-backed MVC module tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'

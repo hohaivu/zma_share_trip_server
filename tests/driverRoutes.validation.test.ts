@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import * as driverRoutes from './routes/driverRoutes'
+import * as driverRoutes from '../src/routes/driverRoutes'
 
 describe('driver route location validation helpers', () => {
   it('accepts resolved coordinates for route creation', () => {

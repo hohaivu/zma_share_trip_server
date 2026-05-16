@@ -9,14 +9,14 @@ import express, {
   type Response,
 } from 'express'
 
-import { HttpError } from './http-error'
-import { asyncHandler } from './routes/helpers'
+import { HttpError } from '../src/http-error'
+import { asyncHandler } from '../src/routes/helpers'
 import {
   created,
   errorBody,
   httpErrorCode,
   ok,
-} from './shared/responseEnvelope'
+} from '../src/shared/responseEnvelope'
 
 /**
  * Pure-helper + middleware-shape tests for the ALI-55 response envelope.

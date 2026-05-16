@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { buildNotificationCopy } from './services/notificationService'
+import { buildNotificationCopy } from '../src/services/notificationService'
 
 // These tests lock the canonical notification copy semantics that the
 // route- and group- request services rely on. They are pure assertions
