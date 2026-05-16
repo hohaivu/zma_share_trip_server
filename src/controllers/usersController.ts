@@ -207,7 +207,7 @@ export function createUsersController(): UsersController {
         req.params.id as string,
         req.params.notificationId as string,
       )
-      if (!notification) return res.status(404).json({ message: 'Notification not found' })
+      if (!notification) return notFound(res, 'Notification not found')
       res.json(notification)
     },
 

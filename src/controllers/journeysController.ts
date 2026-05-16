@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 
 import { journeyService, JourneyService } from '../services/journeyService'
+import { notFound } from './helpers'
 
 export interface JourneysController {
   getJourneySummary(req: Request<{ id: string }>, res: Response): Promise<void | Response>
@@ -19,7 +20,7 @@ export function createJourneysController(service: JourneyService): JourneysContr
         req.query.viewerId as string | undefined,
       )
       if (!summary) {
-        return res.status(404).json({ message: 'Trip not found' })
+        return notFound(res, 'Trip not found')
       }
 
       res.json(summary)
@@ -47,7 +48,7 @@ export function createJourneysController(service: JourneyService): JourneysContr
     async deleteSavedLocation(req, res) {
       const deleted = await service.deleteSavedLocation(req.params.id)
       if (!deleted) {
-        return res.status(404).json({ message: 'Saved location not found' })
+        return notFound(res, 'Saved location not found')
       }
       res.status(204).end()
     },

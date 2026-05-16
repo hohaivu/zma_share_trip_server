@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 
 import { requireParam } from '../routes/helpers'
+import { notFound } from './helpers'
 import * as carService from '../services/carService'
 
 export async function createCar(req: Request, res: Response) {
@@ -22,7 +23,7 @@ export async function listCars(req: Request, res: Response) {
 export async function getCar(req: Request, res: Response) {
   const car = await carService.getCarById(req.params.id as string)
   if (!car) {
-    return res.status(404).json({ message: 'Car not found' })
+    return notFound(res, 'Car not found')
   }
 
   res.json(car)
@@ -31,7 +32,7 @@ export async function getCar(req: Request, res: Response) {
 export async function updateCar(req: Request, res: Response) {
   const car = await carService.updateCar(req.params.id as string, req.body || {})
   if (!car) {
-    return res.status(404).json({ message: 'Car not found' })
+    return notFound(res, 'Car not found')
   }
 
   res.json(car)
@@ -40,7 +41,7 @@ export async function updateCar(req: Request, res: Response) {
 export async function deleteCar(req: Request, res: Response) {
   const deleted = await carService.deleteCar(req.params.id as string)
   if (!deleted) {
-    return res.status(404).json({ message: 'Car not found' })
+    return notFound(res, 'Car not found')
   }
 
   res.status(204).end()

@@ -260,7 +260,7 @@ describe('POST /api/client/trip-plans', () => {
       passengerCount: 1,
     })
     assert.equal(createRes.status, 400)
-    assert.equal(createRes.body.message, 'serviceDate cannot be in the past')
+    assert.equal(createRes.body.error.message, 'serviceDate cannot be in the past')
 
     const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
@@ -285,7 +285,7 @@ describe('POST /api/client/trip-plans', () => {
       },
     )
     assert.equal(updateRes.status, 400)
-    assert.equal(updateRes.body.message, 'serviceDate cannot be in the past')
+    assert.equal(updateRes.body.error.message, 'serviceDate cannot be in the past')
   })
 })
 
@@ -304,7 +304,7 @@ describe('POST /api/driver/routes', () => {
       tripPrice: 100000,
     })
     assert.equal(createRes.status, 400)
-    assert.equal(createRes.body.message, 'serviceDate cannot be in the past')
+    assert.equal(createRes.body.error.message, 'serviceDate cannot be in the past')
 
     const route = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
@@ -321,7 +321,7 @@ describe('POST /api/driver/routes', () => {
       departureTime: `${pastDate}T07:00:00.000Z`,
     })
     assert.equal(updateRes.status, 400)
-    assert.equal(updateRes.body.message, 'serviceDate cannot be in the past')
+    assert.equal(updateRes.body.error.message, 'serviceDate cannot be in the past')
 
     await query('UPDATE routes SET service_date = $1 WHERE id = $2', [pastDate, route.id])
     const publishRes = await request(server, 'PUT', `/api/driver/routes/${route.id}`, {
@@ -330,7 +330,7 @@ describe('POST /api/driver/routes', () => {
       serviceDate: pastDate,
     })
     assert.equal(publishRes.status, 400)
-    assert.equal(publishRes.body.message, 'serviceDate cannot be in the past')
+    assert.equal(publishRes.body.error.message, 'serviceDate cannot be in the past')
   })
 })
 
@@ -1240,7 +1240,7 @@ describe('inbox visibility endpoints', () => {
     )
     assert.equal(before.status, 200)
     assert.equal(
-      before.body.some(
+      before.body.data.some(
         (item: { id: string }) => item.id === groupRequest.offers[0]?.id,
       ),
       true,
@@ -1255,7 +1255,7 @@ describe('inbox visibility endpoints', () => {
     )
     assert.equal(after.status, 200)
     assert.equal(
-      after.body.some(
+      after.body.data.some(
         (item: { id: string }) => item.id === groupRequest.offers[0]?.id,
       ),
       false,
@@ -1654,10 +1654,10 @@ describe('POST /api/client/route-requests', () => {
     })
     assert.equal(req2.status, 409)
     assert.ok(
-      req2.body.existingRequest,
+      req2.body.error?.details?.existingRequest,
       'Should include existingRequest in 409 response payload',
     )
-    assert.equal(req2.body.existingRequest.id, req1.body.id)
+    assert.equal(req2.body.error.details.existingRequest.id, req1.body.id)
   })
 
   for (const terminalStatus of ['declined', 'closed', 'expired'] as const) {
@@ -2040,7 +2040,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       mauid: 'should-not-change',
     })
     assert.equal(rejectRes.status, 400)
-    assert.ok(rejectRes.body.message.includes('Field is not editable'))
+    assert.ok(rejectRes.body.error.message.includes('Field is not editable'))
   })
 
   it('creates review and report records and lists them by user', async () => {
@@ -2182,7 +2182,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     })
 
     assert.equal(incompleteRes.status, 400)
-    assert.equal(incompleteRes.body.message, 'Review is not allowed: missing_counterpart')
+    assert.equal(incompleteRes.body.error.message, 'Review is not allowed: missing_counterpart')
   })
 
   it('blocks, unblocks, lists notifications, and marks them read', async () => {
