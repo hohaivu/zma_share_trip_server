@@ -2,14 +2,8 @@ import { query, withTransaction } from '../db/connection'
 import { parseNumeric, toCamelCase } from '../db/utils'
 import { HttpError } from '../http-error'
 import { Route, Wallet, WalletTransaction } from '../types/entities'
-import {
-  ManualTopUpPayload,
-  ManualTopUpResult,
-  WalletSummary,
-} from '../types/payloads'
 
 const DEFAULT_WALLET_FEE_VND_PER_KM = 500
-const DEFAULT_WALLET_TRANSACTION_LIMIT = 20
 
 export type DbQueryExecutor = {
   query: (
@@ -24,7 +18,13 @@ function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}${Math.random().toString().slice(2, 6)}`
 }
 
-function getWalletFeeRateVndPerKm(): number {
+/**
+ * Resolves the per-km wallet fee from environment configuration. Lives in the
+ * repository because the *Tx route-fee primitives (called from cross-repo
+ * transactional flows in driverRouteRepository, journeyRepository, etc.) need
+ * it to persist the fee rate snapshot at reservation time.
+ */
+export function getWalletFeeRateVndPerKm(): number {
   const raw = process.env.WALLET_FEE_VND_PER_KM
   const parsed = raw ? Number(raw) : DEFAULT_WALLET_FEE_VND_PER_KM
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -50,39 +50,6 @@ export function mapWalletTransaction(row: Record<string, unknown>): WalletTransa
     transaction.reservedBalanceAfterVnd,
   )
   return transaction
-}
-
-export function computeAvailableBalanceVnd(
-  wallet: Pick<Wallet, 'balanceVnd' | 'reservedBalanceVnd'>,
-): number {
-  return wallet.balanceVnd - wallet.reservedBalanceVnd
-}
-
-function computeMaxPublishableDistanceMeters(
-  availableBalanceVnd: number,
-  feeRateVndPerKm: number,
-): number {
-  if (feeRateVndPerKm <= 0) return 0
-  return (
-    Math.max(
-      0,
-      Math.floor(Math.max(availableBalanceVnd, 0) / feeRateVndPerKm),
-    ) * 1000
-  )
-}
-
-export function buildWalletSummary(wallet: Wallet): WalletSummary {
-  const feeRateVndPerKm = getWalletFeeRateVndPerKm()
-  const availableBalanceVnd = computeAvailableBalanceVnd(wallet)
-  return {
-    ...wallet,
-    availableBalanceVnd,
-    feeRateVndPerKm,
-    maxPublishableDistanceMeters: computeMaxPublishableDistanceMeters(
-      availableBalanceVnd,
-      feeRateVndPerKm,
-    ),
-  }
 }
 
 export async function getOrCreateDriverWalletTx(
@@ -185,6 +152,16 @@ export async function insertWalletTransactionTx(
   return transaction
 }
 
+/**
+ * Loads the route row inside a transaction with FOR UPDATE locking.
+ *
+ * NOTE: Throws HttpError(404) when the row is missing because every current
+ * caller (cross-repository fee composition) expects an exception in that case.
+ * The state-machine guards below also remain co-located with the *Tx
+ * persistence primitives for the same reason — these primitives are composed
+ * inside other repositories' withTransaction() blocks. The user-facing
+ * walletService surface does not depend on these guards directly.
+ */
 export async function loadRouteForWalletTx(
   executor: DbQueryExecutor,
   routeId: string,
@@ -199,12 +176,14 @@ export async function loadRouteForWalletTx(
   return route
 }
 
-function assertDriverOwnsRoute(route: Route, driverId: string): void {
-  if (route.driverId !== driverId) {
-    throw new HttpError(404, 'Route not found')
-  }
-}
-
+/**
+ * Computes the wallet fee required for a route given its distance.
+ *
+ * NOTE: The HttpError validations below remain here because the only
+ * non-service caller (driverRouteRepository.publishRoute) consumes them
+ * inline inside its own transactional flow. The walletService layer
+ * additionally re-exports this so service callers can stay layered.
+ */
 export function computeRouteFeeRequiredVnd(distanceMeters: number): number {
   if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) {
     throw new HttpError(400, 'distanceMeters must be a positive integer')
@@ -240,7 +219,7 @@ export async function reserveRouteFeeTx(
   }
 
   const wallet = await getOrCreateDriverWalletTx(executor, route.driverId)
-  const availableBalanceVnd = computeAvailableBalanceVnd(wallet)
+  const availableBalanceVnd = wallet.balanceVnd - wallet.reservedBalanceVnd
   if (availableBalanceVnd < feeRequiredVnd) {
     throw new HttpError(400, 'Insufficient wallet balance to reserve route fee')
   }
@@ -432,19 +411,14 @@ export async function getOrCreateDriverWallet(driverId: string): Promise<Wallet>
   return withTransaction((tx) => getOrCreateDriverWalletTx(tx, driverId))
 }
 
-export async function getDriverWalletSummary(driverId: string): Promise<WalletSummary> {
-  const wallet = await getOrCreateDriverWallet(driverId)
-  return buildWalletSummary(wallet)
-}
-
-export async function listDriverWalletTransactions(
+/**
+ * Raw wallet-transaction lookup. Service layer is responsible for clamping
+ * the limit and any other business-policy rules.
+ */
+export async function findDriverWalletTransactions(
   driverId: string,
-  limit?: number,
+  limit: number,
 ): Promise<WalletTransaction[]> {
-  const txLimit = Math.max(
-    1,
-    Math.min(100, Math.floor(limit ?? DEFAULT_WALLET_TRANSACTION_LIMIT)),
-  )
   const result = await query(
     `
     SELECT *
@@ -453,99 +427,38 @@ export async function listDriverWalletTransactions(
     ORDER BY created_at DESC, id DESC
     LIMIT $2
   `,
-    [driverId, txLimit],
+    [driverId, limit],
   )
   return result.rows.map(mapWalletTransaction)
 }
 
-export async function topUpDriverWallet(
+/**
+ * Atomic manual top-up persistence primitive. Performs no input validation —
+ * callers (walletService) are expected to validate the amount and translate
+ * any business-level errors into HttpErrors before calling this function.
+ */
+export async function applyManualTopUp(
   driverId: string,
-  payload: ManualTopUpPayload,
-): Promise<ManualTopUpResult> {
-  if (!Number.isFinite(payload.amountVnd) || payload.amountVnd <= 0) {
-    throw new HttpError(400, 'Top-up amount must be greater than zero')
-  }
-  if (!Number.isInteger(payload.amountVnd)) {
-    throw new HttpError(400, 'Top-up amount must be a whole number')
-  }
-
-  const result = await withTransaction(async (tx) => {
+  amountVnd: number,
+  description: string | undefined,
+): Promise<{ wallet: Wallet; transaction: WalletTransaction }> {
+  return withTransaction(async (tx) => {
     const wallet = await getOrCreateDriverWalletTx(tx, driverId)
     const updatedWallet = await updateWalletRowTx(tx, wallet.id, {
-      balanceVnd: wallet.balanceVnd + payload.amountVnd,
+      balanceVnd: wallet.balanceVnd + amountVnd,
     })
     const transaction = await insertWalletTransactionTx(tx, {
       walletId: wallet.id,
       driverId,
       type: 'topup',
-      amountVnd: payload.amountVnd,
+      amountVnd,
       balanceAfterVnd: updatedWallet.balanceVnd,
       reservedBalanceAfterVnd: updatedWallet.reservedBalanceVnd,
-      description: payload.description || 'Manual top-up',
+      description: description || 'Manual top-up',
       metadata: {
         source: 'manual_top_up',
       },
     })
-    return { summary: buildWalletSummary(updatedWallet), transaction }
+    return { wallet: updatedWallet, transaction }
   })
-
-  return result
-}
-
-async function withOwnedRouteTx(
-  routeId: string,
-  driverId: string,
-  mapRoute: RouteMapper,
-  apply: (tx: DbQueryExecutor, route: Route) => Promise<Route>,
-): Promise<Route> {
-  return withTransaction(async (tx) => {
-    const route = await loadRouteForWalletTx(tx, routeId, mapRoute)
-    assertDriverOwnsRoute(route, driverId)
-    return apply(tx, route)
-  })
-}
-
-export async function reserveRouteFee(
-  routeId: string,
-  driverId: string,
-  feeRequiredVnd: number,
-  mapRoute: RouteMapper,
-  meta?: { description?: string },
-): Promise<Route> {
-  return withOwnedRouteTx(routeId, driverId, mapRoute, (tx, route) =>
-    reserveRouteFeeTx(tx, route, feeRequiredVnd, mapRoute, meta),
-  )
-}
-
-export async function releaseRouteFee(
-  routeId: string,
-  driverId: string,
-  mapRoute: RouteMapper,
-  meta?: { description?: string },
-): Promise<Route> {
-  return withOwnedRouteTx(routeId, driverId, mapRoute, (tx, route) =>
-    releaseRouteFeeTx(tx, route, mapRoute, meta),
-  )
-}
-
-export async function chargeRouteFee(
-  routeId: string,
-  driverId: string,
-  mapRoute: RouteMapper,
-  meta?: { description?: string },
-): Promise<Route> {
-  return withOwnedRouteTx(routeId, driverId, mapRoute, (tx, route) =>
-    chargeRouteFeeTx(tx, route, mapRoute, meta),
-  )
-}
-
-export async function refundRouteFee(
-  routeId: string,
-  driverId: string,
-  mapRoute: RouteMapper,
-  meta?: { description?: string },
-): Promise<Route> {
-  return withOwnedRouteTx(routeId, driverId, mapRoute, (tx, route) =>
-    refundRouteFeeTx(tx, route, mapRoute, meta),
-  )
 }

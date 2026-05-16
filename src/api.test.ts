@@ -10,6 +10,7 @@ import * as reviewRepository from './repositories/reviewRepository'
 import { toCamelCase } from './db/utils'
 import * as walletRepository from './repositories/walletRepository'
 import * as carService from './services/carService'
+import * as walletService from './services/walletService'
 import * as driverRouteService from './services/driverRouteService'
 import * as groupOfferService from './services/groupOfferService'
 import * as groupRequestService from './services/groupRequestService'
@@ -659,7 +660,7 @@ describe('driver wallet routes', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const initialSummary = await walletRepository.getDriverWalletSummary(DRIVER_001_ID)
+    const initialSummary = await walletService.getDriverWalletSummary(DRIVER_001_ID)
 
     const res = await request(server, 'POST', '/api/driver/wallet/topups', {
       driverId: DRIVER_001_ID,
