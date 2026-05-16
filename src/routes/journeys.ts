@@ -1,12 +1,9 @@
 import { Router } from 'express'
 
 import { journeysController } from '../controllers/journeysController'
-import { buildJourneySummary } from '../services/journeyService'
 import { asyncHandler } from './helpers'
 
 const router = Router()
-
-export { buildJourneySummary }
 
 // GET /api/journeys/:id/summary
 router.get('/journeys/:id/summary', asyncHandler(journeysController.getJourneySummary))

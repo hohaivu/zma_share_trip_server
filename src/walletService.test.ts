@@ -10,6 +10,7 @@ import * as groupOfferService from './services/groupOfferService'
 import * as groupRequestRepository from './repositories/groupRequestRepository'
 import * as groupRequestService from './services/groupRequestService'
 import * as journeyRepository from './repositories/journeyRepository'
+import { journeyService } from './services/journeyService'
 import * as planService from './services/planService'
 import * as routeRequestService from './services/routeRequestService'
 import * as userService from './services/userService'
@@ -356,7 +357,7 @@ describe('MVC wallet-gated accept and cancel transitions', () => {
       ).id,
     )
 
-    const canceled = await journeyRepository.cancelTrip(route.id)
+    const canceled = await journeyService.cancelTrip(route.id)
     const wallet = await walletService.getDriverWalletSummary(DRIVER_001_ID)
     const transactions = await walletService.listDriverWalletTransactions(
       DRIVER_001_ID,
@@ -411,7 +412,7 @@ describe('MVC wallet-gated accept and cancel transitions', () => {
     )
     await routeRequestService.acceptRouteRequest(request.id)
 
-    const canceled = await journeyRepository.cancelTrip(plan.id)
+    const canceled = await journeyService.cancelTrip(plan.id)
     const wallet = await walletService.getDriverWalletSummary(DRIVER_001_ID)
     const canceledRequest = await query(
       'SELECT status FROM route_requests WHERE id = $1',

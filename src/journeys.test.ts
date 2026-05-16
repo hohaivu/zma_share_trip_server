@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { buildJourneySummary } from './routes/journeys'
+import { buildJourneySummary } from './services/journeyService'
 import { Plan, Route, User } from './types/entities'
 import { JourneyAcceptedState, ReviewEligibility } from './types/payloads'
 

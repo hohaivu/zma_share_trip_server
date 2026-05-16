@@ -10,6 +10,7 @@ import * as groupOfferService from './services/groupOfferService'
 import * as groupRequestRepository from './repositories/groupRequestRepository'
 import * as groupRequestService from './services/groupRequestService'
 import * as journeyRepository from './repositories/journeyRepository'
+import { journeyService } from './services/journeyService'
 import * as planService from './services/planService'
 import * as routeRequestService from './services/routeRequestService'
 import * as userService from './services/userService'
@@ -265,7 +266,7 @@ describe('MVC demand group repository derivation', () => {
     assert.ok(suppressedTarget)
     assert.equal(suppressedTarget.memberCount, 1)
 
-    await journeyRepository.cancelTrip(route.id)
+    await journeyService.cancelTrip(route.id)
 
     const restored = await groupRequestRepository.deriveDemandGroups()
     const restoredTarget = restored.find((group) => group.id === target.id)
