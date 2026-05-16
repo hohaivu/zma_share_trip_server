@@ -189,3 +189,11 @@ export async function listRouteRequestsByClient(clientId: string): Promise<Route
   )
   return mapRows<RouteRequest>(requestsRes.rows)
 }
+
+export async function listRouteRequestsByRoute(routeId: string): Promise<RouteRequest[]> {
+  const requestsRes = await query(
+    'SELECT * FROM route_requests WHERE route_id = $1 ORDER BY created_at DESC, id DESC',
+    [routeId],
+  )
+  return mapRows<RouteRequest>(requestsRes.rows)
+}

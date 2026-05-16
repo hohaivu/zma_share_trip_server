@@ -1,7 +1,13 @@
 import { query } from '../db/connection'
 import { parseJsonb, parseNumeric, toCamelCase } from '../db/utils'
+import * as store from '../store'
 import { BootstrapSession, Identity, User } from '../types/entities'
-import { UpdateUserPayload } from '../types/payloads'
+import {
+  CreateNotificationPayload,
+  CreateReportPayload,
+  CreateReviewPayload,
+  UpdateUserPayload,
+} from '../types/payloads'
 
 export function mapUser(row: Record<string, unknown>): User {
   const user = toCamelCase<User>(row)
@@ -119,4 +125,48 @@ export async function listPersonasByIdentity(
     identityId,
   ])
   return result.rows.map(mapUser)
+}
+
+export function listReviewsByReviewer(userId: string) {
+  return store.listReviewsByReviewer(userId)
+}
+
+export function createReview(payload: CreateReviewPayload) {
+  return store.createReview(payload)
+}
+
+export function createReport(payload: CreateReportPayload) {
+  return store.createReport(payload)
+}
+
+export function listReportsByReporter(userId: string) {
+  return store.listReportsByReporter(userId)
+}
+
+export function getBlockedUsers(blockerId: string) {
+  return store.getBlockedUsers(blockerId)
+}
+
+export function blockUser(blockerId: string, blockedId: string) {
+  return store.blockUser(blockerId, blockedId)
+}
+
+export function unblockUser(blockerId: string, blockedId: string) {
+  return store.unblockUser(blockerId, blockedId)
+}
+
+export function listNotifications(recipientId: string) {
+  return store.listNotifications(recipientId)
+}
+
+export function createNotification(payload: CreateNotificationPayload) {
+  return store.createNotification(payload)
+}
+
+export function markNotificationRead(recipientId: string, notificationId: string) {
+  return store.markNotificationRead(recipientId, notificationId)
+}
+
+export function markAllNotificationsRead(recipientId: string) {
+  return store.markAllNotificationsRead(recipientId)
 }

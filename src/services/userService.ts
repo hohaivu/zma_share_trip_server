@@ -1,7 +1,12 @@
 import { HttpError } from '../http-error'
 import * as userRepository from '../repositories/userRepository'
-import { BootstrapSession, User } from '../types/entities'
-import { UpdateUserPayload } from '../types/payloads'
+import { AppNotification, BootstrapSession, Report, Review, User } from '../types/entities'
+import {
+  CreateNotificationPayload,
+  CreateReportPayload,
+  CreateReviewPayload,
+  UpdateUserPayload,
+} from '../types/payloads'
 
 const EDITABLE_USER_FIELDS = new Set<keyof UpdateUserPayload>([
   'displayName',
@@ -73,4 +78,65 @@ export async function getModeForUser(
 ): Promise<{ preferredMode: string; modeSelectedAt: string } | null> {
   const user = await userRepository.findUserById(userId)
   return user?.identityId ? getUserMode(user.identityId) : null
+}
+
+export async function listReviewsByReviewer(userId: string): Promise<Review[]> {
+  return userRepository.listReviewsByReviewer(userId)
+}
+
+export async function createReview(
+  payload: CreateReviewPayload,
+): Promise<Review> {
+  return userRepository.createReview(payload)
+}
+
+export async function createReport(
+  payload: CreateReportPayload,
+): Promise<Report> {
+  return userRepository.createReport(payload)
+}
+
+export async function listReportsByReporter(userId: string): Promise<Report[]> {
+  return userRepository.listReportsByReporter(userId)
+}
+
+export async function getBlockedUsers(userId: string): Promise<string[]> {
+  return userRepository.getBlockedUsers(userId)
+}
+
+export async function blockUser(
+  blockerId: string,
+  blockedId: string,
+): Promise<string[]> {
+  return userRepository.blockUser(blockerId, blockedId)
+}
+
+export async function unblockUser(
+  blockerId: string,
+  blockedId: string,
+): Promise<string[]> {
+  return userRepository.unblockUser(blockerId, blockedId)
+}
+
+export async function listNotifications(
+  recipientId: string,
+): Promise<AppNotification[]> {
+  return userRepository.listNotifications(recipientId)
+}
+
+export async function createNotification(
+  payload: CreateNotificationPayload,
+): Promise<AppNotification> {
+  return userRepository.createNotification(payload)
+}
+
+export async function markNotificationRead(
+  recipientId: string,
+  notificationId: string,
+): Promise<AppNotification | null> {
+  return userRepository.markNotificationRead(recipientId, notificationId)
+}
+
+export async function markAllNotificationsRead(recipientId: string): Promise<void> {
+  return userRepository.markAllNotificationsRead(recipientId)
 }

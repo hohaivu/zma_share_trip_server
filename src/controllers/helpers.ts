@@ -2,14 +2,14 @@ import { Response } from 'express'
 
 import { HttpError } from '../http-error'
 
-function requireControllerParam(value: unknown, message: string): asserts value {
+export function requireParam(value: unknown, message: string): asserts value {
   if (!value) {
     throw new HttpError(400, message)
   }
 }
 
 export function requireQueryString(value: unknown, message: string): string {
-  requireControllerParam(value, message)
+  requireParam(value, message)
   return value as string
 }
 
@@ -19,7 +19,7 @@ export function requireBodyOrQueryString(
   message: string,
 ): string {
   const value = bodyValue ?? queryValue
-  requireControllerParam(value, message)
+  requireParam(value, message)
   return value as string
 }
 

@@ -157,6 +157,10 @@ export async function listRouteRequestsByClient(clientId: string): Promise<Route
   return filterVisibleForActiveTrip(await routeRequestRepository.listRouteRequestsByClient(clientId))
 }
 
+export async function listRouteRequestsByRoute(routeId: string): Promise<RouteRequest[]> {
+  return filterVisibleForActiveTrip(await routeRequestRepository.listRouteRequestsByRoute(routeId))
+}
+
 export const routeRequestService = {
   createRouteRequest,
   acceptRouteRequest,
@@ -164,4 +168,5 @@ export const routeRequestService = {
   cancelRouteRequest,
   listRouteRequestsByDriver,
   listRouteRequestsByClient,
+  listRouteRequestsByRoute,
 }
