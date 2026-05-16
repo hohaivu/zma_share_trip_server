@@ -169,6 +169,47 @@
 
 ---
 
+## Validation Errors
+
+Request validation lives in `src/middleware/validate.ts` (zod-backed) and runs **before** the controller handler. Failed validation short-circuits with HTTP `400` and the following JSON envelope:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request",
+    "issues": [
+      {
+        "path": ["amountVnd"],
+        "message": "amountVnd must be a positive integer",
+        "code": "too_small"
+      }
+    ]
+  }
+}
+```
+
+Fields:
+
+| Field                  | Type       | Description                                                                                |
+| ---------------------- | ---------- | ------------------------------------------------------------------------------------------ |
+| `error.code`           | string     | Always `"VALIDATION_ERROR"` for validation failures.                                       |
+| `error.message`        | string     | Stable human-readable summary (`"Invalid request"`).                                       |
+| `error.issues`         | array      | One entry per failed rule from the underlying zod schema.                                  |
+| `error.issues[].path`  | string[]   | Dotted-path segments to the offending field (e.g. `["amountVnd"]`, `["body", "driverId"]`). |
+| `error.issues[].message` | string   | Per-rule human-readable message.                                                            |
+| `error.issues[].code`  | string     | Stable zod issue code (`too_small`, `invalid_type`, `custom`, etc.).                       |
+
+> Validation errors are distinct from domain `HttpError(400, message)` responses (which use `{ error: -1, message }`). New schema-validated endpoints emit the envelope above; legacy endpoints will be migrated incrementally.
+
+The current schema-validated endpoints are:
+
+| Method | Path                          | Body schema (`src/schemas/`)             |
+| ------ | ----------------------------- | ---------------------------------------- |
+| POST   | `/api/driver/wallet/topups`   | `driverWallet.ts` → `manualTopUpBodySchema` |
+
+---
+
 ## Orchestration Rules
 
 1. **First-accept-wins**: The first client to accept a group offer or the first driver to accept a search request wins the route.

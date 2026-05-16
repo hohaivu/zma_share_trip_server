@@ -1,5 +1,7 @@
 import { Router } from 'express'
 
+import { validateSchema } from '../middleware/validate'
+import { manualTopUpBodySchema } from '../schemas/driverWallet'
 import {
   getDriverWallet,
   listDriverWalletTransactions,
@@ -16,6 +18,10 @@ router.get('/wallet', asyncHandler(getDriverWallet))
 router.get('/wallet/transactions', asyncHandler(listDriverWalletTransactions))
 
 // POST /api/driver/wallet/topups
-router.post('/wallet/topups', asyncHandler(topUpDriverWallet))
+router.post(
+  '/wallet/topups',
+  validateSchema('body', manualTopUpBodySchema),
+  asyncHandler(topUpDriverWallet),
+)
 
 export default router
