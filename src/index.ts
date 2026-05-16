@@ -1,74 +1,19 @@
-import cors from 'cors'
 import 'dotenv/config'
-import express, { Express, NextFunction, Request, Response } from 'express'
 
 import { checkConnection } from './db/connection'
-import { HttpError } from './http-error'
-import { errorBody, httpErrorCode } from './shared/responseEnvelope'
-import bootstrapRoute from './routes/bootstrap'
-import carsRoute from './routes/cars'
-import clientMatchesRoute from './routes/clientMatches'
-import clientPlansRoute from './routes/clientPlans'
-import clientRouteRequestsRoute from './routes/clientRouteRequests'
-import demandGroupsRoute from './routes/demandGroups'
-import driverMatchesRoute from './routes/driverMatches'
-import driverRoutesRoute from './routes/driverRoutes'
-import driverRouteRequestsRoute from './routes/driverRouteRequests'
-import driverWalletRoute from './routes/driverWallet'
-import groupOffersRoute from './routes/groupOffers'
-import groupRequestsRoute from './routes/groupRequests'
-import journeysRoute from './routes/journeys'
-import usersRoute from './routes/users'
-import vnmapRoutesRoute from './routes/vnmapRoutes'
-import zaloRoutesRoute from './routes/zaloRoutes'
+import { createKernel } from './kernel'
+import { errorProvider } from './providers/errorProvider'
+import { healthProvider } from './providers/healthProvider'
+import { httpProvider } from './providers/httpProvider'
+import { routeProvider } from './providers/routeProvider'
 
-const app: Express = express()
 const PORT = process.env.PORT || 3010
 
-app.use(express.json())
-app.use(
-  cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
-  }),
-)
-
-const routeGroups: Array<[string, express.Router[]]> = [
-  ['/api', [zaloRoutesRoute, vnmapRoutesRoute, journeysRoute, usersRoute, bootstrapRoute]],
-  [
-    '/api/driver',
-    [
-      carsRoute,
-      driverRoutesRoute,
-      driverWalletRoute,
-      groupRequestsRoute,
-      demandGroupsRoute,
-      driverMatchesRoute,
-      driverRouteRequestsRoute,
-    ],
-  ],
-  [
-    '/api/client',
-    [clientPlansRoute, groupOffersRoute, clientMatchesRoute, clientRouteRequestsRoute],
-  ],
-]
-
-for (const [prefix, routers] of routeGroups) {
-  for (const router of routers) app.use(prefix, router)
-}
-
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
-})
-
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  const status = err instanceof HttpError ? err.statusCode : 500
-  const message = status === 500 ? 'Internal server error' : err.message
-  if (status === 500) console.error('[server error]', err)
-  const details =
-    err instanceof HttpError && err.payload !== undefined ? err.payload : undefined
-  res.status(status).json(errorBody(httpErrorCode(status), message, { details }))
-})
+const kernel = createKernel()
+  .register(httpProvider)
+  .register(routeProvider)
+  .register(healthProvider)
+  .register(errorProvider) // MUST be last (error middleware)
 
 async function start() {
   try {
@@ -81,7 +26,9 @@ async function start() {
     process.exit(1)
   }
 
-  app.listen(PORT, () => {
+  await kernel.boot()
+
+  kernel.app.listen(PORT, () => {
     if (!process.env.ZALO_APP_ID) console.warn('⚠ ZALO_APP_ID is not set')
     if (!process.env.ZALO_APP_SECRET)
       console.warn('⚠ ZALO_APP_SECRET is not set')
@@ -94,4 +41,5 @@ if (require.main === module) {
   start()
 }
 
-export default app
+export { kernel }
+export default kernel.app
