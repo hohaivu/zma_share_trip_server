@@ -1,5 +1,5 @@
 import * as driverRouteRepository from '../repositories/driverRouteRepository'
-import { TripListScope } from '../store'
+import { TripListScope } from '../repositories/tripListRepository'
 import { Route } from '../types/entities'
 import {
   CreateRoutePayload,

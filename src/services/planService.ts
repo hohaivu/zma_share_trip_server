@@ -1,11 +1,11 @@
 import * as planRepository from '../repositories/planRepository'
+import { TripListScope } from '../repositories/tripListRepository'
 import { Plan } from '../types/entities'
 import {
   CreatePlanPayload,
   UpdatePlanPayload,
   WithReviewEligibility,
 } from '../types/payloads'
-import { TripListScope } from '../store'
 
 export async function createPlan(
   clientId: string,

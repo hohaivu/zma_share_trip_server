@@ -33,6 +33,10 @@ import {
   type DbQueryExecutor,
 } from './repositories/walletRepository'
 import { mapCar } from './repositories/carRepository'
+import * as driverRouteRepository from './repositories/driverRouteRepository'
+import * as planRepository from './repositories/planRepository'
+import * as journeyRepository from './repositories/journeyRepository'
+import { type TripListScope } from './repositories/tripListRepository'
 import {
   createCar as createCarService,
   deleteCar as deleteCarService,
@@ -843,311 +847,35 @@ function buildRouteWriteValues(
   }
 }
 
+export type { TripListScope } from './repositories/tripListRepository'
+
 export async function createRoute(
   driverId: string,
   data: CreateRoutePayload,
 ): Promise<Route> {
-  await assertUserRole(driverId, 'driver')
-  assertServiceDateIsNotPast(data.serviceDate)
-
-  const fields = data as unknown as Record<string, unknown>
-  const origin = extractWardFields(fields, 'origin', data.origin)
-  const dest = extractWardFields(fields, 'destination', data.destination)
-  const departureWindow = computeDepartureBlock(data.departureTime)
-
-  const res = await query(
-    `
-    INSERT INTO routes (
-      id, driver_id, car_id, origin, destination, 
-      origin_ward_key, origin_ward_id, origin_province_id,
-      destination_ward_key, destination_ward_id, destination_province_id,
-      service_date, departure_time, window_start, window_end, 
-      trip_price, distance_meters, notes, status, created_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
-    RETURNING *
-  `,
-    [
-      generateId('route'),
-      driverId,
-      data.carId,
-      JSON.stringify(data.origin),
-      JSON.stringify(data.destination),
-      origin.wardKey,
-      origin.wardId,
-      origin.provinceId,
-      dest.wardKey,
-      dest.wardId,
-      dest.provinceId,
-      data.serviceDate,
-      normalizeUtc(data.departureTime),
-      data.windowStart ? normalizeUtc(data.windowStart) : departureWindow.start,
-      data.windowEnd ? normalizeUtc(data.windowEnd) : departureWindow.end,
-      data.tripPrice,
-      data.distanceMeters ?? null,
-      data.notes || '',
-      data.status || 'draft',
-    ],
-  )
-  const route = mapRoute(res.rows[0])
-  if (!route) throw new Error('Failed to create route')
-  return route
-}
-
-async function hasReviewerSubmittedTripReview(
-  tripId: string,
-  reviewerId: string,
-): Promise<boolean> {
-  const result = await query(
-    'SELECT 1 FROM reviews WHERE trip_id = $1 AND reviewer_id = $2 LIMIT 1',
-    [tripId, reviewerId],
-  )
-  return result.rows.length > 0
-}
-
-function buildReviewEligibility(
-  values: Partial<ReviewEligibility> & Pick<ReviewEligibility, 'reason'>,
-): ReviewEligibility {
-  return {
-    canSubmit: values.reason === 'eligible',
-    hasSubmitted: values.hasSubmitted ?? false,
-    reason: values.reason,
-    windowClosesAt: values.windowClosesAt ?? null,
-    revieweeId: values.revieweeId ?? null,
-  }
-}
-
-function getAcceptedCounterpartId(
-  accepted: AcceptedJourneyMatch | null,
-  viewerId: string,
-): string | null {
-  if (!accepted) return null
-  const driverId =
-    accepted.kind === 'route_request'
-      ? accepted.request.driverId
-      : accepted.offer.driverId
-  const clientId =
-    accepted.kind === 'route_request'
-      ? accepted.request.clientId
-      : accepted.offer.clientId
-  if (viewerId === driverId) return clientId
-  if (viewerId === clientId) return driverId
-  return null
-}
-
-function getWindowClosesAt(completedAt?: string | null): string | null {
-  if (!completedAt) return null
-  const completedTime = new Date(completedAt).getTime()
-  if (!Number.isFinite(completedTime)) return null
-  return new Date(completedTime + 24 * 60 * 60 * 1000).toISOString()
-}
-
-export async function getReviewEligibility(
-  tripId: string,
-  viewerId: string,
-  now: Date = new Date(),
-): Promise<ReviewEligibility> {
-  const route = await getRoute(tripId)
-  const plan = route ? null : await getPlan(tripId)
-  const trip = route ?? plan
-  if (!trip) throw new HttpError(404, 'Trip not found')
-
-  const accepted = route
-    ? await findAcceptedRouteMatchTx({ query }, route.id)
-    : await findAcceptedPlanMatchTx({ query }, plan!)
-  const revieweeId = getAcceptedCounterpartId(accepted, viewerId)
-  if (!accepted) return buildReviewEligibility({ reason: 'missing_counterpart' })
-  if (!revieweeId) return buildReviewEligibility({ reason: 'not_participant' })
-
-  const hasSubmitted = await hasReviewerSubmittedTripReview(trip.id, viewerId)
-  const windowClosesAt = getWindowClosesAt(trip.completedAt)
-  if (hasSubmitted) {
-    return buildReviewEligibility({
-      reason: 'already_submitted',
-      hasSubmitted,
-      windowClosesAt,
-      revieweeId,
-    })
-  }
-  if (trip.status !== 'completed') {
-    return buildReviewEligibility({ reason: 'not_completed', revieweeId })
-  }
-  if (!trip.completedAt) {
-    return buildReviewEligibility({ reason: 'missing_completed_at', revieweeId })
-  }
-  const completedTime = new Date(trip.completedAt).getTime()
-  const nowTime = now.getTime()
-  if (!Number.isFinite(completedTime) || completedTime > nowTime) {
-    return buildReviewEligibility({ reason: 'missing_completed_at', revieweeId })
-  }
-  if (nowTime > completedTime + 24 * 60 * 60 * 1000) {
-    return buildReviewEligibility({
-      reason: 'outside_window',
-      windowClosesAt,
-      revieweeId,
-    })
-  }
-  return buildReviewEligibility({
-    reason: 'eligible',
-    windowClosesAt,
-    revieweeId,
-  })
-}
-
-export async function withReviewEligibility<T extends Route | Plan>(
-  trip: T,
-  viewerId: string,
-): Promise<WithReviewEligibility<T>> {
-  return {
-    ...trip,
-    reviewEligibility: await getReviewEligibility(trip.id, viewerId),
-  }
-}
-
-async function isTripVisibleInWorkQueue(
-  trip: Pick<Route | Plan, 'id' | 'status' | 'serviceDate'>,
-  reviewerId: string,
-): Promise<boolean> {
-  if (isActiveTripStatus(trip.status)) {
-    return true
-  }
-
-  if (trip.status !== 'completed') {
-    return false
-  }
-
-  return (await getReviewEligibility(trip.id, reviewerId)).canSubmit
-}
-
-async function shouldHideRequestForTerminalTrip(
-  request:
-    | Pick<RouteRequest, 'routeId' | 'planId'>
-    | Pick<GroupOffer, 'routeId' | 'planId'>,
-): Promise<boolean> {
-  const route = await getRoute(request.routeId)
-  if (isTerminalTripStatus(route?.status)) {
-    return true
-  }
-
-  const plan = request.planId ? await getPlan(request.planId) : null
-  return isTerminalTripStatus(plan?.status)
+  return driverRouteRepository.createRoute(driverId, data)
 }
 
 export async function getRoute(id: string): Promise<Route | null> {
-  const result = await query('SELECT * FROM routes WHERE id = $1', [id])
-  return result.rows[0] ? mapRoute(result.rows[0]) : null
+  return journeyRepository.getRoute(id)
 }
 
 export async function updateRoute(
   id: string,
   data: UpdateRoutePayload,
 ): Promise<Route | null> {
-  const existing = await getRoute(id)
-  if (!existing) return null
-
-  assertServiceDateIsNotPast(data.serviceDate)
-
-  if (
-    existing.status === 'published' &&
-    existing.walletFeeStatus &&
-    existing.walletFeeStatus !== 'none' &&
-    hasImmutablePublishedRouteFieldUpdate(data)
-  ) {
-    throw new HttpError(
-      409,
-      'Published fee-bearing route fields cannot be edited. Cancel and recreate the route instead.',
-    )
-  }
-
-  const updated = await dynamicUpdate<Route>(
-    'routes',
-    id,
-    data as unknown as Record<string, unknown>,
-    ['origin', 'destination'],
-  )
-  return updated
-    ? mapRoute(updated as unknown as Record<string, unknown>)
-    : null
+  return driverRouteRepository.updateRoute(id, data)
 }
 
 export async function publishRoute(
   id: string,
   data: UpdateRoutePayload = {},
 ): Promise<Route> {
-  assertServiceDateIsNotPast(data.serviceDate)
-
-  return withTransaction(async (tx) => {
-    const route = await loadRouteForWalletTx(tx, id, mapRoute)
-    if (route.status === 'published') {
-      return route
-    }
-    if (route.status !== 'draft') {
-      throw new HttpError(
-        409,
-        `Cannot publish route in status: ${route.status}`,
-      )
-    }
-
-    const nextValues = buildRouteWriteValues(route, data)
-    const feeRequiredVnd = computeRouteFeeRequiredVnd(
-      nextValues.distanceMeters ?? 0,
-    )
-
-    await reserveRouteFeeTx(tx, route, feeRequiredVnd, mapRoute, {
-      description: 'Route fee reserved on publish',
-    })
-
-    const updatedRoute = await tx.query(
-      `
-      UPDATE routes
-      SET car_id = $2,
-          origin = $3,
-          destination = $4,
-          origin_ward_key = $5,
-          origin_ward_id = $6,
-          origin_province_id = $7,
-          destination_ward_key = $8,
-          destination_ward_id = $9,
-          destination_province_id = $10,
-          service_date = $11,
-          departure_time = $12,
-          window_start = $13,
-          window_end = $14,
-          trip_price = $15,
-          distance_meters = $16,
-          notes = $17,
-          status = 'published'
-      WHERE id = $1
-      RETURNING *
-    `,
-      [
-        id,
-        nextValues.carId,
-        JSON.stringify(nextValues.origin),
-        JSON.stringify(nextValues.destination),
-        nextValues.originWardKey,
-        nextValues.originWardId,
-        nextValues.originProvinceId,
-        nextValues.destinationWardKey,
-        nextValues.destinationWardId,
-        nextValues.destinationProvinceId,
-        nextValues.serviceDate,
-        nextValues.departureTime,
-        nextValues.windowStart,
-        nextValues.windowEnd,
-        nextValues.tripPrice,
-        nextValues.distanceMeters,
-        nextValues.notes,
-      ],
-    )
-
-    return mapRoute(updatedRoute.rows[0])
-  })
+  return driverRouteRepository.publishRoute(id, data)
 }
 
 export async function listAllRoutes(): Promise<Route[]> {
-  const result = await query('SELECT * FROM routes')
-  return result.rows.map(mapRoute)
+  return driverRouteRepository.listAllRoutes()
 }
 
 // --- Plan ---
@@ -1156,139 +884,58 @@ export async function createPlan(
   clientId: string,
   data: CreatePlanPayload,
 ): Promise<Plan> {
-  await assertUserRole(clientId, 'client')
-  assertServiceDateIsNotPast(data.serviceDate)
-
-  const res = await query(
-    `
-    INSERT INTO plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
-    RETURNING *
-  `,
-    [
-      generateId('plan'),
-      clientId,
-      JSON.stringify(data.pickup),
-      JSON.stringify(data.dropoff),
-      data.pickupWardId,
-      data.dropoffWardId,
-      data.pickupWardKey,
-      data.dropoffWardKey,
-      data.pickupProvinceId,
-      data.dropoffProvinceId,
-      data.serviceDate,
-      normalizeUtc(data.departureBlockStart),
-      normalizeUtc(data.departureBlockEnd),
-      data.passengerCount,
-      'grouped',
-      data.notes || '',
-      data.status || 'published',
-    ],
-  )
-  const plan = toCamelCase<Plan>(res.rows[0])
-  if (!plan) throw new Error('Failed to create plan')
-  return plan
+  return planRepository.createPlan(clientId, data)
 }
 
 export async function getPlan(id?: string): Promise<Plan | null> {
-  if (!id) return null
-  const result = await query('SELECT * FROM plans WHERE id = $1', [id])
-  return toCamelCase<Plan>(result.rows[0])
+  return journeyRepository.getPlan(id)
 }
 
 export async function updatePlan(
   id: string,
   data: UpdatePlanPayload,
 ): Promise<Plan | null> {
-  assertServiceDateIsNotPast(data.serviceDate)
-
-  return dynamicUpdate<Plan>(
-    'plans',
-    id,
-    data as unknown as Record<string, unknown>,
-    ['pickup', 'dropoff'],
-  )
+  return planRepository.updatePlan(id, data)
 }
 
 export async function cancelPlanByClient(
   planId: string,
   clientId: string,
 ): Promise<Plan> {
-  return withTransaction(async (tx) => {
-    const planRes = await tx.query(
-      'SELECT * FROM plans WHERE id = $1 FOR UPDATE',
-      [planId],
-    )
-    const plan = toCamelCase<Plan>(planRes.rows[0])
-    if (!plan) {
-      throw new HttpError(404, 'Plan not found')
-    }
-    if (plan.clientId !== clientId) {
-      throw new HttpError(403, 'Client does not own this plan')
-    }
-    if (plan.status === 'canceled') {
-      return plan
-    }
-
-    const accepted = await findAcceptedPlanMatchTx(tx, plan)
-    if (accepted) {
-      throw new HttpError(409, 'Cannot cancel an accepted plan')
-    }
-
-    const updatedPlan = await tx.query(
-      "UPDATE plans SET status = 'canceled' WHERE id = $1 RETURNING *",
-      [plan.id],
-    )
-    const canceledPlan = toCamelCase<Plan>(updatedPlan.rows[0])
-    if (!canceledPlan) throw new Error('Failed to cancel plan')
-    return canceledPlan
-  })
-}
-
-const listRoutesByDriverRaw = listByColumn<Route>('routes', 'driver_id')
-
-export type TripListScope = 'active' | 'history'
-
-function normalizeTripListScope(scope?: string): TripListScope {
-  return scope === 'history' ? 'history' : 'active'
-}
-
-function isTripVisibleInHistory(trip: Pick<Route | Plan, 'status'>): boolean {
-  return isTerminalTripStatus(trip.status)
-}
-
-async function filterTripsByScope<
-  T extends Pick<Route | Plan, 'id' | 'status' | 'serviceDate'>,
->(trips: T[], scope: TripListScope, viewerId: string): Promise<T[]> {
-  if (normalizeTripListScope(scope) === 'history') {
-    return trips.filter(isTripVisibleInHistory)
-  }
-  const visibility = await Promise.all(
-    trips.map((trip) => isTripVisibleInWorkQueue(trip, viewerId)),
-  )
-  return trips.filter((_, index) => visibility[index])
+  return planRepository.cancelPlanByClient(planId, clientId)
 }
 
 export async function listRoutesByDriver(
   driverId: string,
   scope: TripListScope = 'active',
 ): Promise<Array<WithReviewEligibility<Route>>> {
-  await assertUserRole(driverId, 'driver')
-  const routes = await listRoutesByDriverRaw(driverId)
-  const filtered = await filterTripsByScope(routes, scope, driverId)
-  return Promise.all(filtered.map((route) => withReviewEligibility(route, driverId)))
+  return driverRouteRepository.listRoutesByDriver(driverId, scope)
 }
-
-const listPlansByClientRaw = listByColumn<Plan>('plans', 'client_id')
 
 export async function listPlansByClient(
   clientId: string,
   scope: TripListScope = 'active',
 ): Promise<Array<WithReviewEligibility<Plan>>> {
-  await assertUserRole(clientId, 'client')
-  const plans = await listPlansByClientRaw(clientId)
-  const filtered = await filterTripsByScope(plans, scope, clientId)
-  return Promise.all(filtered.map((plan) => withReviewEligibility(plan, clientId)))
+  return planRepository.listPlansByClient(clientId, scope)
+}
+
+export async function getReviewEligibility(
+  tripId: string,
+  viewerId: string,
+  now: Date = new Date(),
+): Promise<ReviewEligibility> {
+  return journeyRepository.getReviewEligibility(tripId, viewerId, now)
+}
+
+async function shouldHideRequestForTerminalTrip(
+  request:
+    | Pick<RouteRequest, 'routeId' | 'planId'>
+    | Pick<GroupOffer, 'routeId' | 'planId'>,
+): Promise<boolean> {
+  const route = await getRoute(request.routeId)
+  if (isTerminalTripStatus(route?.status)) return true
+  const plan = request.planId ? await getPlan(request.planId) : null
+  return isTerminalTripStatus(plan?.status)
 }
 
 // --- Departure Block ---
@@ -1592,267 +1239,12 @@ export async function acceptRouteRequest(
   return routeRequestDomainService.acceptRouteRequest(requestId)
 }
 
-type AcceptedJourneyMatch =
-  | { kind: 'route_request'; request: RouteRequest }
-  | { kind: 'group_offer'; offer: GroupOffer }
-
-async function findAcceptedRouteMatchTx(
-  executor: DbQueryExecutor,
-  routeId: string,
-): Promise<AcceptedJourneyMatch | null> {
-  const searchRes = await executor.query(
-    `
-    SELECT *
-    FROM route_requests
-    WHERE route_id = $1 AND status = 'accepted'
-    FOR UPDATE
-  `,
-    [routeId],
-  )
-  const acceptedSearch = mapRows<RouteRequest>(searchRes.rows)[0]
-  if (acceptedSearch) {
-    return { kind: 'route_request', request: acceptedSearch }
-  }
-
-  const offerRes = await executor.query(
-    `
-    SELECT *
-    FROM group_offers
-    WHERE route_id = $1 AND status = 'accepted'
-    FOR UPDATE
-  `,
-    [routeId],
-  )
-  const acceptedOffer = mapRows<GroupOffer>(offerRes.rows)[0]
-  if (acceptedOffer) {
-    return { kind: 'group_offer', offer: acceptedOffer }
-  }
-
-  return null
-}
-
-async function findAcceptedPlanMatchTx(
-  executor: DbQueryExecutor,
-  plan: Plan,
-): Promise<AcceptedJourneyMatch | null> {
-  const searchRes = await executor.query(
-    `
-    SELECT *
-    FROM route_requests
-    WHERE client_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted')
-    FOR UPDATE
-  `,
-    [plan.clientId, plan.id],
-  )
-  const acceptedSearch = mapRows<RouteRequest>(searchRes.rows).find(
-    (request) => request.status === 'accepted',
-  )
-  if (acceptedSearch) {
-    return { kind: 'route_request', request: acceptedSearch }
-  }
-
-  const offerRes = await executor.query(
-    `
-    SELECT *
-    FROM group_offers
-    WHERE client_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted')
-    FOR UPDATE
-  `,
-    [plan.clientId, plan.id],
-  )
-  const acceptedOffer = mapRows<GroupOffer>(offerRes.rows).find(
-    (offer) => offer.status === 'accepted',
-  )
-  if (acceptedOffer) {
-    return { kind: 'group_offer', offer: acceptedOffer }
-  }
-
-  return null
-}
-
-async function unwindRouteFeeOnMatchedCancel(
-  executor: DbQueryExecutor,
-  route: Route,
-): Promise<Route> {
-  switch (route.walletFeeStatus) {
-    case 'charged':
-      return refundRouteFeeTx(executor, route, mapRoute, {
-        description: 'Route fee refunded on trip cancel',
-      })
-    case 'reserved':
-      return releaseRouteFeeTx(executor, route, mapRoute, {
-        description: 'Route fee released on trip cancel',
-      })
-    case 'refunded':
-    case 'released':
-    case 'none':
-      return route
-    default:
-      throw new HttpError(
-        409,
-        `Cannot cancel matched route in fee state: ${route.walletFeeStatus}`,
-      )
-  }
-}
-
-async function cancelAcceptedJourneyMatchTx(
-  executor: DbQueryExecutor,
-  accepted: AcceptedJourneyMatch,
-): Promise<void> {
-  if (accepted.kind === 'route_request') {
-    await executor.query(
-      "UPDATE route_requests SET status = 'canceled' WHERE id = $1",
-      [accepted.request.id],
-    )
-  } else {
-    await executor.query(
-      "UPDATE group_offers SET status = 'canceled' WHERE id = $1",
-      [accepted.offer.id],
-    )
-  }
-}
-
-async function cancelRouteTripTx(
-  executor: DbQueryExecutor,
-  route: Route,
-): Promise<Route> {
-  if (route.status === 'canceled') {
-    return route
-  }
-
-  const accepted = await findAcceptedRouteMatchTx(executor, route.id)
-  if (accepted) {
-    route = await unwindRouteFeeOnMatchedCancel(executor, route)
-    await cancelAcceptedJourneyMatchTx(executor, accepted)
-  } else if (route.walletFeeStatus === 'reserved') {
-    route = await releaseRouteFeeTx(executor, route, mapRoute, {
-      description: 'Route fee released on route cancel',
-    })
-  } else if (route.walletFeeStatus === 'charged') {
-    throw new HttpError(
-      409,
-      'Cannot cancel an unmatched route after the fee has already been charged',
-    )
-  }
-
-  const updatedRoute = await executor.query(
-    "UPDATE routes SET status = 'canceled' WHERE id = $1 RETURNING *",
-    [route.id],
-  )
-  return mapRoute(updatedRoute.rows[0])
-}
-
-async function cancelPlanTripTx(
-  executor: DbQueryExecutor,
-  plan: Plan,
-): Promise<Plan> {
-  if (plan.status === 'canceled') {
-    return plan
-  }
-
-  const accepted = await findAcceptedPlanMatchTx(executor, plan)
-  if (accepted) {
-    const routeId =
-      accepted.kind === 'route_request'
-        ? accepted.request.routeId
-        : accepted.offer.routeId
-    const route = await loadRouteForWalletTx(executor, routeId, mapRoute)
-    await unwindRouteFeeOnMatchedCancel(executor, route)
-    await cancelAcceptedJourneyMatchTx(executor, accepted)
-  }
-
-  const updatedPlan = await executor.query(
-    "UPDATE plans SET status = 'canceled' WHERE id = $1 RETURNING *",
-    [plan.id],
-  )
-  const canceledPlan = toCamelCase<Plan>(updatedPlan.rows[0])
-  if (!canceledPlan) throw new Error('Failed to cancel plan')
-  return canceledPlan
-}
-
 export async function cancelTrip(tripId: string): Promise<Route | Plan> {
-  return withTransaction(async (tx) => {
-    const routeRes = await tx.query(
-      'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
-      [tripId],
-    )
-    if (routeRes.rows[0]) {
-      const route = mapRoute(routeRes.rows[0])
-      return cancelRouteTripTx(tx, route)
-    }
-
-    const planRes = await tx.query(
-      'SELECT * FROM plans WHERE id = $1 FOR UPDATE',
-      [tripId],
-    )
-    const plan = toCamelCase<Plan>(planRes.rows[0])
-    if (plan) {
-      return cancelPlanTripTx(tx, plan)
-    }
-
-    throw new HttpError(404, 'Trip not found')
-  })
+  return journeyRepository.cancelTrip(tripId)
 }
 
 export async function completeTrip(tripId: string): Promise<Route | Plan> {
-  return withTransaction(async (tx) => {
-    const completedAt = new Date()
-    const routeRes = await tx.query(
-      'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
-      [tripId],
-    )
-    const route = routeRes.rows[0] ? mapRoute(routeRes.rows[0]) : null
-    if (route) {
-      const accepted = await findAcceptedRouteMatchTx(tx, route.id)
-      const updatedRouteRes = await tx.query(
-        "UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *",
-        [route.id, completedAt],
-      )
-      if (accepted?.kind === 'route_request' && accepted.request.planId) {
-        await tx.query(
-          "UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1",
-          [accepted.request.planId, completedAt],
-        )
-      }
-      if (accepted?.kind === 'group_offer' && accepted.offer.planId) {
-        await tx.query(
-          "UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1",
-          [accepted.offer.planId, completedAt],
-        )
-      }
-      return mapRoute(updatedRouteRes.rows[0])
-    }
-
-    const planRes = await tx.query(
-      'SELECT * FROM plans WHERE id = $1 FOR UPDATE',
-      [tripId],
-    )
-    const plan = planRes.rows[0] ? toCamelCase<Plan>(planRes.rows[0]) : null
-    if (plan) {
-      const accepted = await findAcceptedPlanMatchTx(tx, plan)
-      const updatedPlanRes = await tx.query(
-        "UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *",
-        [plan.id, completedAt],
-      )
-      if (accepted?.kind === 'route_request') {
-        await tx.query(
-          "UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1",
-          [accepted.request.routeId, completedAt],
-        )
-      }
-      if (accepted?.kind === 'group_offer') {
-        await tx.query(
-          "UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1",
-          [accepted.offer.routeId, completedAt],
-        )
-      }
-      const updatedPlan = toCamelCase<Plan>(updatedPlanRes.rows[0])
-      if (!updatedPlan) throw new Error('Failed to complete plan')
-      return updatedPlan
-    }
-
-    throw new HttpError(404, 'Trip not found')
-  })
+  return journeyRepository.completeTrip(tripId)
 }
 
 export async function declineRouteRequest(
@@ -1912,73 +1304,32 @@ export async function listRouteRequestsByClient(
 export async function listRouteRequestsByPlan(
   planId: string,
 ): Promise<RouteRequest[]> {
-  const requestsRes = await query(
-    'SELECT * FROM route_requests WHERE plan_id = $1 ORDER BY created_at DESC, id DESC',
-    [planId],
-  )
-  return mapRows<RouteRequest>(requestsRes.rows)
+  return journeyRepository.listRouteRequestsByPlan(planId)
 }
 
 export async function listGroupOffersByPlan(
   planId: string,
 ): Promise<GroupOffer[]> {
-  const offersRes = await query(
-    'SELECT * FROM group_offers WHERE plan_id = $1 ORDER BY created_at DESC, id DESC',
-    [planId],
-  )
-  return mapRows<GroupOffer>(offersRes.rows)
+  return journeyRepository.listGroupOffersByPlan(planId)
 }
 
-export const listRouteRequestsByRoute = listByColumn<RouteRequest>(
-  'route_requests',
-  'route_id',
-)
-export const listGroupOffersByRoute = listByColumn<GroupOffer>(
-  'group_offers',
-  'route_id',
-)
+export const listRouteRequestsByRoute = journeyRepository.listRouteRequestsByRoute
+export const listGroupOffersByRoute = journeyRepository.listGroupOffersByRoute
 
 // --- Deprecated: saved locations ---
-
-function parseLocationRow(row: Record<string, unknown>): SavedLocation {
-  const loc = toCamelCase<SavedLocation>(row)
-  if (!loc) throw new Error('Cannot map null row to SavedLocation')
-  loc.lat = parseFloat(String(loc.lat))
-  loc.lng = parseFloat(String(loc.lng))
-  return loc
-}
 
 export async function createSavedLocation(payload: {
   label: string
   lat: number
   lng: number
 }): Promise<SavedLocation> {
-  const result = await query('SELECT COUNT(*) FROM saved_locations')
-  if (parseInt(result.rows[0].count, 10) >= 10) {
-    throw new Error('Maximum 10 saved locations allowed')
-  }
-
-  const insertRes = await query(
-    `
-    INSERT INTO saved_locations (id, label, lat, lng, created_at)
-    VALUES ($1, $2, $3, $4, NOW())
-    RETURNING *
-  `,
-    [generateId('savedloc'), payload.label, payload.lat, payload.lng],
-  )
-
-  return parseLocationRow(insertRes.rows[0])
+  return journeyRepository.createSavedLocation(payload)
 }
 
 export async function listSavedLocations(): Promise<SavedLocation[]> {
-  const result = await query('SELECT * FROM saved_locations')
-  return result.rows.map(parseLocationRow)
+  return journeyRepository.listSavedLocations()
 }
 
 export async function deleteSavedLocation(id: string): Promise<boolean> {
-  const result = await query(
-    'DELETE FROM saved_locations WHERE id = $1 RETURNING id',
-    [id],
-  )
-  return result.rowCount !== null && result.rowCount > 0
+  return journeyRepository.deleteSavedLocation(id)
 }
