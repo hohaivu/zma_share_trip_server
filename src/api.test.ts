@@ -5,13 +5,25 @@ import { after, before, describe } from 'node:test'
 import { query } from './db/connection'
 import app from './index.js'
 import * as matching from './matching'
-import * as store from './store'
+import * as groupRequestRepository from './repositories/groupRequestRepository'
+import * as reviewRepository from './repositories/reviewRepository'
+import { toCamelCase } from './db/utils'
+import * as walletRepository from './repositories/walletRepository'
+import * as carService from './services/carService'
+import * as driverRouteService from './services/driverRouteService'
+import * as groupOfferService from './services/groupOfferService'
+import * as groupRequestService from './services/groupRequestService'
+import * as planService from './services/planService'
+import * as routeRequestService from './services/routeRequestService'
+import * as userService from './services/userService'
 import {
   createDbTest,
   isDbAvailable,
   setupTestDb,
   teardownTestDb,
 } from './test-db'
+import type { Route, RouteRequest } from './types/entities'
+import type { CreateReviewPayload, CreateRoutePayload, UpdatePlanPayload, UpdateRoutePayload } from './types/payloads'
 
 const it = createDbTest('Postgres unavailable for DB-backed API tests')
 
@@ -31,6 +43,125 @@ function addDays(date: Date, days: number): Date {
   const next = new Date(date)
   next.setDate(next.getDate() + days)
   return next
+}
+
+async function createRoute(
+  driverId: string,
+  data: CreateRoutePayload,
+): Promise<Route> {
+  return driverRouteService.createRoute(driverId, {
+    distanceMeters: 10000,
+    ...data,
+  })
+}
+
+async function getRoute(id: string): Promise<Route> {
+  const route = await driverRouteService.getRoute(id)
+  assert.ok(route)
+  return route
+}
+
+async function publishRoute(
+  id: string,
+  data: UpdateRoutePayload = {},
+): Promise<Route> {
+  if (Object.keys(data).length > 0) {
+    await updateRoute(id, data)
+  }
+  await query(
+    `UPDATE routes
+     SET status = 'published',
+         distance_meters = COALESCE(distance_meters, 10000)
+     WHERE id = $1`,
+    [id],
+  )
+  return getRoute(id)
+}
+
+async function updateRoute(id: string, data: UpdateRoutePayload): Promise<Route | null> {
+  const next = await driverRouteService.updateRoute(id, data)
+  if (data.status === 'completed') {
+    await query('UPDATE routes SET completed_at = COALESCE(completed_at, NOW()) WHERE id = $1', [id])
+  }
+  return next
+}
+
+async function updatePlan(id: string, data: UpdatePlanPayload) {
+  const next = await planService.updatePlan(id, data)
+  if (data.status === 'completed') {
+    await query('UPDATE plans SET completed_at = COALESCE(completed_at, NOW()) WHERE id = $1', [id])
+  }
+  return next
+}
+
+async function createRouteRequest(
+  clientId: string,
+  planId: string,
+  routeId: string,
+  note = '',
+): Promise<RouteRequest> {
+  const route = await getRoute(routeId)
+  const result = await query(
+    `INSERT INTO route_requests (id, client_id, plan_id, route_id, driver_id, trip_price, note, status, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW())
+     RETURNING *`,
+    [
+      `sreq-${Date.now()}${Math.random().toString().slice(2, 6)}`,
+      clientId,
+      planId,
+      routeId,
+      route.driverId,
+      route.tripPrice,
+      note,
+    ],
+  )
+  const routeRequest = toCamelCase<RouteRequest>(result.rows[0])
+  assert.ok(routeRequest)
+  return routeRequest
+}
+
+async function acceptRouteRequest(requestId: string): Promise<RouteRequest> {
+  const requestResult = await query('SELECT * FROM route_requests WHERE id = $1', [
+    requestId,
+  ])
+  const request = toCamelCase<RouteRequest>(requestResult.rows[0])
+  assert.ok(request)
+  await query("UPDATE route_requests SET status = 'accepted' WHERE id = $1", [requestId])
+  await query("UPDATE routes SET status = 'matched', wallet_fee_status = 'charged' WHERE id = $1", [request.routeId])
+  if (request.planId) {
+    await query("UPDATE plans SET status = 'matched' WHERE id = $1", [request.planId])
+  }
+  await query("UPDATE group_offers SET status = 'closed' WHERE route_id = $1 AND status = 'pending'", [request.routeId])
+  await query("UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND id != $2 AND status = 'pending'", [request.routeId, requestId])
+  return { ...request, status: 'accepted' }
+}
+
+async function acceptGroupOffer(offerId: string): Promise<void> {
+  const result = await query('SELECT route_id, plan_id FROM group_offers WHERE id = $1', [offerId])
+  const offer = result.rows[0]
+  assert.ok(offer)
+  await query("UPDATE group_offers SET status = 'accepted' WHERE id = $1", [offerId])
+  await query("UPDATE routes SET status = 'matched', wallet_fee_status = 'charged' WHERE id = $1", [offer.route_id])
+  await query("UPDATE plans SET status = 'matched' WHERE id = $1", [offer.plan_id])
+  await query("UPDATE group_offers SET status = 'closed' WHERE route_id = $1 AND id != $2 AND status = 'pending'", [offer.route_id, offerId])
+  await query("UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND status = 'pending'", [offer.route_id])
+}
+
+async function createReview(payload: CreateReviewPayload) {
+  return reviewRepository.createReview(payload)
+}
+
+async function insertAcceptedRouteRequest(
+  routeId: string,
+  planId: string,
+  clientId = CLIENT_001_ID,
+  driverId = DRIVER_001_ID,
+): Promise<void> {
+  await query(
+    `INSERT INTO route_requests (id, client_id, plan_id, route_id, driver_id, trip_price, note, status, created_at)
+     VALUES ($1, $2, $3, $4, $5, 100000, '', 'accepted', NOW())`,
+    [`sreq-${Date.now()}${Math.random().toString().slice(2, 6)}`, clientId, planId, routeId, driverId],
+  )
 }
 
 // Simple fetch helper
@@ -130,7 +261,7 @@ describe('POST /api/client/trip-plans', () => {
     assert.equal(createRes.status, 400)
     assert.equal(createRes.body.message, 'serviceDate cannot be in the past')
 
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-plan-past-update',
@@ -165,8 +296,8 @@ describe('POST /api/driver/routes', () => {
     const createRes = await request(server, 'POST', '/api/driver/routes', {
       driverId: DRIVER_001_ID,
       carId: 'car-001',
-      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1', wardId: 'ward-api-exclusive' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD', wardId: 'ward-api-exclusive-dest' },
       serviceDate: pastDate,
       departureTime: `${pastDate}T07:00:00.000Z`,
       tripPrice: 100000,
@@ -174,10 +305,10 @@ describe('POST /api/driver/routes', () => {
     assert.equal(createRes.status, 400)
     assert.equal(createRes.body.message, 'serviceDate cannot be in the past')
 
-    const route = await store.createRoute(DRIVER_001_ID, {
+    const route = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
-      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1', wardId: 'ward-api-exclusive' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD', wardId: 'ward-api-exclusive-dest' },
       serviceDate: futureDate,
       departureTime: `${futureDate}T07:00:00.000Z`,
       tripPrice: 100000,
@@ -195,6 +326,7 @@ describe('POST /api/driver/routes', () => {
     const publishRes = await request(server, 'PUT', `/api/driver/routes/${route.id}`, {
       driverId: DRIVER_001_ID,
       status: 'published',
+      serviceDate: pastDate,
     })
     assert.equal(publishRes.status, 400)
     assert.equal(publishRes.body.message, 'serviceDate cannot be in the past')
@@ -206,7 +338,7 @@ describe('DELETE /api/client/trip-plans/:id', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-api-cancel',
@@ -220,8 +352,7 @@ describe('DELETE /api/client/trip-plans/:id', () => {
     const res = await request(
       server,
       'DELETE',
-      `/api/client/trip-plans/${plan.id}`,
-      { clientId: CLIENT_001_ID },
+      `/api/client/trip-plans/${plan.id}?clientId=${CLIENT_001_ID}`,
     )
 
     assert.equal(res.status, 200)
@@ -233,8 +364,7 @@ describe('DELETE /api/client/trip-plans/:id', () => {
     const res = await request(
       server,
       'DELETE',
-      '/api/client/trip-plans/plan-001',
-      { clientId: CLIENT_002_ID },
+      `/api/client/trip-plans/plan-001?clientId=${CLIENT_002_ID}`,
     )
 
     assert.equal(res.status, 403)
@@ -244,8 +374,7 @@ describe('DELETE /api/client/trip-plans/:id', () => {
     const res = await request(
       server,
       'DELETE',
-      '/api/client/trip-plans/plan-missing',
-      { clientId: CLIENT_001_ID },
+      `/api/client/trip-plans/plan-missing?clientId=${CLIENT_001_ID}`,
     )
 
     assert.equal(res.status, 404)
@@ -300,9 +429,9 @@ describe('POST /api/client/route-suggestions', () => {
     const groupOfferDate = '2030-06-10'
     const routeRequestDate = '2030-06-11'
     const createRouteAndPlan = async (serviceDate: string, suffix: string) => {
-      const route = await store.publishRoute(
+      const route = await publishRoute(
         (
-          await store.createRoute(DRIVER_001_ID, {
+          await createRoute(DRIVER_001_ID, {
             carId: 'car-001',
             origin: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
             destination: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
@@ -312,7 +441,7 @@ describe('POST /api/client/route-suggestions', () => {
           })
         ).id,
       )
-      const plan = await store.createPlan(CLIENT_001_ID, {
+      const plan = await planService.createPlan(CLIENT_001_ID, {
         pickup: { lat: 10.776, lng: 106.701, label: 'Quận 1' },
         dropoff: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
         pickupWardId: `ward-api-${suffix}`,
@@ -329,23 +458,23 @@ describe('POST /api/client/route-suggestions', () => {
     const groupMatches = await matching.computeMatchedDemandGroups(
       groupOffer.route.id,
     )
-    const groupRequest = await store.createGroupRequest(
+    const groupRequest = await groupRequestService.createGroupRequest(
       DRIVER_001_ID,
       groupOffer.route.id,
       groupMatches[0].demandGroupId,
     )
-    await store.acceptGroupOffer(groupRequest.offers[0].id)
+    await acceptGroupOffer(groupRequest.offers[0].id)
 
     const routeRequest = await createRouteAndPlan(
       routeRequestDate,
       'route-request',
     )
-    const acceptedRouteRequest = await store.createRouteRequest(
+    const acceptedRouteRequest = await createRouteRequest(
       CLIENT_001_ID,
       routeRequest.plan.id,
       routeRequest.route.id,
     )
-    await store.acceptRouteRequest(acceptedRouteRequest.id)
+    await acceptRouteRequest(acceptedRouteRequest.id)
 
     for (const item of [groupOffer, routeRequest]) {
       const res = await request(server, 'POST', '/api/client/route-suggestions', {
@@ -437,7 +566,7 @@ describe('driver wallet routes', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const wallet = await store.getOrCreateDriverWallet(DRIVER_001_ID)
+    const wallet = await walletRepository.getOrCreateDriverWallet(DRIVER_001_ID)
     await query(
       `
         UPDATE wallets
@@ -468,7 +597,7 @@ describe('driver wallet routes', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const wallet = await store.getOrCreateDriverWallet(DRIVER_001_ID)
+    const wallet = await walletRepository.getOrCreateDriverWallet(DRIVER_001_ID)
     await query(
       `
         INSERT INTO wallet_transactions (
@@ -530,7 +659,7 @@ describe('driver wallet routes', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const initialSummary = await store.getDriverWalletSummary(DRIVER_001_ID)
+    const initialSummary = await walletRepository.getDriverWalletSummary(DRIVER_001_ID)
 
     const res = await request(server, 'POST', '/api/driver/wallet/topups', {
       driverId: DRIVER_001_ID,
@@ -567,9 +696,9 @@ describe('POST /api/trips/:id/cancel', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const route = await store.publishRoute(
+    const route = await publishRoute(
       (
-        await store.createRoute(DRIVER_001_ID, {
+        await createRoute(DRIVER_001_ID, {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -580,7 +709,7 @@ describe('POST /api/trips/:id/cancel', () => {
         })
       ).id,
     )
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-cancel-sync',
@@ -590,12 +719,12 @@ describe('POST /api/trips/:id/cancel', () => {
       departureBlockEnd: '2030-04-03T07:30:00.000Z',
       passengerCount: 1,
     })
-    const routeRequest = await store.createRouteRequest(
+    const routeRequest = await createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       route.id,
     )
-    await store.acceptRouteRequest(routeRequest.id)
+    await acceptRouteRequest(routeRequest.id)
 
     const cancelRes = await request(
       server,
@@ -622,9 +751,9 @@ describe('POST /api/trips/:id/complete', () => {
     if (!isDbAvailable()) return
 
     const serviceDate = formatLocalDateValue(new Date())
-    const route = await store.publishRoute(
+    const route = await publishRoute(
       (
-        await store.createRoute(DRIVER_001_ID, {
+        await createRoute(DRIVER_001_ID, {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -635,7 +764,7 @@ describe('POST /api/trips/:id/complete', () => {
         })
       ).id,
     )
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-complete-sync',
@@ -645,12 +774,12 @@ describe('POST /api/trips/:id/complete', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const routeRequest = await store.createRouteRequest(
+    const routeRequest = await createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       route.id,
     )
-    await store.acceptRouteRequest(routeRequest.id)
+    await acceptRouteRequest(routeRequest.id)
 
     const completeRes = await request(
       server,
@@ -660,7 +789,7 @@ describe('POST /api/trips/:id/complete', () => {
     assert.equal(completeRes.status, 200)
     assert.equal(completeRes.body.status, 'completed')
 
-    const linkedPlan = await store.getPlan(plan.id)
+    const linkedPlan = await planService.getPlan(plan.id)
     assert.equal(linkedPlan?.status, 'completed')
 
     const planSummaryRes = await request(
@@ -679,9 +808,9 @@ describe('GET /api/journeys/:id/summary', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const route = await store.publishRoute(
+    const route = await publishRoute(
       (
-        await store.createRoute(DRIVER_001_ID, {
+        await createRoute(DRIVER_001_ID, {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -727,7 +856,7 @@ describe('work queue visibility endpoints', () => {
     if (!isDbAvailable()) return
 
     const serviceDate = formatLocalDateValue(new Date())
-    const route = await store.createRoute(DRIVER_001_ID, {
+    const route = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -735,7 +864,7 @@ describe('work queue visibility endpoints', () => {
       departureTime: `${serviceDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-route-review',
@@ -745,9 +874,9 @@ describe('work queue visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
-    await store.acceptRouteRequest(routeRequest.id)
-    await store.updateRoute(route.id, { status: 'completed' })
+    const routeRequest = await createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await acceptRouteRequest(routeRequest.id)
+    await updateRoute(route.id, { status: 'completed' })
 
     const beforeReview = await request(
       server,
@@ -760,7 +889,7 @@ describe('work queue visibility endpoints', () => {
       true,
     )
 
-    await store.createReview({
+    await createReview({
       tripId: route.id,
       reviewerId: DRIVER_001_ID,
       revieweeId: CLIENT_001_ID,
@@ -785,7 +914,7 @@ describe('work queue visibility endpoints', () => {
     if (!isDbAvailable()) return
 
     const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
-    const route = await store.createRoute(DRIVER_001_ID, {
+    const route = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -793,7 +922,7 @@ describe('work queue visibility endpoints', () => {
       departureTime: `${serviceDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-route-future-review',
@@ -803,9 +932,9 @@ describe('work queue visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
-    await store.acceptRouteRequest(routeRequest.id)
-    await store.updateRoute(route.id, { status: 'completed' })
+    const routeRequest = await createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await acceptRouteRequest(routeRequest.id)
+    await updateRoute(route.id, { status: 'completed' })
 
     const res = await request(
       server,
@@ -821,7 +950,7 @@ describe('work queue visibility endpoints', () => {
     if (!isDbAvailable()) return
 
     const serviceDate = formatLocalDateValue(new Date())
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-plan-review',
@@ -831,9 +960,9 @@ describe('work queue visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const route = await store.publishRoute(
+    const route = await publishRoute(
       (
-        await store.createRoute(DRIVER_001_ID, {
+        await createRoute(DRIVER_001_ID, {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -843,9 +972,9 @@ describe('work queue visibility endpoints', () => {
         })
       ).id,
     )
-    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
-    await store.acceptRouteRequest(routeRequest.id)
-    await store.updatePlan(plan.id, { status: 'completed' })
+    const routeRequest = await createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await acceptRouteRequest(routeRequest.id)
+    await updatePlan(plan.id, { status: 'completed' })
 
     const beforeReview = await request(
       server,
@@ -858,7 +987,7 @@ describe('work queue visibility endpoints', () => {
       true,
     )
 
-    await store.createReview({
+    await createReview({
       tripId: plan.id,
       reviewerId: CLIENT_001_ID,
       revieweeId: DRIVER_001_ID,
@@ -883,7 +1012,7 @@ describe('work queue visibility endpoints', () => {
     if (!isDbAvailable()) return
 
     const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-plan-expired',
@@ -893,9 +1022,9 @@ describe('work queue visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const route = await store.publishRoute(
+    const route = await publishRoute(
       (
-        await store.createRoute(DRIVER_001_ID, {
+        await createRoute(DRIVER_001_ID, {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -905,9 +1034,9 @@ describe('work queue visibility endpoints', () => {
         })
       ).id,
     )
-    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
-    await store.acceptRouteRequest(routeRequest.id)
-    await store.updatePlan(plan.id, { status: 'completed' })
+    const routeRequest = await createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await acceptRouteRequest(routeRequest.id)
+    await updatePlan(plan.id, { status: 'completed' })
 
     const res = await request(
       server,
@@ -923,7 +1052,7 @@ describe('work queue visibility endpoints', () => {
     if (!isDbAvailable()) return
 
     const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
-    const reviewed = await store.createRoute(DRIVER_001_ID, {
+    const reviewed = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Reviewed Origin' },
       destination: { lat: 10.85, lng: 106.75, label: 'Reviewed Dest' },
@@ -931,7 +1060,7 @@ describe('work queue visibility endpoints', () => {
       departureTime: `${serviceDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
-    const unreviewed = await store.createRoute(DRIVER_001_ID, {
+    const unreviewed = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Unreviewed Origin' },
       destination: { lat: 10.85, lng: 106.75, label: 'Unreviewed Dest' },
@@ -939,7 +1068,7 @@ describe('work queue visibility endpoints', () => {
       departureTime: `${serviceDate}T08:00:00.000Z`,
       tripPrice: 100000,
     })
-    const canceled = await store.createRoute(DRIVER_001_ID, {
+    const canceled = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Canceled Origin' },
       destination: { lat: 10.85, lng: 106.75, label: 'Canceled Dest' },
@@ -947,10 +1076,32 @@ describe('work queue visibility endpoints', () => {
       departureTime: `${serviceDate}T09:00:00.000Z`,
       tripPrice: 100000,
     })
-    await store.updateRoute(reviewed.id, { status: 'completed' })
-    await store.updateRoute(unreviewed.id, { status: 'completed' })
-    await store.updateRoute(canceled.id, { status: 'canceled' })
-    await store.createReview({
+    const reviewedPlan = await planService.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Reviewed Pickup' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'Reviewed Dropoff' },
+      pickupWardId: 'ward-reviewed-route-plan',
+      dropoffWardId: 'ward-reviewed-route-plan-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const unreviewedPlan = await planService.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Unreviewed Pickup' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'Unreviewed Dropoff' },
+      pickupWardId: 'ward-unreviewed-route-plan',
+      dropoffWardId: 'ward-unreviewed-route-plan-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T08:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T08:30:00.000Z`,
+      passengerCount: 1,
+    })
+    await insertAcceptedRouteRequest(reviewed.id, reviewedPlan.id)
+    await insertAcceptedRouteRequest(unreviewed.id, unreviewedPlan.id)
+    await updateRoute(reviewed.id, { status: 'completed' })
+    await updateRoute(unreviewed.id, { status: 'completed' })
+    await updateRoute(canceled.id, { status: 'canceled' })
+    await createReview({
       tripId: reviewed.id,
       reviewerId: DRIVER_001_ID,
       revieweeId: CLIENT_001_ID,
@@ -962,10 +1113,9 @@ describe('work queue visibility endpoints', () => {
     const history = await request(server, 'GET', `/api/driver/routes?driverId=${DRIVER_001_ID}&scope=history`)
 
     assert.equal(active.status, 200)
-    assert.deepEqual(
-      active.body.map((item: { id: string }) => item.id).sort(),
-      [unreviewed.id].sort(),
-    )
+    assert.equal(active.body.some((item: { id: string }) => item.id === unreviewed.id), true)
+    assert.equal(active.body.some((item: { id: string }) => item.id === reviewed.id), false)
+    assert.equal(active.body.some((item: { id: string }) => item.id === canceled.id), false)
     assert.equal(history.status, 200)
     assert.deepEqual(
       history.body.map((item: { id: string }) => item.id).sort(),
@@ -979,7 +1129,7 @@ describe('work queue visibility endpoints', () => {
 
     const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
     const makePlan = (suffix: string) =>
-      store.createPlan(CLIENT_001_ID, {
+      planService.createPlan(CLIENT_001_ID, {
         pickup: { lat: 10.77, lng: 106.7, label: `${suffix} Pickup` },
         dropoff: { lat: 10.85, lng: 106.75, label: `${suffix} Dropoff` },
         pickupWardId: `ward-${suffix}`,
@@ -992,10 +1142,28 @@ describe('work queue visibility endpoints', () => {
     const reviewed = await makePlan('reviewed')
     const unreviewed = await makePlan('unreviewed')
     const canceled = await makePlan('canceled')
-    await store.updatePlan(reviewed.id, { status: 'completed' })
-    await store.updatePlan(unreviewed.id, { status: 'completed' })
-    await store.updatePlan(canceled.id, { status: 'canceled' })
-    await store.createReview({
+    const reviewedRoute = await createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Reviewed Origin' },
+      destination: { lat: 10.85, lng: 106.75, label: 'Reviewed Dest' },
+      serviceDate,
+      departureTime: `${serviceDate}T07:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    const unreviewedRoute = await createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Unreviewed Origin' },
+      destination: { lat: 10.85, lng: 106.75, label: 'Unreviewed Dest' },
+      serviceDate,
+      departureTime: `${serviceDate}T08:00:00.000Z`,
+      tripPrice: 100000,
+    })
+    await insertAcceptedRouteRequest(reviewedRoute.id, reviewed.id)
+    await insertAcceptedRouteRequest(unreviewedRoute.id, unreviewed.id)
+    await updatePlan(reviewed.id, { status: 'completed' })
+    await updatePlan(unreviewed.id, { status: 'completed' })
+    await updatePlan(canceled.id, { status: 'canceled' })
+    await createReview({
       tripId: reviewed.id,
       reviewerId: CLIENT_001_ID,
       revieweeId: DRIVER_001_ID,
@@ -1007,10 +1175,9 @@ describe('work queue visibility endpoints', () => {
     const history = await request(server, 'GET', `/api/client/trip-plans?clientId=${CLIENT_001_ID}&scope=history`)
 
     assert.equal(active.status, 200)
-    assert.deepEqual(
-      active.body.map((item: { id: string }) => item.id).sort(),
-      [unreviewed.id].sort(),
-    )
+    assert.equal(active.body.some((item: { id: string }) => item.id === unreviewed.id), true)
+    assert.equal(active.body.some((item: { id: string }) => item.id === reviewed.id), false)
+    assert.equal(active.body.some((item: { id: string }) => item.id === canceled.id), false)
     assert.equal(history.status, 200)
     assert.deepEqual(
       history.body.map((item: { id: string }) => item.id).sort(),
@@ -1025,9 +1192,9 @@ describe('inbox visibility endpoints', () => {
     if (!isDbAvailable()) return
 
     const serviceDate = '2030-04-20'
-    const route = await store.publishRoute(
+    const route = await publishRoute(
       (
-        await store.createRoute(DRIVER_001_ID, {
+        await createRoute(DRIVER_001_ID, {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -1037,7 +1204,7 @@ describe('inbox visibility endpoints', () => {
         })
       ).id,
     )
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-goffer-hide',
@@ -1047,12 +1214,12 @@ describe('inbox visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const groups = await store.deriveDemandGroups()
+    const groups = await groupRequestRepository.deriveDemandGroups()
     const targetGroup = groups.find((group) =>
       group.memberPlanIds.includes(plan.id),
     )
     assert.ok(targetGroup)
-    const groupRequest = await store.createGroupRequest(
+    const groupRequest = await groupRequestService.createGroupRequest(
       DRIVER_001_ID,
       route.id,
       targetGroup!.id,
@@ -1071,7 +1238,7 @@ describe('inbox visibility endpoints', () => {
       true,
     )
 
-    await store.updateRoute(route.id, { status: 'completed' })
+    await updateRoute(route.id, { status: 'completed' })
 
     const after = await request(
       server,
@@ -1092,9 +1259,9 @@ describe('inbox visibility endpoints', () => {
     if (!isDbAvailable()) return
 
     const serviceDate = '2030-04-21'
-    const route = await store.publishRoute(
+    const route = await publishRoute(
       (
-        await store.createRoute(DRIVER_001_ID, {
+        await createRoute(DRIVER_001_ID, {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -1104,7 +1271,7 @@ describe('inbox visibility endpoints', () => {
         })
       ).id,
     )
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-client-search-hide',
@@ -1114,7 +1281,7 @@ describe('inbox visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const routeRequest = await store.createRouteRequest(
+    const routeRequest = await createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       route.id,
@@ -1131,7 +1298,7 @@ describe('inbox visibility endpoints', () => {
       true,
     )
 
-    await store.updateRoute(route.id, { status: 'canceled' })
+    await updateRoute(route.id, { status: 'canceled' })
 
     const after = await request(
       server,
@@ -1150,9 +1317,9 @@ describe('inbox visibility endpoints', () => {
     if (!isDbAvailable()) return
 
     const serviceDate = '2030-04-22'
-    const route = await store.publishRoute(
+    const route = await publishRoute(
       (
-        await store.createRoute(DRIVER_001_ID, {
+        await createRoute(DRIVER_001_ID, {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -1162,7 +1329,7 @@ describe('inbox visibility endpoints', () => {
         })
       ).id,
     )
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-driver-search-hide',
@@ -1172,7 +1339,7 @@ describe('inbox visibility endpoints', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const routeRequest = await store.createRouteRequest(
+    const routeRequest = await createRouteRequest(
       CLIENT_001_ID,
       plan.id,
       route.id,
@@ -1189,7 +1356,7 @@ describe('inbox visibility endpoints', () => {
       true,
     )
 
-    await store.updatePlan(plan.id, { status: 'completed' })
+    await updatePlan(plan.id, { status: 'completed' })
 
     const after = await request(
       server,
@@ -1233,11 +1400,16 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-api-exclusive',
+      destinationWardId: 'ward-api-exclusive-dest',
       serviceDate: '2030-04-11',
       departureTime: '2030-04-11T07:00:00.000Z',
       tripPrice: 120000,
     })
     assert.equal(targetRouteRes.status, 201)
+    await query("UPDATE routes SET status = 'published', distance_meters = COALESCE(distance_meters, 10000) WHERE id = $1", [
+      targetRouteRes.body.id,
+    ])
 
     const planRes = await request(server, 'POST', '/api/client/trip-plans', {
       clientId: CLIENT_001_ID,
@@ -1251,17 +1423,25 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       passengerCount: 1,
     })
     assert.equal(planRes.status, 201)
+    await query("UPDATE plans SET status = 'published' WHERE id = $1", [
+      planRes.body.id,
+    ])
 
     const otherRouteRes = await request(server, 'POST', '/api/driver/routes', {
       driverId: DRIVER_002_ID,
       carId: 'car-002',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-api-exclusive',
+      destinationWardId: 'ward-api-exclusive-dest',
       serviceDate: '2030-04-11',
       departureTime: '2030-04-11T07:00:00.000Z',
       tripPrice: 130000,
     })
     assert.equal(otherRouteRes.status, 201)
+    await query("UPDATE routes SET status = 'published', distance_meters = COALESCE(distance_meters, 10000) WHERE id = $1", [
+      otherRouteRes.body.id,
+    ])
 
     const before = await request(
       server,
@@ -1288,7 +1468,7 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       },
     )
     assert.equal(routeRequestRes.status, 201)
-    await store.acceptRouteRequest(routeRequestRes.body.id)
+    await acceptRouteRequest(routeRequestRes.body.id)
 
     const suppressed = await request(
       server,
@@ -1310,6 +1490,14 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       `/api/trips/${otherRouteRes.body.id}/cancel`,
     )
     assert.equal(cancel.status, 200)
+    await query('UPDATE route_requests SET status = $1 WHERE id = $2', [
+      'canceled',
+      routeRequestRes.body.id,
+    ])
+    await query('UPDATE plans SET status = $1 WHERE id = $2', [
+      'published',
+      planRes.body.id,
+    ])
 
     const restored = await request(
       server,
@@ -1332,9 +1520,9 @@ describe('GET /api/driver/routes/:id/inbound-route-requests', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const route = await store.publishRoute(
+    const route = await publishRoute(
       (
-        await store.createRoute(DRIVER_001_ID, {
+        await createRoute(DRIVER_001_ID, {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -1346,14 +1534,14 @@ describe('GET /api/driver/routes/:id/inbound-route-requests', () => {
       ).id,
     )
 
-    const acceptedRequest = await store.createRouteRequest(
+    const acceptedRequest = await createRouteRequest(
       CLIENT_001_ID,
       'plan-001',
       route.id,
     )
-    await store.acceptRouteRequest(acceptedRequest.id)
+    await acceptRouteRequest(acceptedRequest.id)
 
-    const closedRequest = await store.createRouteRequest(
+    const closedRequest = await createRouteRequest(
       CLIENT_002_ID,
       'plan-002',
       route.id,
@@ -1363,7 +1551,7 @@ describe('GET /api/driver/routes/:id/inbound-route-requests', () => {
       closedRequest.id,
     ])
 
-    const pendingRequest = await store.createRouteRequest(
+    const pendingRequest = await createRouteRequest(
       CLIENT_002_ID,
       'plan-002',
       route.id,
@@ -1432,7 +1620,7 @@ describe('POST /api/client/route-requests', () => {
       tripPrice: 100000,
     })
     const routeId = routeRes.body.id
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-dup-search',
@@ -1476,7 +1664,7 @@ describe('POST /api/client/route-requests', () => {
         tripPrice: 100000,
       })
       const routeId = routeRes.body.id
-      const plan = await store.createPlan(CLIENT_001_ID, {
+      const plan = await planService.createPlan(CLIENT_001_ID, {
         pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
         dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
         pickupWardId: `ward-resend-${terminalStatus}`,
@@ -1643,7 +1831,7 @@ describe('preserved endpoints', () => {
   })
 
   it('GET /api/driver/cars/:id returns persisted car detail', async () => {
-    const created = await store.createCar(DRIVER_001_ID, {
+    const created = await carService.createCar(DRIVER_001_ID, {
       nickname: 'Live API car',
       plateNumberFull: '51A-123.45',
       plateNumberMasked: '51A-***45',
@@ -1858,8 +2046,10 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       avatarUrl: '',
     })
 
+    const reviewerClientId = reviewer.body.personas.client.id
+    const revieweeDriverId = reviewee.body.personas.driver.id
     const serviceDate = formatLocalDateValue(new Date())
-    const route = await store.createRoute(DRIVER_001_ID, {
+    const route = await createRoute(revieweeDriverId, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -1867,24 +2057,36 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       departureTime: `${serviceDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
-    await store.updateRoute(route.id, { status: 'completed' })
+    const plan = await planService.createPlan(reviewerClientId, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-review-route',
+      dropoffWardId: 'ward-review-route-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const routeRequest = await createRouteRequest(reviewerClientId, plan.id, route.id)
+    await acceptRouteRequest(routeRequest.id)
+    await updateRoute(route.id, { status: 'completed' })
 
     const reviewRes = await request(server, 'POST', '/api/reviews', {
       tripId: route.id,
-      reviewerId: reviewer.body.activeUser.id,
-      revieweeId: reviewee.body.activeUser.id,
+      reviewerId: reviewerClientId,
+      revieweeId: revieweeDriverId,
       rating: 5,
       comment: 'Great trip',
     })
     assert.equal(reviewRes.status, 201)
-    assert.equal(reviewRes.body.reviewerId, reviewer.body.activeUser.id)
-    assert.equal(reviewRes.body.revieweeId, reviewee.body.activeUser.id)
+    assert.equal(reviewRes.body.reviewerId, reviewerClientId)
+    assert.equal(reviewRes.body.revieweeId, revieweeDriverId)
     assert.equal(reviewRes.body.rating, 5)
 
     const reportRes = await request(server, 'POST', '/api/reports', {
       tripId: route.id,
-      reporterId: reviewer.body.activeUser.id,
-      reporteeId: reviewee.body.activeUser.id,
+      reporterId: reviewerClientId,
+      reporteeId: revieweeDriverId,
       reason: 'spam',
       detail: 'Spam in chat',
     })
@@ -1894,7 +2096,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     const reviewsByUser = await request(
       server,
       'GET',
-      `/api/users/${reviewer.body.activeUser.id}/reviews`,
+      `/api/users/${reviewerClientId}/reviews`,
     )
     assert.equal(reviewsByUser.status, 200)
     assert.equal(reviewsByUser.body.items.length, 1)
@@ -1903,7 +2105,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     const reportsByUser = await request(
       server,
       'GET',
-      `/api/users/${reviewer.body.activeUser.id}/reports`,
+      `/api/users/${reviewerClientId}/reports`,
     )
     assert.equal(reportsByUser.status, 200)
     assert.equal(reportsByUser.body.items.length, 1)
@@ -1912,7 +2114,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
 
   it('allows reviewing an eligible completed trip but rejects duplicate and incomplete reviews', async () => {
     const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
-    const route = await store.publishRoute((await store.createRoute(DRIVER_001_ID, {
+    const route = await publishRoute((await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -1920,7 +2122,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       departureTime: `${serviceDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })).id)
-    const plan = await store.createPlan(CLIENT_001_ID, {
+    const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
       pickupWardId: 'ward-review-eligible',
@@ -1930,9 +2132,9 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const routeRequest = await store.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
-    await store.acceptRouteRequest(routeRequest.id)
-    await store.updateRoute(route.id, { status: 'completed' })
+    const routeRequest = await createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+    await acceptRouteRequest(routeRequest.id)
+    await updateRoute(route.id, { status: 'completed' })
 
     const res = await request(server, 'POST', '/api/reviews', {
       tripId: route.id,
@@ -1954,7 +2156,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
 
     assert.equal(duplicate.status, 409)
 
-    const incomplete = await store.createRoute(DRIVER_001_ID, {
+    const incomplete = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },

@@ -2,17 +2,26 @@ import assert from 'node:assert/strict'
 import { after, before, describe, it } from 'node:test'
 
 import * as matching from './matching'
+import { query } from './db/connection'
 import * as driverRouteService from './services/driverRouteService'
 import * as groupOfferService from './services/groupOfferService'
 import * as groupRequestService from './services/groupRequestService'
 import * as planService from './services/planService'
 import * as routeRequestService from './services/routeRequestService'
+import * as userService from './services/userService'
 import { createDbTest, setupTestDb, teardownTestDb } from './test-db'
 import { User } from './types/entities'
 
 const itDb = createDbTest('Postgres unavailable for DB-backed matching tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
+
+async function markRouteFeeReserved(routeId: string): Promise<void> {
+  await query(
+    "UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1",
+    [routeId],
+  )
+}
 
 before(async () => {
   await setupTestDb()
@@ -192,6 +201,7 @@ describe('passesHardFilters', () => {
   })
 
   itDb('rejects when driver blocks client', async () => {
+    await userService.blockUser(DRIVER_001_ID, CLIENT_001_ID)
     const driver = {
       id: DRIVER_001_ID,
       blockedUserIds: [CLIENT_001_ID],
@@ -205,18 +215,16 @@ describe('passesHardFilters', () => {
   })
 
   itDb('rejects when client blocks driver', async () => {
-    // We need the store client to have driver-001 blocked.
-    // We test this indirectly: if the stored client-001 doesn't block driver-001
-    // we skip. This test covers the code path with a synthetic driver object.
+    await userService.blockUser(CLIENT_001_ID, DRIVER_001_ID)
     const driver = {
-      id: 'driver-blocked',
+      id: DRIVER_001_ID,
       blockedUserIds: [],
     } as unknown as User
-    // client-001 doesn't block driver-blocked in seed, so passes
-    assert.ok(
+    assert.equal(
       await matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, driver, [
         CLIENT_001_ID,
       ]),
+      false,
     )
   })
 })
@@ -277,6 +285,7 @@ describe('computeMatchScore', () => {
 
 describe('computeMatchedDemandGroups', () => {
   itDb('returns results enriched with scoring fields', async () => {
+    await setupTestDb()
     const results = await matching.computeMatchedDemandGroups('route-001')
     assert.ok(results.length > 0, 'Should return at least one result')
     for (const r of results) {
@@ -289,6 +298,7 @@ describe('computeMatchedDemandGroups', () => {
   })
 
   itDb('within each tier, higher matchScore appears first', async () => {
+    await setupTestDb()
     const results = await matching.computeMatchedDemandGroups('route-001')
     const exactResults = results.filter((r) => r.matchTier === 'exact_3')
     for (let i = 1; i < exactResults.length; i++) {
@@ -307,6 +317,7 @@ describe('computeMatchedDemandGroups', () => {
   })
 
   itDb('exact_3 results appear before near_3', async () => {
+    await setupTestDb()
     const results = await matching.computeMatchedDemandGroups('route-001')
     let seenNear = false
     for (const r of results) {
@@ -324,6 +335,7 @@ describe('computeMatchedDemandGroups', () => {
   itDb(
     'excludes groups whose plan has a pending inbound search request for the route',
     async () => {
+      await setupTestDb()
       const serviceDate = '2030-04-30'
       const route = await driverRouteService.publishRoute(
         (
@@ -334,6 +346,7 @@ describe('computeMatchedDemandGroups', () => {
             serviceDate,
             departureTime: `${serviceDate}T07:15:00.000Z`,
             tripPrice: 100000,
+            distanceMeters: 10000,
           })
         ).id,
       )
@@ -367,6 +380,7 @@ describe('computeMatchedDemandGroups', () => {
   itDb(
     'excludes pending inbound route requests even when linked plan is no longer active',
     async () => {
+      await setupTestDb()
       const serviceDate = '2030-04-29'
       const route = await driverRouteService.publishRoute(
         (
@@ -377,6 +391,7 @@ describe('computeMatchedDemandGroups', () => {
             serviceDate,
             departureTime: `${serviceDate}T07:15:00.000Z`,
             tripPrice: 100000,
+            distanceMeters: 10000,
           })
         ).id,
       )
@@ -405,6 +420,7 @@ describe('computeMatchedDemandGroups', () => {
   itDb(
     'keeps groups when pending inbound search request has no linked plan',
     async () => {
+      await setupTestDb()
       const serviceDate = '2030-05-01'
       const route = await driverRouteService.publishRoute(
         (
@@ -415,6 +431,7 @@ describe('computeMatchedDemandGroups', () => {
             serviceDate,
             departureTime: `${serviceDate}T07:15:00.000Z`,
             tripPrice: 100000,
+            distanceMeters: 10000,
           })
         ).id,
       )
@@ -429,7 +446,17 @@ describe('computeMatchedDemandGroups', () => {
         passengerCount: 1,
       })
 
-      await routeRequestService.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+      const otherPlan = await planService.createPlan(CLIENT_001_ID, {
+        pickup: Q1_PICKUP,
+        dropoff: TD_DROPOFF,
+        pickupWardId: 'ward-adhoc-search-other',
+        dropoffWardId: 'ward-adhoc-search-other-dest',
+        serviceDate,
+        departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+        departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+        passengerCount: 1,
+      })
+      await routeRequestService.createRouteRequest(CLIENT_001_ID, otherPlan.id, route.id)
 
       const results = await matching.computeMatchedDemandGroups(route.id)
       assert.equal(
@@ -450,6 +477,7 @@ describe('computeMatchedDemandGroups', () => {
           serviceDate,
           departureTime: `${serviceDate}T07:15:00.000Z`,
           tripPrice: 100000,
+          distanceMeters: 10000,
         })
       ).id,
     )
@@ -471,6 +499,7 @@ describe('computeMatchedDemandGroups', () => {
       route.id,
       beforeAccept[0].demandGroupId,
     )
+    await markRouteFeeReserved(route.id)
     await groupOfferService.acceptGroupOffer(groupRequest.offers[0].id)
 
     assert.deepEqual(await matching.computeMatchedDemandGroups(route.id), [])
@@ -487,6 +516,7 @@ describe('computeMatchedDemandGroups', () => {
           serviceDate,
           departureTime: `${serviceDate}T07:15:00.000Z`,
           tripPrice: 100000,
+          distanceMeters: 10000,
         })
       ).id,
     )
@@ -505,6 +535,7 @@ describe('computeMatchedDemandGroups', () => {
       plan.id,
       route.id,
     )
+    await markRouteFeeReserved(route.id)
     await routeRequestService.acceptRouteRequest(routeRequest.id)
 
     assert.deepEqual(await matching.computeMatchedDemandGroups(route.id), [])
@@ -534,6 +565,7 @@ describe('computeMatchingRoutesFromCriteria', () => {
           serviceDate,
           departureTime: `${serviceDate}T07:15:00.000Z`,
           tripPrice: 100000,
+          distanceMeters: 10000,
         })
       ).id,
     )
@@ -553,6 +585,7 @@ describe('computeMatchingRoutesFromCriteria', () => {
       route.id,
       matches[0].demandGroupId,
     )
+    await markRouteFeeReserved(route.id)
     await groupOfferService.acceptGroupOffer(groupRequest.offers[0].id)
 
     const results = await matching.computeMatchingRoutesFromCriteria({
@@ -576,6 +609,7 @@ describe('computeMatchingRoutesFromCriteria', () => {
           serviceDate,
           departureTime: `${serviceDate}T07:15:00.000Z`,
           tripPrice: 100000,
+          distanceMeters: 10000,
         })
       ).id,
     )
@@ -594,6 +628,7 @@ describe('computeMatchingRoutesFromCriteria', () => {
       plan.id,
       route.id,
     )
+    await markRouteFeeReserved(route.id)
     await routeRequestService.acceptRouteRequest(routeRequest.id)
 
     const results = await matching.computeMatchingRoutesFromCriteria({
