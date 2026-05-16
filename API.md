@@ -169,6 +169,63 @@
 
 ---
 
+## Response Envelope
+
+> Introduced in **ALI-55**. New and migrated endpoints emit the shapes below. Legacy endpoints retain their raw payloads until each is migrated.
+
+### Success envelope
+
+Every migrated handler returns success as:
+
+```json
+{ "data": <payload> }
+```
+
+List/collection endpoints additionally carry a `meta` block with at least a `count`:
+
+```json
+{ "data": [ ... ], "meta": { "count": 3 } }
+```
+
+The HTTP status code expresses intent (`200` for reads, `201` for resource creation, `204` reserved for no-content). The `meta` block is reserved for collection metadata (count today, cursors/links in the future).
+
+### Error envelope
+
+Every error response uses:
+
+```json
+{ "error": { "code": "STRING_CODE", "message": "human readable", "issues": [ ... ], "details": <unknown> } }
+```
+
+- `code` is a stable machine-readable string. For `HttpError` thrown from controllers/services the global handler maps the HTTP status to `HTTP_<status>` (`HTTP_400`, `HTTP_404`, `HTTP_409`, `HTTP_500`). Validation failures from `validateSchema` (ALI-54) emit `VALIDATION_ERROR`.
+- `message` is a human-readable summary. For `500` responses the message is always the generic `"Internal server error"`; the underlying error is logged server-side.
+- `issues` is present when the error carries per-field validation results (see "Validation Errors" below).
+- `details` is optional, opaque, and carried from `HttpError.payload` when set by the service layer.
+
+### Migrated endpoints
+
+| Method | Path                                            | Before                                                                 | After                                              |
+| ------ | ----------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------- |
+| GET    | `/api/driver/wallet`                            | Bare summary object                                                    | `{ "data": <summary> }`                            |
+| GET    | `/api/driver/wallet/transactions`               | `{ "items": [ ... ] }`                                                 | `{ "data": [ ... ], "meta": { "count": N } }`      |
+| POST   | `/api/driver/wallet/topups`                     | `{ "summary": ..., "transaction": ... }`                               | `{ "data": { "summary": ..., "transaction": ... } }` |
+| GET    | `/api/client/incoming-driver-offers`            | Bare array                                                             | `{ "data": [ ... ], "meta": { "count": N } }`      |
+| POST   | `/api/client/group-offers/:id/accept`           | Bare result object                                                     | `{ "data": <result> }`                             |
+| POST   | `/api/client/group-offers/:id/decline`          | Bare result object                                                     | `{ "data": <result> }`                             |
+
+All `HttpError`-driven 4xx/5xx responses across the API now use the error envelope above (previously `{ "error": -1, "message": "..." }` or `{ "message": "..." }`).
+
+### Client compatibility note
+
+The current Zalo Mini App consumes these endpoints directly. Adopting the envelope **is a breaking response-shape change**. Coordinate with the mobile team before deploying — either:
+
+1. Pin the mobile build to a backend version that still emits raw payloads while the new envelope rolls out behind a versioned route prefix (e.g. `/api/v2/...`), **or**
+2. Land the envelope and the corresponding mobile client update together in a coordinated release.
+
+Until that coordination is confirmed, treat ALI-55 as **server-side only** and gate deploys accordingly.
+
+---
+
 ## Validation Errors
 
 Request validation lives in `src/middleware/validate.ts` (zod-backed) and runs **before** the controller handler. Failed validation short-circuits with HTTP `400` and the following JSON envelope:
@@ -200,7 +257,7 @@ Fields:
 | `error.issues[].message` | string   | Per-rule human-readable message.                                                            |
 | `error.issues[].code`  | string     | Stable zod issue code (`too_small`, `invalid_type`, `custom`, etc.).                       |
 
-> Validation errors are distinct from domain `HttpError(400, message)` responses (which use `{ error: -1, message }`). New schema-validated endpoints emit the envelope above; legacy endpoints will be migrated incrementally.
+> Validation errors share the same envelope as domain errors (see "Response Envelope" above) — they simply use the `VALIDATION_ERROR` code and carry `issues`. Domain `HttpError` responses use `HTTP_<status>` codes and omit `issues`.
 
 The current schema-validated endpoints are:
 

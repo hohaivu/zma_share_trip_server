@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express'
 
 import { hasUsablePoint } from '../matching'
 import * as routeService from '../services/driverRouteService'
+import { errorBody, httpErrorCode } from '../shared/responseEnvelope'
 import { CreateRouteRequestBody, UpdateRoutePayload } from '../types/payloads'
 import { notFound, requireBodyOrQueryString, requireQueryString } from './helpers'
 
@@ -41,7 +42,9 @@ export function createDriverRoutesController(): DriverRoutesController {
     rejectUnresolvedCoordinates(req, res, next) {
       const validationError = validateRouteLocations(req.method, req.body)
       if (validationError) {
-        return res.status(400).json({ message: validationError })
+        return res
+          .status(400)
+          .json(errorBody(httpErrorCode(400), validationError))
       }
       next()
     },

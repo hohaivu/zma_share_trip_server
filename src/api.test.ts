@@ -413,7 +413,7 @@ describe('POST /api/client/route-suggestions', () => {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('required'))
+    assert.ok(res.body.error.message.includes('required'))
   })
 
   it('returns validation errors for route suggestions', async () => {
@@ -423,7 +423,7 @@ describe('POST /api/client/route-suggestions', () => {
     })
 
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('required'))
+    assert.ok(res.body.error.message.includes('required'))
   })
 
   it('omits route with accepted group offer or route request', async () => {
@@ -524,7 +524,7 @@ describe('POST /api/driver/routes', () => {
       tripPrice: 150000,
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('Unresolved exact-point'))
+    assert.ok(res.body.error.message.includes('Unresolved exact-point'))
   })
 
   it('rejects create without origin or destination payload', async () => {
@@ -537,7 +537,7 @@ describe('POST /api/driver/routes', () => {
       tripPrice: 150000,
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('required'))
+    assert.ok(res.body.error.message.includes('required'))
   })
 })
 
@@ -558,7 +558,7 @@ describe('PUT /api/driver/routes/:id', () => {
       destination: { lat: 0, lng: 0, label: '0,0' },
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('Unresolved exact-point'))
+    assert.ok(res.body.error.message.includes('Unresolved exact-point'))
   })
 })
 
@@ -586,12 +586,13 @@ describe('driver wallet routes', () => {
     )
 
     assert.equal(res.status, 200)
-    assert.equal(res.body.driverId, DRIVER_001_ID)
-    assert.equal(res.body.balanceVnd, 250000)
-    assert.equal(res.body.reservedBalanceVnd, 50000)
-    assert.equal(res.body.availableBalanceVnd, 200000)
-    assert.equal(res.body.feeRateVndPerKm, 500)
-    assert.equal(res.body.maxPublishableDistanceMeters, 400000)
+    assert.ok(res.body.data, 'expected success envelope { data }')
+    assert.equal(res.body.data.driverId, DRIVER_001_ID)
+    assert.equal(res.body.data.balanceVnd, 250000)
+    assert.equal(res.body.data.reservedBalanceVnd, 50000)
+    assert.equal(res.body.data.availableBalanceVnd, 200000)
+    assert.equal(res.body.data.feeRateVndPerKm, 500)
+    assert.equal(res.body.data.maxPublishableDistanceMeters, 400000)
   })
 
   it('lists wallet transactions in reverse chronological order after top-up activity', async () => {
@@ -644,16 +645,17 @@ describe('driver wallet routes', () => {
     )
 
     assert.equal(res.status, 200)
-    assert.ok(Array.isArray(res.body.items))
-    assert.equal(res.body.items.length, 2)
-    assert.equal(res.body.items[0].id, 'wtx-wallet-newer')
-    assert.equal(res.body.items[0].type, 'reservation')
-    assert.equal(res.body.items[0].amountVnd, -50000)
-    assert.equal(res.body.items[0].description, 'Reserved route fee')
-    assert.equal(res.body.items[1].id, 'wtx-wallet-older')
-    assert.equal(res.body.items[1].type, 'topup')
-    assert.equal(res.body.items[1].amountVnd, 120000)
-    assert.equal(res.body.items[1].description, 'Older top-up')
+    assert.ok(Array.isArray(res.body.data), 'expected envelope { data: [...] }')
+    assert.equal(res.body.data.length, 2)
+    assert.equal(res.body.meta?.count, 2)
+    assert.equal(res.body.data[0].id, 'wtx-wallet-newer')
+    assert.equal(res.body.data[0].type, 'reservation')
+    assert.equal(res.body.data[0].amountVnd, -50000)
+    assert.equal(res.body.data[0].description, 'Reserved route fee')
+    assert.equal(res.body.data[1].id, 'wtx-wallet-older')
+    assert.equal(res.body.data[1].type, 'topup')
+    assert.equal(res.body.data[1].amountVnd, 120000)
+    assert.equal(res.body.data[1].description, 'Older top-up')
   })
 
   it('creates a manual top-up and returns refreshed wallet state plus ledger row', async () => {
@@ -669,18 +671,19 @@ describe('driver wallet routes', () => {
     })
 
     assert.equal(res.status, 201)
-    assert.equal(res.body.summary.driverId, DRIVER_001_ID)
+    assert.ok(res.body.data, 'expected envelope { data } for created top-up')
+    assert.equal(res.body.data.summary.driverId, DRIVER_001_ID)
     assert.equal(
-      res.body.summary.balanceVnd,
+      res.body.data.summary.balanceVnd,
       initialSummary.balanceVnd + 150000,
     )
     assert.equal(
-      res.body.summary.availableBalanceVnd,
+      res.body.data.summary.availableBalanceVnd,
       initialSummary.availableBalanceVnd + 150000,
     )
-    assert.equal(res.body.transaction.type, 'topup')
-    assert.equal(res.body.transaction.amountVnd, 150000)
-    assert.equal(res.body.transaction.description, 'API manual top-up test')
+    assert.equal(res.body.data.transaction.type, 'topup')
+    assert.equal(res.body.data.transaction.amountVnd, 150000)
+    assert.equal(res.body.data.transaction.description, 'API manual top-up test')
 
     const summaryRes = await request(
       server,
@@ -688,7 +691,10 @@ describe('driver wallet routes', () => {
       `/api/driver/wallet?driverId=${DRIVER_001_ID}`,
     )
     assert.equal(summaryRes.status, 200)
-    assert.equal(summaryRes.body.balanceVnd, initialSummary.balanceVnd + 150000)
+    assert.equal(
+      summaryRes.body.data.balanceVnd,
+      initialSummary.balanceVnd + 150000,
+    )
   })
 })
 
@@ -832,7 +838,8 @@ describe('GET /api/journeys/:id/summary', () => {
     const res = await request(server, 'GET', '/api/journeys/missing-route/summary')
 
     assert.equal(res.status, 404)
-    assert.equal(res.body.message, 'Trip not found')
+    assert.equal(res.body.error.code, 'HTTP_404')
+    assert.equal(res.body.error.message, 'Trip not found')
   })
 })
 
@@ -1727,7 +1734,7 @@ describe('POST /api/client/route-requests', () => {
       note: 'Hello without plan',
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('planId is required'))
+    assert.ok(res.body.error.message.includes('planId is required'))
   })
   it('accepts a grouped plan as linked context', async () => {
     const routeRes = await request(server, 'POST', '/api/driver/routes', {
@@ -1766,7 +1773,7 @@ describe('POST /api/client/route-requests', () => {
       routeId: routeRes.body.id,
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('Plan not found'))
+    assert.ok(res.body.error.message.includes('Plan not found'))
   })
 })
 
@@ -1860,7 +1867,8 @@ describe('preserved endpoints', () => {
     const res = await request(server, 'GET', '/api/driver/cars/car-missing')
 
     assert.equal(res.status, 404)
-    assert.equal(res.body.message, 'Car not found')
+    assert.equal(res.body.error.code, 'HTTP_404')
+    assert.equal(res.body.error.message, 'Car not found')
   })
 })
 
@@ -1918,7 +1926,7 @@ describe('POST /api/users/bootstrap', () => {
       avatarUrl: '',
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('mauid'))
+    assert.ok(res.body.error.message.includes('mauid'))
   })
 
   it('returns 400 when displayName is missing', async () => {
@@ -1927,7 +1935,7 @@ describe('POST /api/users/bootstrap', () => {
       avatarUrl: '',
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('displayName'))
+    assert.ok(res.body.error.message.includes('displayName'))
   })
 
   it('returns 400 when avatarUrl is missing', async () => {
@@ -1936,7 +1944,7 @@ describe('POST /api/users/bootstrap', () => {
       displayName: 'Missing Avatar',
     })
     assert.equal(res.status, 400)
-    assert.ok(res.body.message.includes('avatarUrl'))
+    assert.ok(res.body.error.message.includes('avatarUrl'))
   })
 })
 

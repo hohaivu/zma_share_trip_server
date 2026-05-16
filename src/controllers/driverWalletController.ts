@@ -7,6 +7,7 @@ import {
   requireBodyString,
   singleQueryValue,
 } from '../shared/requestHelpers'
+import { created, ok } from '../shared/responseEnvelope'
 import * as walletService from '../services/walletService'
 import { ManualTopUpPayload } from '../types/payloads'
 import { requireParam } from '../routes/helpers'
@@ -19,7 +20,8 @@ export async function getDriverWallet(req: Request, res: Response) {
   const driverId = singleQueryValue(req.query.driverId)
   requireParam(driverId, 'Wallet validation error: driverId query is required')
 
-  res.json(await walletService.getDriverWalletSummary(driverId))
+  const summary = await walletService.getDriverWalletSummary(driverId)
+  res.json(ok(summary))
 }
 
 export async function listDriverWalletTransactions(
@@ -32,7 +34,7 @@ export async function listDriverWalletTransactions(
   const limit = parsePositiveInteger(singleQueryValue(req.query.limit), 'limit')
 
   const items = await walletService.listDriverWalletTransactions(driverId, limit)
-  res.json({ items })
+  res.json(ok(items, { count: items.length }))
 }
 
 export async function topUpDriverWallet(
@@ -61,7 +63,7 @@ export async function topUpDriverWallet(
       amountVnd,
       description,
     })
-    res.status(201).json(result)
+    res.status(201).json(created(result))
   } catch (error) {
     throw normalizeWalletError(error)
   }

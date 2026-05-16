@@ -4,6 +4,7 @@ import express, { Express, NextFunction, Request, Response } from 'express'
 
 import { checkConnection } from './db/connection'
 import { HttpError } from './http-error'
+import { errorBody, httpErrorCode } from './shared/responseEnvelope'
 import bootstrapRoute from './routes/bootstrap'
 import carsRoute from './routes/cars'
 import clientMatchesRoute from './routes/clientMatches'
@@ -64,7 +65,9 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   const status = err instanceof HttpError ? err.statusCode : 500
   const message = status === 500 ? 'Internal server error' : err.message
   if (status === 500) console.error('[server error]', err)
-  res.status(status).json({ error: -1, message })
+  const details =
+    err instanceof HttpError && err.payload !== undefined ? err.payload : undefined
+  res.status(status).json(errorBody(httpErrorCode(status), message, { details }))
 })
 
 async function start() {
