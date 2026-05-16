@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc && node scripts/copy-schema.mjs",
     "typecheck": "tsc --noEmit",
+    "mvc:guardrails": "node scripts/check-mvc-boundaries.mjs",
     "test": "tsx --test --test-concurrency=1 src/*.test.ts",
     "db:schema": "tsx src/db/setup-schema.ts",
     "db:seed": "tsx src/db/seed.ts",

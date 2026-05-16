@@ -1,11 +1,11 @@
-import { query } from '../db/connection'
+import { query, withTransaction } from '../db/connection'
 import { parseJsonb, parseNumeric, toCamelCase } from '../db/utils'
-import * as store from '../store'
 import { BootstrapSession, Identity, User } from '../types/entities'
 import {
   CreateNotificationPayload,
   CreateReportPayload,
   CreateReviewPayload,
+  BootstrapResult,
   UpdateUserPayload,
 } from '../types/payloads'
 
@@ -61,6 +61,69 @@ const PERSONA_SELECT_SQL = `
   JOIN identities i ON i.id = u.identity_id
   WHERE u.identity_id = $1
 `
+
+function generateId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+async function legacyStore() {
+  return import('../store.js')
+}
+
+export async function bootstrapUser(
+  mauid: string,
+  displayName?: string,
+  avatarUrl?: string,
+): Promise<BootstrapResult> {
+  return withTransaction(async (tx) => {
+    const existing = await tx.query('SELECT * FROM identities WHERE mauid = $1', [
+      mauid,
+    ])
+    const wasCreated = existing.rows.length === 0
+    const identityResult = wasCreated
+      ? await tx.query(
+          `
+          INSERT INTO identities (mauid, display_name, avatar_url, preferred_mode, created_at, updated_at)
+          VALUES ($1, $2, $3, 'client', NOW(), NOW())
+          RETURNING *
+        `,
+          [mauid, displayName || '', avatarUrl || ''],
+        )
+      : await tx.query(
+          `
+          UPDATE identities
+          SET display_name = $1, avatar_url = $2, updated_at = NOW()
+          WHERE mauid = $3
+          RETURNING *
+        `,
+          [
+            displayName || existing.rows[0].display_name,
+            avatarUrl ?? existing.rows[0].avatar_url,
+            mauid,
+          ],
+        )
+    const identity = mapIdentity(identityResult.rows[0])
+
+    for (const role of ['driver', 'client']) {
+      await tx.query(
+        `
+        INSERT INTO users (id, identity_id, role, verification_status, rating_avg, trip_count, created_at)
+        VALUES ($1, $2, $3, 'unverified', 0, 0, NOW())
+        ON CONFLICT DO NOTHING
+      `,
+        [generateId(`user-${role}`), identity.id, role],
+      )
+    }
+
+    const personasResult = await tx.query(`${PERSONA_SELECT_SQL} ORDER BY u.role`, [
+      identity.id,
+    ])
+    return {
+      session: buildSession(identity, personasResult.rows.map(mapUser), wasCreated),
+      wasCreated,
+    }
+  })
+}
 
 export async function findUserById(userId: string): Promise<User | null> {
   const result = await query(USER_SELECT_SQL, [userId])
@@ -128,45 +191,47 @@ export async function listPersonasByIdentity(
 }
 
 export function listReviewsByReviewer(userId: string) {
-  return store.listReviewsByReviewer(userId)
+  return legacyStore().then((store) => store.listReviewsByReviewer(userId))
 }
 
 export function createReview(payload: CreateReviewPayload) {
-  return store.createReview(payload)
+  return legacyStore().then((store) => store.createReview(payload))
 }
 
 export function createReport(payload: CreateReportPayload) {
-  return store.createReport(payload)
+  return legacyStore().then((store) => store.createReport(payload))
 }
 
 export function listReportsByReporter(userId: string) {
-  return store.listReportsByReporter(userId)
+  return legacyStore().then((store) => store.listReportsByReporter(userId))
 }
 
 export function getBlockedUsers(blockerId: string) {
-  return store.getBlockedUsers(blockerId)
+  return legacyStore().then((store) => store.getBlockedUsers(blockerId))
 }
 
 export function blockUser(blockerId: string, blockedId: string) {
-  return store.blockUser(blockerId, blockedId)
+  return legacyStore().then((store) => store.blockUser(blockerId, blockedId))
 }
 
 export function unblockUser(blockerId: string, blockedId: string) {
-  return store.unblockUser(blockerId, blockedId)
+  return legacyStore().then((store) => store.unblockUser(blockerId, blockedId))
 }
 
 export function listNotifications(recipientId: string) {
-  return store.listNotifications(recipientId)
+  return legacyStore().then((store) => store.listNotifications(recipientId))
 }
 
 export function createNotification(payload: CreateNotificationPayload) {
-  return store.createNotification(payload)
+  return legacyStore().then((store) => store.createNotification(payload))
 }
 
 export function markNotificationRead(recipientId: string, notificationId: string) {
-  return store.markNotificationRead(recipientId, notificationId)
+  return legacyStore().then((store) =>
+    store.markNotificationRead(recipientId, notificationId),
+  )
 }
 
 export function markAllNotificationsRead(recipientId: string) {
-  return store.markAllNotificationsRead(recipientId)
+  return legacyStore().then((store) => store.markAllNotificationsRead(recipientId))
 }

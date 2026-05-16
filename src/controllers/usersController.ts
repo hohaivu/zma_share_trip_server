@@ -3,6 +3,7 @@ import { Request, Response } from 'express'
 import { HttpError } from '../http-error'
 import * as userService from '../services/userService'
 import {
+  BootstrapPayload,
   CreateNotificationPayload,
   CreateReportPayload,
   CreateReviewPayload,
@@ -17,6 +18,10 @@ function requireControllerParam(value: unknown, message: string): asserts value 
 }
 
 export interface UsersController {
+  bootstrapUser(
+    req: Request<Record<string, never>, unknown, BootstrapPayload>,
+    res: Response,
+  ): Promise<void>
   getUser(req: Request<{ id: string }>, res: Response): Promise<void | Response>
   updateUser(
     req: Request<{ id: string }, unknown, UpdateUserPayload>,
@@ -47,6 +52,23 @@ function readPreferredMode(req: Request): string {
 
 export function createUsersController(): UsersController {
   return {
+    async bootstrapUser(req, res) {
+      const { mauid, displayName, avatarUrl } = req.body
+      requireControllerParam(mauid, 'mauid is required')
+      requireControllerParam(displayName, 'displayName is required')
+      if (avatarUrl === undefined) {
+        throw new HttpError(400, 'avatarUrl is required')
+      }
+
+      const { session, wasCreated } = await userService.bootstrapUser(
+        mauid,
+        displayName,
+        avatarUrl,
+      )
+
+      res.status(wasCreated ? 201 : 200).json(session)
+    },
+
     async getUser(req, res) {
       const user = await userService.getUser(req.params.id as string)
       if (!user) return notFound(res, 'User not found')

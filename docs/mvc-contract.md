@@ -1,6 +1,6 @@
 # Wave 0 MVC Contract
 
-This document defines the shared MVC contract for ALI-37 Wave 0 so later parallel refactor work can move endpoints consistently. It is documentation-only: no source, lint, script, test, or automated import guardrails are implemented in this wave.
+This document defines the shared MVC contract for ALI-37 so later parallel refactor work can move endpoints consistently. Lightweight automated guardrails now enforce the first boundary rule: route and controller TypeScript files must not import the shared store directly.
 
 ## Layer responsibilities
 
@@ -73,6 +73,14 @@ src/routes -> src/controllers -> src/services -> src/repositories -> storage/ada
 
 Supporting shared modules may be imported where appropriate if they do not invert the layer direction. Examples include request helpers, error helpers, shared types, and compatibility facades.
 
+Run the MVC boundary guardrail before completing endpoint or refactor work:
+
+```bash
+yarn mvc:guardrails
+```
+
+The guardrail checks TypeScript files under `src/routes` and `src/controllers` and fails with actionable file/line violations when either layer imports `src/store.ts` directly through relative paths such as `../store` or `../../store`.
+
 Do not introduce imports in the opposite direction:
 
 - Repositories must not import services, controllers, or routes.
@@ -91,20 +99,20 @@ Do not introduce imports in the opposite direction:
 
 ## Shared store compatibility facade policy
 
-`src/store.ts` remains a compatibility surface while MVC refactor work is in progress.
+`src/store.ts` remains a deliberate compatibility facade while MVC refactor work is in progress. It preserves existing shared behavior for areas that have not yet moved fully behind services and repositories.
 
 - New MVC code should prefer services/repositories over direct `src/store.ts` access.
 - Existing callers may continue using the store facade until their area is refactored.
+- Routes and controllers must not import `src/store.ts` directly; use a service/repository boundary instead. This is enforced by `yarn mvc:guardrails`.
 - If a future refactor requires changing store behavior, preserve exported compatibility methods or provide a documented migration path before removing them.
 - Store facade changes must be treated as shared-contract changes because they can affect multiple endpoint areas.
 
-## Wave 0 non-goals and pending ALI-37 closing work
+## Remaining ALI-37 closing work
 
-Wave 0 does not complete ALI-37. The following acceptance items remain pending for later ALI-37 closing work:
+ALI-37 is not complete. The following acceptance items remain pending for later ALI-37 closing work:
 
-- Automated import guardrails or lint rules that enforce layer direction.
-- New test, typecheck, CI, or package-script checks for MVC boundaries.
 - Source-code moves from routes into controllers/services/repositories.
+- Broader lint rules or CI integration for the full dependency direction beyond the current store-import guardrail.
 - Issue status changes or claims that ALI-37 is complete.
 
-Until automation exists, contributors should manually follow this contract during endpoint and refactor work.
+Contributors should run the guardrail and manually follow the remaining dependency-direction rules during endpoint and refactor work.

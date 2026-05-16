@@ -5,6 +5,7 @@ import {
   CreateNotificationPayload,
   CreateReportPayload,
   CreateReviewPayload,
+  BootstrapResult,
   UpdateUserPayload,
 } from '../types/payloads'
 
@@ -27,6 +28,14 @@ function assertValidMode(mode: string): void {
   if (mode !== 'driver' && mode !== 'client') {
     throw new HttpError(400, 'preferredMode must be driver or client')
   }
+}
+
+export async function bootstrapUser(
+  mauid: string,
+  displayName?: string,
+  avatarUrl?: string,
+): Promise<BootstrapResult> {
+  return userRepository.bootstrapUser(mauid, displayName, avatarUrl)
 }
 
 export async function getUser(userId: string): Promise<User | null> {

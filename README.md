@@ -26,11 +26,13 @@ The trip matching capabilities are split across three distinct API namespaces ba
 
 ## MVC Architecture Contract
 
-Wave 0 of ALI-37 defines the shared MVC rules for upcoming route/controller/service/repository refactor work. See [`docs/mvc-contract.md`](docs/mvc-contract.md) before adding or moving endpoints.
+ALI-37 defines the shared MVC rules for route/controller/service/repository refactor work. See [`docs/mvc-contract.md`](docs/mvc-contract.md) before adding or moving endpoints.
 
 New endpoints should be wired in `src/routes`, orchestrated through `src/controllers`, implemented in `src/services`, and use `src/repositories` for persistence access when needed. Keep imports flowing top-down (`routes -> controllers -> services -> repositories`) and preserve existing API response shapes unless `API.md` is updated as part of a coordinated API change.
 
-ALI-37 is not complete in Wave 0: automated import guardrails, lint/test/script checks, and source refactors are explicitly pending future closing work.
+Run `yarn mvc:guardrails` after adding or moving endpoint code. The guardrail fails when files under `src/routes` or `src/controllers` import the shared store directly; route/controller code should go through a service or repository boundary instead.
+
+ALI-37 is not complete: broader source refactors and full dependency-direction enforcement remain future closing work.
 
 ## Quick Start
 
@@ -49,6 +51,7 @@ Server starts at `http://localhost:3010`.
 
 ```bash
 yarn typecheck
+yarn mvc:guardrails
 yarn test
 yarn build
 ```

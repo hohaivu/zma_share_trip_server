@@ -509,52 +509,7 @@ export async function bootstrapUser(
   displayName?: string,
   avatarUrl?: string,
 ): Promise<BootstrapResult> {
-  return withTransaction(async (tx) => {
-    const existing = await tx.query('SELECT * FROM identities WHERE mauid = $1', [
-      mauid,
-    ])
-    const wasCreated = existing.rows.length === 0
-    const identityResult = wasCreated
-      ? await tx.query(
-          `
-          INSERT INTO identities (mauid, display_name, avatar_url, preferred_mode, created_at, updated_at)
-          VALUES ($1, $2, $3, 'client', NOW(), NOW())
-          RETURNING *
-        `,
-          [mauid, displayName || '', avatarUrl || ''],
-        )
-      : await tx.query(
-          `
-          UPDATE identities
-          SET display_name = $1, avatar_url = $2, updated_at = NOW()
-          WHERE mauid = $3
-          RETURNING *
-        `,
-          [
-            displayName || existing.rows[0].display_name,
-            avatarUrl ?? existing.rows[0].avatar_url,
-            mauid,
-          ],
-        )
-    const identity = mapIdentity(identityResult.rows[0])
-
-    for (const role of ['driver', 'client']) {
-      await tx.query(
-        `
-        INSERT INTO users (id, identity_id, role, verification_status, rating_avg, trip_count, created_at)
-        VALUES ($1, $2, $3, 'unverified', 0, 0, NOW())
-        ON CONFLICT DO NOTHING
-      `,
-        [generateId(`user-${role}`), identity.id, role],
-      )
-    }
-
-    const personas = await listPersonasByIdentity(identity.id, tx)
-    return {
-      session: buildSession(identity, personas, wasCreated),
-      wasCreated,
-    }
-  })
+  return userService.bootstrapUser(mauid, displayName, avatarUrl)
 }
 
 export async function createReview(
