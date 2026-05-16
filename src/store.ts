@@ -1,4 +1,5 @@
 import { query, withTransaction } from './db/connection'
+import { groupOfferService as mvcGroupOfferService } from './services/groupOfferService'
 import { groupRequestService as mvcGroupRequestService } from './services/groupRequestService'
 import * as notificationService from './services/notificationService'
 import * as reportService from './services/reportService'
@@ -812,121 +813,11 @@ export async function createGroupRequest(
 }
 
 export async function acceptGroupOffer(offerId: string): Promise<GroupOffer> {
-  const result = await withTransaction(async (tx) => {
-    let offerRes = await tx.query(
-      'SELECT * FROM group_offers WHERE id = $1 FOR UPDATE',
-      [offerId],
-    )
-    const offer = toCamelCase<GroupOffer>(offerRes.rows[0])
-    if (!offer) throw new HttpError(404, 'Group offer not found')
-    if (offer.status === 'accepted') {
-      return { updatedOffer: offer, siblings: [], offer }
-    }
-    if (offer.status !== 'pending') {
-      throw new HttpError(409, `Cannot accept offer in status: ${offer.status}`)
-    }
-
-    const route = await loadRouteForWalletTx(tx, offer.routeId, mapRoute)
-    if (route.status !== 'published') {
-      throw new HttpError(
-        409,
-        `Cannot accept offer on route in status: ${route.status}`,
-      )
-    }
-
-    if (!(await checkRouteAvailability(tx, offer.routeId))) {
-      throw new HttpError(
-        409,
-        'Route is no longer available — another client was accepted first',
-      )
-    }
-
-    offerRes = await tx.query(
-      "UPDATE group_offers SET status = 'accepted' WHERE id = $1 RETURNING *",
-      [offerId],
-    )
-    const updatedOffer = toCamelCase<GroupOffer>(offerRes.rows[0])
-    if (!updatedOffer) throw new Error('Failed to update group offer')
-
-    await tx.query("UPDATE routes SET status = 'matched' WHERE id = $1", [
-      offer.routeId,
-    ])
-    if (updatedOffer.planId) {
-      await tx.query(
-        "UPDATE plans SET status = 'matched' WHERE id = $1 AND status = 'published'",
-        [updatedOffer.planId],
-      )
-    }
-
-    await chargeRouteFeeTx(tx, route, mapRoute, {
-      description: 'Route fee charged on accepted group offer',
-    })
-
-    const siblingsRes = await tx.query(
-      "UPDATE group_offers SET status = 'closed' WHERE group_request_id = $1 AND id != $2 AND status = 'pending' RETURNING *",
-      [offer.groupRequestId, offerId],
-    )
-    const siblings = mapRows<GroupOffer>(siblingsRes.rows)
-
-    await tx.query(
-      `
-      UPDATE group_requests
-      SET status = 'accepted',
-          accepted_client_user_id = $1,
-          accepted_plan_id = $2,
-          client_id = $1
-      WHERE id = $3
-    `,
-      [updatedOffer.clientId, updatedOffer.planId, updatedOffer.groupRequestId],
-    )
-
-    await tx.query(
-      "UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND status = 'pending'",
-      [offer.routeId],
-    )
-
-    return { updatedOffer, siblings, offer }
-  })
-
-  for (const sibling of result.siblings) {
-    emitNotification('sibling_offer_closed', sibling.clientId, {
-      groupOfferId: sibling.id,
-      reason: 'another_client_accepted',
-    })
-  }
-
-  emitNotification('group_offer_accepted', result.offer.driverId, {
-    groupOfferId: offerId,
-    clientId: result.offer.clientId,
-    routeId: result.offer.routeId,
-  })
-
-  return result.updatedOffer
+  return mvcGroupOfferService.acceptGroupOffer(offerId)
 }
 
 export async function declineGroupOffer(offerId: string): Promise<GroupOffer> {
-  const offerRes = await query('SELECT * FROM group_offers WHERE id = $1', [
-    offerId,
-  ])
-  const offer = toCamelCase<GroupOffer>(offerRes.rows[0])
-  if (!offer) throw new Error('Group offer not found')
-  if (offer.status !== 'pending') {
-    throw new Error(`Cannot decline offer in status: ${offer.status}`)
-  }
-
-  const updatedRes = await query(
-    "UPDATE group_offers SET status = 'declined' WHERE id = $1 RETURNING *",
-    [offerId],
-  )
-  const updated = toCamelCase<GroupOffer>(updatedRes.rows[0])
-  if (!updated) throw new Error('Failed to update group offer')
-
-  emitNotification('group_offer_declined', updated.driverId, {
-    groupOfferId: offerId,
-    clientId: updated.clientId,
-  })
-
-  return updated
+  return mvcGroupOfferService.declineGroupOffer(offerId)
 }
 
 export async function cancelGroupRequest(
@@ -988,12 +879,7 @@ async function filterVisibleForActiveTrip<
 export async function listGroupOffersByClient(
   clientId: string,
 ): Promise<GroupOffer[]> {
-  await assertUserRole(clientId, 'client')
-  const offersRes = await query(
-    'SELECT * FROM group_offers WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
-    [clientId],
-  )
-  return filterVisibleForActiveTrip(mapRows<GroupOffer>(offersRes.rows))
+  return mvcGroupOfferService.listGroupOffersByClient(clientId)
 }
 
 export async function listRouteRequestsByDriver(

@@ -1,5 +1,10 @@
 import * as store from '../store'
 import * as carServiceImpl from './carService'
+import * as driverRouteServiceImpl from './driverRouteService'
+import { groupOfferService as mvcGroupOfferService } from './groupOfferService'
+import { journeyRepository } from '../repositories/journeyRepository'
+import { journeyService as mvcJourneyService } from './journeyService'
+import * as planServiceImpl from './planService'
 import * as userServiceImpl from './userService'
 import * as walletServiceImpl from './walletService'
 import { routeRequestService as routeRequestDomainService } from './routeRequestService'
@@ -97,10 +102,10 @@ export interface WalletService {
   topUpDriverWallet: StoreMethod<'topUpDriverWallet'>
 }
 
-export const routeService: RouteService = store
-export const planService: PlanService = store
+export const routeService: RouteService = driverRouteServiceImpl
+export const planService: PlanService = planServiceImpl
 export const demandGroupService: DemandGroupService = store
-export const groupOfferService: GroupOfferService = store
+export const groupOfferService: GroupOfferService = mvcGroupOfferService
 export const groupRequestService: GroupRequestService = mvcGroupRequestService
 export const userService: UserService = {
   ...store,
@@ -111,5 +116,8 @@ export const userService: UserService = {
 }
 export const routeRequestService: RouteRequestService = routeRequestDomainService
 export const carService: CarService = carServiceImpl
-export const journeyService: JourneyService = store
+export const journeyService: JourneyService = {
+  ...journeyRepository,
+  ...mvcJourneyService,
+}
 export const walletService: WalletService = walletServiceImpl
