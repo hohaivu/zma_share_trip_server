@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../db/connection'
 import { mapRows, normalizeUtc, parseNumeric, toCamelCase } from '../db/utils'
 import { HttpError } from '../http-error'
+import { computeDepartureBlock } from '../domain/departureBlock'
 import { computeRouteFeeRequiredVnd, loadRouteForWalletTx, reserveRouteFeeTx } from './walletRepository'
 import * as planRepository from './planRepository'
 import {
@@ -25,7 +26,25 @@ function assertServiceDateIsNotPast(serviceDate?: string | null): void { if (isP
 async function assertUserRole(userId: string, role: 'driver' | 'client'): Promise<void> { const user = await findUserById(userId); if (!user) throw new HttpError(404, 'User not found'); if (user.role !== role) throw new HttpError(403, `User must be a ${role} persona`) }
 function mapRoute(row: Record<string, unknown>): Route { const route = toCamelCase<Route>(row); if (!route) throw new Error('Cannot map null row to Route'); route.tripPrice = parseNumeric(route.tripPrice); route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd); return route }
 async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> { const keys = Object.keys(data).filter((k) => data[k] !== undefined); if (keys.length === 0) { const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id]); return toCamelCase<T>(existing.rows[0]) } const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`); const timeFields = ['departureTime','windowStart','windowEnd','departureBlockStart','departureBlockEnd']; const vals = keys.map((k) => { const val = data[k]; if (jsonFields.includes(k)) return JSON.stringify(val); if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString(); return val }); const result = await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`, [id, ...vals]); return toCamelCase<T>(result.rows[0]) }
-function computeDepartureBlock(departureTime: string | Date): { start: string; end: string } { const dt = new Date(departureTime); const minutes = dt.getMinutes(); const blockStart = new Date(dt); blockStart.setMinutes(minutes < 30 ? 0 : 30, 0, 0); const blockEnd = new Date(blockStart); blockEnd.setMinutes(blockStart.getMinutes() + 30); return { start: blockStart.toISOString(), end: blockEnd.toISOString() } }
+
+const ROUTE_ACCEPTED_SQL = `
+  SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
+  UNION ALL
+  SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
+`
+
+export async function checkRouteAvailability(
+  executor: {
+    query: (
+      sql: string,
+      params: unknown[],
+    ) => Promise<{ rowCount: number | null }>
+  },
+  routeId: string,
+): Promise<boolean> {
+  const result = await executor.query(ROUTE_ACCEPTED_SQL, [routeId])
+  return result.rowCount === 0
+}
 
 function extractWardFields(
   data: Record<string, unknown>,
@@ -291,6 +310,10 @@ export async function publishRoute(
 export async function listAllRoutes(): Promise<Route[]> {
   const result = await query('SELECT * FROM routes')
   return result.rows.map(mapRoute)
+}
+
+export async function isRouteAvailable(routeId: string): Promise<boolean> {
+  return checkRouteAvailability({ query }, routeId)
 }
 
 export async function listRoutesByDriver(

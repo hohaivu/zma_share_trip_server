@@ -1,6 +1,8 @@
 import { query, withTransaction } from '../db/connection'
 import { parseJsonb, parseNumeric, toCamelCase } from '../db/utils'
 import { HttpError } from '../http-error'
+import { listReportsByReporter as listReportsByReporterFromRepository } from './reportRepository'
+import { listReviewsByReviewer as listReviewsByReviewerFromRepository } from './reviewRepository'
 import { BootstrapSession, Identity, User } from '../types/entities'
 import { BootstrapResult, UpdateUserPayload } from '../types/payloads'
 
@@ -59,10 +61,6 @@ const PERSONA_SELECT_SQL = `
 
 function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-}
-
-async function legacyStore() {
-  return import('../store.js')
 }
 
 export async function bootstrapUser(
@@ -186,11 +184,11 @@ export async function listPersonasByIdentity(
 }
 
 export function listReviewsByReviewer(userId: string) {
-  return legacyStore().then((store) => store.listReviewsByReviewer(userId))
+  return listReviewsByReviewerFromRepository(userId)
 }
 
 export function listReportsByReporter(userId: string) {
-  return legacyStore().then((store) => store.listReportsByReporter(userId))
+  return listReportsByReporterFromRepository(userId)
 }
 
 export async function getBlockedUsers(blockerId: string): Promise<string[]> {

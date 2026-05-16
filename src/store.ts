@@ -4,6 +4,7 @@ import * as notificationService from './services/notificationService'
 import * as reportService from './services/reportService'
 import * as reviewService from './services/reviewService'
 import { routeRequestService as routeRequestDomainService } from './services/routeRequestService'
+import { computeDepartureBlock as computeDepartureBlockDomain } from './domain/departureBlock'
 import * as userRepository from './repositories/userRepository'
 import * as userService from './services/userService'
 import {
@@ -672,16 +673,7 @@ export function computeDepartureBlock(departureTime: string | Date): {
   start: string
   end: string
 } {
-  const dt = new Date(departureTime)
-  const minutes = dt.getMinutes()
-  const blockStart = new Date(dt)
-  blockStart.setMinutes(minutes < 30 ? 0 : 30, 0, 0)
-  const blockEnd = new Date(blockStart)
-  blockEnd.setMinutes(blockStart.getMinutes() + 30)
-  return {
-    start: blockStart.toISOString(),
-    end: blockEnd.toISOString(),
-  }
+  return computeDepartureBlockDomain(departureTime)
 }
 
 // --- Demand Groups ---
@@ -787,12 +779,6 @@ export async function getDemandGroupMembers(
 
 // --- Route Availability ---
 
-const ROUTE_ACCEPTED_SQL = `
-  SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
-  UNION ALL
-  SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
-`
-
 export async function checkRouteAvailability(
   executor: {
     query: (
@@ -802,12 +788,11 @@ export async function checkRouteAvailability(
   },
   routeId: string,
 ): Promise<boolean> {
-  const result = await executor.query(ROUTE_ACCEPTED_SQL, [routeId])
-  return result.rowCount === 0
+  return driverRouteRepository.checkRouteAvailability(executor, routeId)
 }
 
 export async function isRouteAvailable(routeId: string): Promise<boolean> {
-  return checkRouteAvailability({ query }, routeId)
+  return driverRouteRepository.isRouteAvailable(routeId)
 }
 
 // --- Group Request Orchestration ---

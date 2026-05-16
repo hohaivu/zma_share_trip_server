@@ -4,6 +4,8 @@ import { Plan } from '../types/entities'
 import { DemandGroupSummary } from '../types/payloads'
 import { deriveDemandGroups } from './groupRequestRepository'
 
+export { deriveDemandGroups }
+
 export async function getDemandGroup(
   groupId: string,
 ): Promise<DemandGroupSummary | null> {

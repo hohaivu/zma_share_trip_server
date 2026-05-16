@@ -45,6 +45,17 @@ export async function getUser(userId: string): Promise<User | null> {
   return userRepository.findUserById(userId)
 }
 
+export async function assertUserRole(
+  userId: string,
+  role: 'driver' | 'client',
+): Promise<void> {
+  const user = await getUser(userId)
+  if (!user) throw new HttpError(404, 'User not found')
+  if (user.role !== role) {
+    throw new HttpError(403, `User must be a ${role} persona`)
+  }
+}
+
 export async function updateUser(
   userId: string,
   data: UpdateUserPayload,

@@ -1,4 +1,8 @@
-import * as store from './store'
+import { computeDepartureBlock } from './domain/departureBlock'
+import * as driverRouteRepository from './repositories/driverRouteRepository'
+import * as demandGroupRepository from './repositories/demandGroupRepository'
+import * as routeRequestRepository from './repositories/routeRequestRepository'
+import * as userService from './services/userService'
 import { Location, User } from './types/entities'
 import {
   DemandGroupResult,
@@ -163,7 +167,7 @@ function blocksOverlap(
   blockStart: string,
   blockEnd: string,
 ): boolean {
-  const routeBlock = store.computeDepartureBlock(routeDepartureTime)
+  const routeBlock = computeDepartureBlock(routeDepartureTime)
   const routeStartMs = new Date(routeBlock.start).getTime()
   const routeEndMs = new Date(routeBlock.end).getTime()
   const planStartMs = new Date(blockStart).getTime()
@@ -197,11 +201,11 @@ async function passesHardFiltersWithBearings(
 
   if (driver) {
     const ids = Array.isArray(clientIds) ? clientIds : []
-    const driverBlockedIds = await store.getBlockedUsers(driver.id)
+    const driverBlockedIds = await userService.getBlockedUsers(driver.id)
     for (const clientId of ids) {
       const [client, clientBlockedIds] = await Promise.all([
-        store.getUser(clientId),
-        store.getBlockedUsers(clientId),
+        userService.getUser(clientId),
+        userService.getBlockedUsers(clientId),
       ])
       if (!client) continue
       if (
@@ -413,15 +417,15 @@ function sortByTierThenScore<
 export async function computeMatchedDemandGroups(
   routeId: string,
 ): Promise<DemandGroupResult[]> {
-  const route = await store.getRoute(routeId)
+  const route = await driverRouteRepository.getRoute(routeId)
   if (!route) return []
   if (route.status !== 'published') return []
-  if (!(await store.isRouteAvailable(routeId))) return []
+  if (!(await driverRouteRepository.isRouteAvailable(routeId))) return []
 
-  const driver = await store.getUser(route.driverId)
-  const groups = await store.deriveDemandGroups()
+  const driver = await userService.getUser(route.driverId)
+  const groups = await demandGroupRepository.deriveDemandGroups()
   const pendingInboundPlanIds = new Set(
-    (await store.listRouteRequestsByRoute(routeId))
+    (await routeRequestRepository.listRouteRequestsByRoute(routeId))
       .filter((request) => request.status === 'pending') // only pending; accepted/declined do not suppress matches
       .map((request) => request.planId)
       .filter((planId): planId is string => Boolean(planId)),
@@ -494,17 +498,17 @@ export async function computeMatchedDemandGroups(
 export async function computeMatchingRoutesFromCriteria(
   criteria: SearchRoutesCriteriaPayload,
 ): Promise<MatchingRouteResult[]> {
-  await store.assertUserRole(criteria.clientId, 'client')
-  const allRoutes = await store.listAllRoutes()
+  await userService.assertUserRole(criteria.clientId, 'client')
+  const allRoutes = await driverRouteRepository.listAllRoutes()
   const results: MatchingRouteResult[] = []
 
   const planBearing = computeBearing(criteria.pickup, criteria.dropoff)
 
   for (const route of allRoutes) {
     if (route.status !== 'published') continue
-    if (!(await store.isRouteAvailable(route.id))) continue
+    if (!(await driverRouteRepository.isRouteAvailable(route.id))) continue
 
-    const driver = await store.getUser(route.driverId)
+    const driver = await userService.getUser(route.driverId)
     const routeBearing = computeBearing(route.origin, route.destination)
 
     const passed = await passesHardFiltersWithBearings(
