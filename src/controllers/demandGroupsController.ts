@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 
-import { demandGroupService } from '../services/domainServices'
+import { demandGroupService } from '../services/demandGroupService'
 import { notFound } from './helpers'
 
 export interface DemandGroupsController {

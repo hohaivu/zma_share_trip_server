@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express'
 
 import { hasUsablePoint } from '../matching'
-import { routeService } from '../services/domainServices'
+import * as routeService from '../services/driverRouteService'
 import { CreateRouteRequestBody, UpdateRoutePayload } from '../types/payloads'
 import { notFound, requireBodyOrQueryString, requireQueryString } from './helpers'
 

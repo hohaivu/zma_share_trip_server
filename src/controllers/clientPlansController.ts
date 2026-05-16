@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 
-import { planService } from '../services/domainServices'
+import * as planService from '../services/planService'
 import { CreatePlanRequestBody, UpdatePlanPayload } from '../types/payloads'
 import { notFound, requireBodyOrQueryString, requireQueryString } from './helpers'
 

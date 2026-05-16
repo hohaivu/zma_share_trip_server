@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 
-import { groupOfferService } from '../services/domainServices'
+import { groupOfferService } from '../services/groupOfferService'
 import { requireQueryString } from './helpers'
 
 export interface GroupOffersController {

@@ -62,7 +62,7 @@ describe('VNMap proxy routes', () => {
     process.env.VNMAP_API_KEY = originalApiKey
   })
 
-  it('proxies autocomplete with backend-only key and shared defaults', async () => {
+  it('proxies autocomplete with backend-only key and legacy provider defaults', async () => {
     process.env.VNMAP_API_KEY = 'secret-key'
 
     let calledUrl = ''
@@ -85,13 +85,13 @@ describe('VNMap proxy routes', () => {
     assert.equal(providerUrl.searchParams.get('input'), 'Nguyen Hue')
     assert.equal(providerUrl.searchParams.get('location'), '10.7,106.6')
     assert.equal(providerUrl.searchParams.get('key'), 'secret-key')
-    assert.equal(providerUrl.searchParams.get('from_source'), 'Widget')
-    assert.equal(providerUrl.searchParams.get('type_source'), '7')
     assert.equal(providerUrl.searchParams.get('components'), 'country:vn')
     assert.equal(providerUrl.searchParams.get('language'), 'vi')
-    assert.equal(providerUrl.searchParams.get('province_id'), '2')
-    assert.equal(providerUrl.searchParams.get('user_id'), '0')
-    assert.equal(providerUrl.searchParams.get('type_app'), '1')
+    assert.equal(providerUrl.searchParams.get('from_source'), null)
+    assert.equal(providerUrl.searchParams.get('type_source'), null)
+    assert.equal(providerUrl.searchParams.get('province_id'), null)
+    assert.equal(providerUrl.searchParams.get('user_id'), null)
+    assert.equal(providerUrl.searchParams.get('type_app'), null)
   })
 
   it('returns 503 when backend VNMap key missing', async () => {
