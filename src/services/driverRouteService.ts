@@ -1,4 +1,5 @@
 import * as driverRouteRepository from '../repositories/driverRouteRepository'
+import { assertUserRole } from './userService'
 import { TripListScope } from '../repositories/tripListRepository'
 import { Route } from '../types/entities'
 import {
@@ -11,6 +12,7 @@ export async function createRoute(
   driverId: string,
   data: CreateRoutePayload,
 ): Promise<Route> {
+  await assertUserRole(driverId, 'driver')
   return driverRouteRepository.createRoute(driverId, data)
 }
 
@@ -18,6 +20,7 @@ export async function listRoutesByDriver(
   driverId: string,
   scope: TripListScope = 'active',
 ): Promise<Array<WithReviewEligibility<Route>>> {
+  await assertUserRole(driverId, 'driver')
   return driverRouteRepository.listRoutesByDriver(driverId, scope)
 }
 

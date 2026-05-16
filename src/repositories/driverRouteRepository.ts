@@ -12,7 +12,6 @@ import {
   type TripListScope,
   withReviewEligibility,
 } from './tripListRepository'
-import { findUserById } from './userRepository'
 import { GroupOffer, Location, Plan, Route, RouteRequest } from '../types/entities'
 import { CreateRoutePayload, UpdateRoutePayload, WithReviewEligibility } from '../types/payloads'
 
@@ -23,7 +22,6 @@ function isTerminalTripStatus(status?: string | null): boolean { return status =
 function isActiveTripStatus(status?: string | null): boolean { return status === 'draft' || status === 'published' || status === 'matched' }
 function isPastServiceDate(serviceDate?: string | null): boolean { if (!serviceDate) return false; return serviceDate < formatLocalDateValue(new Date()) }
 function assertServiceDateIsNotPast(serviceDate?: string | null): void { if (isPastServiceDate(serviceDate)) throw new HttpError(400, 'serviceDate cannot be in the past') }
-async function assertUserRole(userId: string, role: 'driver' | 'client'): Promise<void> { const user = await findUserById(userId); if (!user) throw new HttpError(404, 'User not found'); if (user.role !== role) throw new HttpError(403, `User must be a ${role} persona`) }
 function mapRoute(row: Record<string, unknown>): Route { const route = toCamelCase<Route>(row); if (!route) throw new Error('Cannot map null row to Route'); route.tripPrice = parseNumeric(route.tripPrice); route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd); return route }
 async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> { const keys = Object.keys(data).filter((k) => data[k] !== undefined); if (keys.length === 0) { const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id]); return toCamelCase<T>(existing.rows[0]) } const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`); const timeFields = ['departureTime','windowStart','windowEnd','departureBlockStart','departureBlockEnd']; const vals = keys.map((k) => { const val = data[k]; if (jsonFields.includes(k)) return JSON.stringify(val); if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString(); return val }); const result = await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`, [id, ...vals]); return toCamelCase<T>(result.rows[0]) }
 
@@ -126,7 +124,6 @@ export async function createRoute(
   driverId: string,
   data: CreateRoutePayload,
 ): Promise<Route> {
-  await assertUserRole(driverId, 'driver')
   assertServiceDateIsNotPast(data.serviceDate)
 
   const fields = data as unknown as Record<string, unknown>
@@ -320,7 +317,6 @@ export async function listRoutesByDriver(
   driverId: string,
   scope: TripListScope = 'active',
 ): Promise<Array<WithReviewEligibility<Route>>> {
-  await assertUserRole(driverId, 'driver')
   const result = await query('SELECT * FROM routes WHERE driver_id = $1', [driverId])
   const routes = result.rows.map(mapRoute)
   const filtered = await filterTripsByScope(

@@ -1,19 +1,6 @@
-import { query } from '../db/connection'
-import { HttpError } from '../http-error'
 import * as carRepository from '../repositories/carRepository'
+import { assertUserRole } from './userService'
 import { CreateCarPayload, UpdateCarPayload } from '../types/payloads'
-
-async function assertUserRole(
-  userId: string,
-  role: 'driver' | 'client',
-): Promise<void> {
-  const result = await query('SELECT * FROM users WHERE id = $1', [userId])
-  const user = result.rows[0] as { role?: string } | undefined
-  if (!user) throw new HttpError(404, 'User not found')
-  if (user.role !== role) {
-    throw new HttpError(403, `User must be a ${role} persona`)
-  }
-}
 
 function maskPlate(full: string | undefined): string {
   if (!full || full.length < 4) return full || ''

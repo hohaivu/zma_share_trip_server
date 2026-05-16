@@ -1,75 +1,7 @@
 import { RouteRequest } from '../types/entities'
 import * as routeRequestRepository from '../repositories/routeRequestRepository'
-import { query } from '../db/connection'
-import { HttpError } from '../http-error'
-
-async function assertUserRole(userId: string, role: 'driver' | 'client'): Promise<void> {
-  const result = await query('SELECT role FROM users WHERE id = $1', [userId])
-  const user = result.rows[0] as { role?: string } | undefined
-  if (!user) throw new HttpError(404, 'User not found')
-  if (user.role !== role) throw new HttpError(403, `User must be a ${role} persona`)
-}
-
-function emitNotification(type: string, recipientId: string, data: Record<string, unknown>): void {
-  const copy = type === 'route_request_accepted'
-    ? {
-        type: 'request_accepted',
-        title: 'Request accepted',
-        body: 'Your request was accepted.',
-        targetRoute: '/journeys',
-        deepLink: '/journeys',
-        requestSource: 'route_request',
-      }
-    : type === 'route_request_declined'
-      ? {
-          type: 'request_declined',
-          title: 'Request declined',
-          body: 'Your request was declined.',
-          targetRoute: '/offers',
-          deepLink: '/offers',
-          requestSource: 'route_request',
-        }
-      : type === 'route_request_canceled'
-        ? {
-            type: 'request_canceled',
-            title: 'Request canceled',
-            body: 'A request was canceled.',
-            targetRoute: '/offers',
-            deepLink: '/offers',
-            requestSource: 'route_request',
-          }
-        : {
-            type: 'request_received',
-            title: 'New request received',
-            body: 'You received a new direct request.',
-            targetRoute: '/offers',
-            deepLink: '/offers',
-            requestSource: 'route_request',
-          }
-
-  void query(
-    `
-      INSERT INTO notifications (
-        id, recipient_id, type, title, body, target_route, deep_link,
-        request_source, metadata, read, created_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, NOW())
-    `,
-    [
-      `notif-${Date.now()}${Math.random().toString().slice(2, 6)}`,
-      recipientId,
-      copy.type,
-      copy.title,
-      copy.body,
-      copy.targetRoute,
-      copy.deepLink,
-      copy.requestSource,
-      JSON.stringify(data),
-    ],
-  ).catch((error) => {
-    console.error('[emitNotification] failed to persist notification', error)
-  })
-}
+import { emitNotification } from './notificationService'
+import { assertUserRole } from './userService'
 
 function isTerminalTripStatus(status?: string | null): boolean {
   return status === 'completed' || status === 'canceled'
