@@ -13,7 +13,7 @@ export const errorProvider: Provider = {
         const message = status === 500 ? 'Internal server error' : err.message
         if (status === 500) console.error('[server error]', err)
         const details =
-          err instanceof HttpError && err.payload !== undefined
+          err instanceof HttpError && err.exposeDetails && status !== 500
             ? err.payload
             : undefined
         res

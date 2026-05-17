@@ -57,11 +57,12 @@ export async function topUpDriverWallet(
       'Wallet validation error: description must be a string',
     )
   }
+  const descriptionValue = description?.trim()
 
   try {
     const result = await walletService.topUpDriverWallet(driverIdValue, {
       amountVnd,
-      description,
+      description: descriptionValue,
     })
     res.status(201).json(created(result))
   } catch (error) {

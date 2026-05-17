@@ -148,6 +148,42 @@ async function acceptGroupOffer(offerId: string): Promise<void> {
   await query("UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND status = 'pending'", [offer.route_id])
 }
 
+async function createPendingGroupOfferForClient(serviceDate: string, label: string) {
+  const route = await publishRoute(
+    (
+      await createRoute(DRIVER_001_ID, {
+        carId: 'car-001',
+        origin: { lat: 10.77, lng: 106.7, label: `${label} origin` },
+        destination: { lat: 10.85, lng: 106.75, label: `${label} dest` },
+        serviceDate,
+        departureTime: `${serviceDate}T07:00:00.000Z`,
+        tripPrice: 155000,
+      })
+    ).id,
+  )
+  const plan = await planService.createPlan(CLIENT_001_ID, {
+    pickup: { lat: 10.77, lng: 106.7, label: `${label} pickup` },
+    dropoff: { lat: 10.85, lng: 106.75, label: `${label} dropoff` },
+    pickupWardId: `${label}-pickup-ward`,
+    dropoffWardId: `${label}-dropoff-ward`,
+    serviceDate,
+    departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+    departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+    passengerCount: 1,
+  })
+  const groups = await groupRequestRepository.deriveDemandGroups()
+  const targetGroup = groups.find((group) => group.memberPlanIds.includes(plan.id))
+  assert.ok(targetGroup)
+  const groupRequest = await groupRequestService.createGroupRequest(
+    DRIVER_001_ID,
+    route.id,
+    targetGroup!.id,
+  )
+  const offer = groupRequest.offers[0]
+  assert.ok(offer)
+  return offer
+}
+
 async function createReview(payload: CreateReviewPayload) {
   return reviewRepository.createReview(payload)
 }
@@ -199,6 +235,10 @@ function request(
     if (body) req.write(JSON.stringify(body))
     req.end()
   })
+}
+
+function assertOnlyEnvelopeKeys(body: any, keys: string[]): void {
+  assert.deepEqual(Object.keys(body).sort(), keys.sort())
 }
 
 let server: any
@@ -586,7 +626,9 @@ describe('driver wallet routes', () => {
     )
 
     assert.equal(res.status, 200)
+    assertOnlyEnvelopeKeys(res.body, ['data'])
     assert.ok(res.body.data, 'expected success envelope { data }')
+    assert.equal(res.body.driverId, undefined, 'must not expose legacy bare wallet fields')
     assert.equal(res.body.data.driverId, DRIVER_001_ID)
     assert.equal(res.body.data.balanceVnd, 250000)
     assert.equal(res.body.data.reservedBalanceVnd, 50000)
@@ -645,7 +687,9 @@ describe('driver wallet routes', () => {
     )
 
     assert.equal(res.status, 200)
+    assertOnlyEnvelopeKeys(res.body, ['data', 'meta'])
     assert.ok(Array.isArray(res.body.data), 'expected envelope { data: [...] }')
+    assert.equal(res.body.items, undefined, 'must not expose legacy { items } wrapper')
     assert.equal(res.body.data.length, 2)
     assert.equal(res.body.meta?.count, 2)
     assert.equal(res.body.data[0].id, 'wtx-wallet-newer')
@@ -671,7 +715,10 @@ describe('driver wallet routes', () => {
     })
 
     assert.equal(res.status, 201)
+    assertOnlyEnvelopeKeys(res.body, ['data'])
     assert.ok(res.body.data, 'expected envelope { data } for created top-up')
+    assert.equal(res.body.summary, undefined, 'must not expose legacy top-level summary')
+    assert.equal(res.body.transaction, undefined, 'must not expose legacy top-level transaction')
     assert.equal(res.body.data.summary.driverId, DRIVER_001_ID)
     assert.equal(
       res.body.data.summary.balanceVnd,
@@ -691,6 +738,7 @@ describe('driver wallet routes', () => {
       `/api/driver/wallet?driverId=${DRIVER_001_ID}`,
     )
     assert.equal(summaryRes.status, 200)
+    assertOnlyEnvelopeKeys(summaryRes.body, ['data'])
     assert.equal(
       summaryRes.body.data.balanceVnd,
       initialSummary.balanceVnd + 150000,
@@ -1239,6 +1287,10 @@ describe('inbox visibility endpoints', () => {
       `/api/client/incoming-driver-offers?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(before.status, 200)
+    assertOnlyEnvelopeKeys(before.body, ['data', 'meta'])
+    assert.ok(Array.isArray(before.body.data), 'expected envelope { data: [...] }')
+    assert.equal(before.body.meta?.count, before.body.data.length)
+    assert.equal(before.body[0], undefined, 'must not expose legacy bare array fields')
     assert.equal(
       before.body.data.some(
         (item: { id: string }) => item.id === groupRequest.offers[0]?.id,
@@ -1254,12 +1306,53 @@ describe('inbox visibility endpoints', () => {
       `/api/client/incoming-driver-offers?clientId=${CLIENT_001_ID}`,
     )
     assert.equal(after.status, 200)
+    assertOnlyEnvelopeKeys(after.body, ['data', 'meta'])
+    assert.ok(Array.isArray(after.body.data), 'expected envelope { data: [...] }')
+    assert.equal(after.body.meta?.count, after.body.data.length)
     assert.equal(
       after.body.data.some(
         (item: { id: string }) => item.id === groupRequest.offers[0]?.id,
       ),
       false,
     )
+  })
+
+  it('accepts a group offer with a { data } envelope only', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const offer = await createPendingGroupOfferForClient('2030-04-22', 'accept-envelope')
+
+    const res = await request(
+      server,
+      'POST',
+      `/api/client/group-offers/${offer.id}/accept`,
+    )
+
+    assert.equal(res.status, 200)
+    assertOnlyEnvelopeKeys(res.body, ['data'])
+    assert.equal(res.body.id, undefined, 'must not expose legacy bare offer fields')
+    assert.equal(res.body.data.id, offer.id)
+    assert.equal(res.body.data.status, 'accepted')
+  })
+
+  it('declines a group offer with a { data } envelope only', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const offer = await createPendingGroupOfferForClient('2030-04-23', 'decline-envelope')
+
+    const res = await request(
+      server,
+      'POST',
+      `/api/client/group-offers/${offer.id}/decline`,
+    )
+
+    assert.equal(res.status, 200)
+    assertOnlyEnvelopeKeys(res.body, ['data'])
+    assert.equal(res.body.id, undefined, 'must not expose legacy bare offer fields')
+    assert.equal(res.body.data.id, offer.id)
+    assert.equal(res.body.data.status, 'declined')
   })
 
   it('hides client search requests when linked route becomes terminal', async () => {

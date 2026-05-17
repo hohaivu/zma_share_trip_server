@@ -43,13 +43,17 @@ export function buildWalletSummary(wallet: Wallet): WalletSummary {
   }
 }
 
-/**
- * Re-export of the fee math from the repository. The validation HttpErrors
- * inside the underlying implementation are business-rule decisions; service
- * callers should prefer this entry point.
- */
 export function computeRouteFeeRequiredVnd(distanceMeters: number): number {
-  return walletRepository.computeRouteFeeRequiredVnd(distanceMeters)
+  if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) {
+    throw new HttpError(400, 'distanceMeters must be a positive integer')
+  }
+  if (!Number.isInteger(distanceMeters)) {
+    throw new HttpError(400, 'distanceMeters must be a whole number')
+  }
+
+  return Math.ceil(
+    (distanceMeters / 1000) * walletRepository.getWalletFeeRateVndPerKm(),
+  )
 }
 
 export async function getDriverWalletSummary(

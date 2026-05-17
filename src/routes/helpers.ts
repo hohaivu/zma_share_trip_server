@@ -1,7 +1,10 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express'
 
 import { HttpError } from '../http-error'
+import { requireParam } from '../shared/requestHelpers'
 import { errorBody, httpErrorCode } from '../shared/responseEnvelope'
+
+export { requireParam }
 
 export function asyncHandler<
   Req extends Request = Request,
@@ -22,17 +25,14 @@ export function asyncHandler<
           : err instanceof Error
             ? err.message
             : 'Internal server error'
-      const payload = err instanceof HttpError ? err.payload : undefined
+      const details =
+        err instanceof HttpError && err.exposeDetails && status !== 500
+          ? err.payload
+          : undefined
       if (status === 500) console.error('[server error]', err)
       res
         .status(status)
-        .json(errorBody(httpErrorCode(status), message, { details: payload }))
+        .json(errorBody(httpErrorCode(status), message, { details }))
     })
-  }
-}
-
-export function requireParam(value: unknown, message: string): asserts value {
-  if (!value) {
-    throw new HttpError(400, message)
   }
 }

@@ -4,7 +4,7 @@ import {
   proxyAutocomplete,
   proxyDirections,
   proxyPlaceDetail,
-} from './vnmapProxy'
+} from '../controllers/vnmapProxyController'
 
 const router = Router()
 

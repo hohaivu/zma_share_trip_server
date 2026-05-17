@@ -1,7 +1,7 @@
 import * as driverRouteRepository from '../repositories/driverRouteRepository'
 import type { RouteWriteValues } from '../repositories/driverRouteRepository'
-import { computeRouteFeeRequiredVnd } from '../repositories/walletRepository'
 import { assertUserRole } from './userService'
+import { computeRouteFeeRequiredVnd } from './walletService'
 import { TripListScope } from '../repositories/tripListRepository'
 import { computeDepartureBlock } from '../domain/departureBlock'
 import { HttpError } from '../http-error'

@@ -200,7 +200,7 @@ Every error response uses:
 - `code` is a stable machine-readable string. For `HttpError` thrown from controllers/services the global handler maps the HTTP status to `HTTP_<status>` (`HTTP_400`, `HTTP_404`, `HTTP_409`, `HTTP_500`). Validation failures from `validateSchema` (ALI-54) emit `VALIDATION_ERROR`.
 - `message` is a human-readable summary. For `500` responses the message is always the generic `"Internal server error"`; the underlying error is logged server-side.
 - `issues` is present when the error carries per-field validation results (see "Validation Errors" below).
-- `details` is optional, opaque, and carried from `HttpError.payload` when set by the service layer.
+- `details` is optional and only appears when a service/controller explicitly opts in with `HttpError.withSafeDetails(...)` for a non-500 response. Plain `HttpError` payloads and all `500` responses omit `details` to avoid exposing internal state.
 
 ### Migrated endpoints
 

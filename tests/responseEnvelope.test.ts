@@ -10,6 +10,8 @@ import express, {
 } from 'express'
 
 import { HttpError } from '../src/http-error'
+import { createKernel } from '../src/kernel'
+import { errorProvider } from '../src/providers/errorProvider'
 import { asyncHandler } from '../src/routes/helpers'
 import {
   created,
@@ -137,6 +139,23 @@ before(async () => {
   )
 
   app.get(
+    '/validation-details',
+    asyncHandler((_req: Request, _res: Response) => {
+      throw HttpError.withSafeDetails(400, 'Invalid request', {
+        field: 'amountVnd',
+        reason: 'too_small',
+      })
+    }),
+  )
+
+  app.get(
+    '/bad-with-internal-payload',
+    asyncHandler((_req: Request, _res: Response) => {
+      throw new HttpError(400, 'bad request', { internal: 'do not leak' })
+    }),
+  )
+
+  app.get(
     '/missing',
     asyncHandler((_req: Request, _res: Response) => {
       throw new HttpError(404, 'thing not found')
@@ -152,6 +171,18 @@ before(async () => {
         console.error = origConsoleError
       }
       throw new Error('kaboom')
+    }),
+  )
+
+  app.get(
+    '/http-500-with-safe-details',
+    asyncHandler((_req: Request, _res: Response) => {
+      console.error = () => {
+        console.error = origConsoleError
+      }
+      throw HttpError.withSafeDetails(500, 'database exploded', {
+        internal: 'do not leak',
+      })
     }),
   )
 
@@ -187,6 +218,26 @@ describe('response envelope at the route boundary', () => {
     assert.equal(res.status, 400)
     assert.equal(res.body.error.code, 'HTTP_400')
     assert.equal(res.body.error.message, 'bad request')
+    assert.equal(res.body.error.details, undefined)
+  })
+
+  it('safe validation-detail HttpError includes opted-in details', async () => {
+    const res = await request(server, 'GET', '/validation-details')
+    assert.equal(res.status, 400)
+    assert.equal(res.body.error.code, 'HTTP_400')
+    assert.equal(res.body.error.message, 'Invalid request')
+    assert.deepEqual(res.body.error.details, {
+      field: 'amountVnd',
+      reason: 'too_small',
+    })
+  })
+
+  it('HttpError payload without opt-in omits details', async () => {
+    const res = await request(server, 'GET', '/bad-with-internal-payload')
+    assert.equal(res.status, 400)
+    assert.equal(res.body.error.code, 'HTTP_400')
+    assert.equal(res.body.error.message, 'bad request')
+    assert.equal(res.body.error.details, undefined)
   })
 
   it('404 from HttpError uses { error: { code: HTTP_404, message } }', async () => {
@@ -201,5 +252,85 @@ describe('response envelope at the route boundary', () => {
     assert.equal(res.status, 500)
     assert.equal(res.body.error.code, 'HTTP_500')
     assert.equal(res.body.error.message, 'Internal server error')
+    assert.equal(res.body.error.details, undefined)
+  })
+
+  it('500 from HttpError omits opted-in details and uses generic message', async () => {
+    const res = await request(server, 'GET', '/http-500-with-safe-details')
+    assert.equal(res.status, 500)
+    assert.equal(res.body.error.code, 'HTTP_500')
+    assert.equal(res.body.error.message, 'Internal server error')
+    assert.equal(res.body.error.details, undefined)
+  })
+})
+
+describe('errorProvider serialization', () => {
+  async function withErrorProvider(handler: (_req: Request, _res: Response) => void | Promise<void>) {
+    const kernel = createKernel()
+    kernel.app.get('/error', asyncHandler(handler))
+    kernel.register(errorProvider)
+    await kernel.boot()
+    const localServer = await new Promise<http.Server>((resolve) => {
+      const listening = kernel.app.listen(0, () => resolve(listening))
+    })
+    return localServer
+  }
+
+  async function closeServer(localServer: http.Server): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      localServer.close((err) => (err ? reject(err) : resolve()))
+    })
+  }
+
+  it('includes details only for HttpError.withSafeDetails on non-500 responses', async () => {
+    const localServer = await withErrorProvider(() => {
+      throw HttpError.withSafeDetails(409, 'Conflict', { reason: 'already_matched' })
+    })
+    try {
+      const res = await request(localServer, 'GET', '/error')
+      assert.equal(res.status, 409)
+      assert.deepEqual(res.body, {
+        error: {
+          code: 'HTTP_409',
+          message: 'Conflict',
+          details: { reason: 'already_matched' },
+        },
+      })
+    } finally {
+      await closeServer(localServer)
+    }
+  })
+
+  it('omits details for plain HttpError payloads', async () => {
+    const localServer = await withErrorProvider(() => {
+      throw new HttpError(400, 'Bad request', { internal: 'hidden' })
+    })
+    try {
+      const res = await request(localServer, 'GET', '/error')
+      assert.equal(res.status, 400)
+      assert.deepEqual(res.body, {
+        error: { code: 'HTTP_400', message: 'Bad request' },
+      })
+    } finally {
+      await closeServer(localServer)
+    }
+  })
+
+  it('omits details and genericizes message for 500 responses', async () => {
+    const origConsoleError = console.error
+    console.error = () => {}
+    const localServer = await withErrorProvider(() => {
+      throw HttpError.withSafeDetails(500, 'database exploded', { internal: 'hidden' })
+    })
+    try {
+      const res = await request(localServer, 'GET', '/error')
+      assert.equal(res.status, 500)
+      assert.deepEqual(res.body, {
+        error: { code: 'HTTP_500', message: 'Internal server error' },
+      })
+    } finally {
+      console.error = origConsoleError
+      await closeServer(localServer)
+    }
   })
 })

@@ -1,13 +1,9 @@
 import { Response } from 'express'
 
-import { HttpError } from '../http-error'
+import { requireParam } from '../shared/requestHelpers'
 import { errorBody, httpErrorCode } from '../shared/responseEnvelope'
 
-export function requireParam(value: unknown, message: string): asserts value {
-  if (!value) {
-    throw new HttpError(400, message)
-  }
-}
+export { requireParam }
 
 export function requireQueryString(value: unknown, message: string): string {
   requireParam(value, message)

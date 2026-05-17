@@ -11,14 +11,28 @@ export function singleQueryValue(value: unknown): string | undefined {
   return undefined
 }
 
+export function requireParam(value: unknown, message: string): asserts value {
+  if (!value) {
+    throw new HttpError(400, message)
+  }
+}
+
 export function requireBodyString(value: unknown, fieldName: string): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
+  if (typeof value !== 'string') {
     throw new HttpError(
       400,
       `Wallet validation error: ${fieldName} is required`,
     )
   }
-  return value
+
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    throw new HttpError(
+      400,
+      `Wallet validation error: ${fieldName} is required`,
+    )
+  }
+  return trimmed
 }
 
 export function parsePositiveInteger(

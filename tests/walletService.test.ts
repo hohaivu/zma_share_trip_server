@@ -3,6 +3,7 @@ import { after, before, describe, it as nodeIt } from 'node:test'
 
 import { query } from '../src/db/connection'
 import * as matching from '../src/matching'
+import { HttpError } from '../src/http-error'
 import * as carService from '../src/services/carService'
 import * as driverRouteRepository from '../src/repositories/driverRouteRepository'
 import * as driverRouteService from '../src/services/driverRouteService'
@@ -46,6 +47,42 @@ after(async () => {
 })
 
 // ─── 6.1 deriveDemandGroups ────────────────────────────────────────────────────
+
+describe('wallet service fee calculation', () => {
+  nodeIt('computes route fee using rounded-up per-km pricing', () => {
+    const previousFeeRate = process.env.WALLET_FEE_VND_PER_KM
+    process.env.WALLET_FEE_VND_PER_KM = '333'
+    try {
+      assert.equal(walletService.computeRouteFeeRequiredVnd(1000), 333)
+      assert.equal(walletService.computeRouteFeeRequiredVnd(1001), 334)
+      assert.equal(walletService.computeRouteFeeRequiredVnd(2500), 833)
+    } finally {
+      if (previousFeeRate === undefined) {
+        delete process.env.WALLET_FEE_VND_PER_KM
+      } else {
+        process.env.WALLET_FEE_VND_PER_KM = previousFeeRate
+      }
+    }
+  })
+
+  nodeIt('rejects invalid route distances with client-facing HttpErrors', () => {
+    assert.throws(() => walletService.computeRouteFeeRequiredVnd(0), {
+      constructor: HttpError,
+      statusCode: 400,
+      message: 'distanceMeters must be a positive integer',
+    })
+    assert.throws(() => walletService.computeRouteFeeRequiredVnd(Number.NaN), {
+      constructor: HttpError,
+      statusCode: 400,
+      message: 'distanceMeters must be a positive integer',
+    })
+    assert.throws(() => walletService.computeRouteFeeRequiredVnd(1.5), {
+      constructor: HttpError,
+      statusCode: 400,
+      message: 'distanceMeters must be a whole number',
+    })
+  })
+})
 
 
 describe('MVC wallet-gated driver route publishing', () => {

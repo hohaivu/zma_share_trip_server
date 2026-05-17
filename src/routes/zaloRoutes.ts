@@ -1,7 +1,7 @@
 import { Router } from 'express'
 
+import { proxyProfile, proxySecretExchange } from '../controllers/zaloProxyController'
 import validate from '../middleware/validate'
-import { proxyProfile, proxySecretExchange } from './zaloProxy'
 
 const router = Router()
 

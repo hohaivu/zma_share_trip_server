@@ -176,25 +176,6 @@ export async function loadRouteForWalletTx(
   return route
 }
 
-/**
- * Computes the wallet fee required for a route given its distance.
- *
- * NOTE: The HttpError validations below remain here because the only
- * non-service caller (driverRouteRepository.publishRoute) consumes them
- * inline inside its own transactional flow. The walletService layer
- * additionally re-exports this so service callers can stay layered.
- */
-export function computeRouteFeeRequiredVnd(distanceMeters: number): number {
-  if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) {
-    throw new HttpError(400, 'distanceMeters must be a positive integer')
-  }
-  if (!Number.isInteger(distanceMeters)) {
-    throw new HttpError(400, 'distanceMeters must be a whole number')
-  }
-
-  return Math.ceil((distanceMeters / 1000) * getWalletFeeRateVndPerKm())
-}
-
 export async function reserveRouteFeeTx(
   executor: DbQueryExecutor,
   route: Route,
