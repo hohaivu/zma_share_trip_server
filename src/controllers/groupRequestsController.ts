@@ -17,7 +17,7 @@ export interface GroupRequestsController {
 export function createGroupRequestsController(): GroupRequestsController {
   return {
     async createGroupRequest(req, res) {
-      const { driverId, routeId, demandGroupId, note } = req.body || {}
+      const { driverId, routeId, demandGroupId, note, targetPlanId } = req.body || {}
       requireBodyParam(driverId, 'driverId is required')
       requireBodyParam(routeId, 'routeId is required')
       requireBodyParam(demandGroupId, 'demandGroupId is required')
@@ -27,6 +27,7 @@ export function createGroupRequestsController(): GroupRequestsController {
         routeId,
         demandGroupId,
         note,
+        targetPlanId,
       )
       res.status(201).json(result)
     },

@@ -11,13 +11,14 @@ export interface GroupRequestService {
     routeId: string,
     demandGroupId: string,
     note?: string,
+    targetPlanId?: string,
   ): Promise<GroupRequestCreateResult>
   listGroupRequestsByDriver(driverId: string): Promise<GroupRequest[]>
   cancelGroupRequest(requestId: string): Promise<GroupRequest>
 }
 
 export const groupRequestService: GroupRequestService = {
-  async createGroupRequest(driverId, routeId, demandGroupId, note) {
+  async createGroupRequest(driverId, routeId, demandGroupId, note, targetPlanId) {
     await assertUserRole(driverId, 'driver')
 
     let group = await groupRequestRepository.getDemandGroup(demandGroupId)
@@ -30,12 +31,17 @@ export const groupRequestService: GroupRequestService = {
     }
     if (!group) throw new HttpError(404, 'Demand group not found')
 
+    const memberPlanIds = targetPlanId ? [targetPlanId] : group.memberPlanIds
+    if (targetPlanId && !group.memberPlanIds.includes(targetPlanId)) {
+      throw new HttpError(400, 'targetPlanId must belong to demand group')
+    }
+
     const result = await groupRequestRepository.createGroupRequestWithOffers({
       driverId,
       routeId,
       demandGroupId,
       note,
-      memberPlanIds: group.memberPlanIds,
+      memberPlanIds,
     })
 
     for (const offer of result.offers) {
