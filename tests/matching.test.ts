@@ -10,7 +10,7 @@ import * as planService from '../src/services/planService'
 import * as routeRequestService from '../src/services/routeRequestService'
 import * as userService from '../src/services/userService'
 import { createDbTest, setupTestDb, teardownTestDb } from '../src/test-db'
-import { User } from '../src/types/entities'
+import { Plan, User } from '../src/types/entities'
 
 const itDb = createDbTest('Postgres unavailable for DB-backed matching tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
@@ -317,6 +317,140 @@ describe('computeMatchScore', () => {
 // ─── 2.4 computeMatchedDemandGroups ──────────────────────────────────────────
 
 describe('computeMatchedDemandGroups', () => {
+  itDb('returns one route-scoped group across client departure blocks', async () => {
+    await setupTestDb()
+    const serviceDate = '2030-06-10'
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T08:30:00.000Z`,
+          windowStart: `${serviceDate}T08:00:00.000Z`,
+          windowEnd: `${serviceDate}T09:00:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const planInputs = [
+      ['07:30:00.000Z', '08:30:00.000Z'],
+      ['08:00:00.000Z', '08:30:00.000Z'],
+      ['08:30:00.000Z', '09:30:00.000Z'],
+    ]
+    const plans: Plan[] = []
+    for (const [start, end] of planInputs) {
+      plans.push(
+        await planService.createPlan(CLIENT_001_ID, {
+          pickup: Q1_PICKUP,
+          dropoff: TD_DROPOFF,
+          pickupWardId: 'ward-ali-78-group',
+          dropoffWardId: 'ward-ali-78-dest',
+          serviceDate,
+          departureBlockStart: `${serviceDate}T${start}`,
+          departureBlockEnd: `${serviceDate}T${end}`,
+          passengerCount: 1,
+        }),
+      )
+    }
+
+    const results = await matching.computeMatchedDemandGroups(route.id)
+    const containingGroups = results.filter((group) =>
+      plans.every((plan) => group.memberPlanIds?.includes(plan.id)),
+    )
+    assert.equal(containingGroups.length, 1)
+    assert.deepEqual(new Set(containingGroups[0].memberPlanIds), new Set(plans.map((p) => p.id)))
+  })
+
+  itDb('does not duplicate plan membership in matched groups for one route', async () => {
+    await setupTestDb()
+    const serviceDate = '2030-06-11'
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T08:30:00.000Z`,
+          windowStart: `${serviceDate}T08:00:00.000Z`,
+          windowEnd: `${serviceDate}T09:00:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    await Promise.all(
+      ['07:30:00.000Z', '08:00:00.000Z', '08:30:00.000Z'].map((start) =>
+        planService.createPlan(CLIENT_001_ID, {
+          pickup: Q1_PICKUP,
+          dropoff: TD_DROPOFF,
+          pickupWardId: 'ward-ali-78-dedupe',
+          dropoffWardId: 'ward-ali-78-dedupe-dest',
+          serviceDate,
+          departureBlockStart: `${serviceDate}T${start}`,
+          departureBlockEnd: `${serviceDate}T09:00:00.000Z`,
+          passengerCount: 1,
+        }),
+      ),
+    )
+
+    const results = await matching.computeMatchedDemandGroups(route.id)
+    for (const group of results) {
+      assert.equal(group.memberPlanIds?.length, new Set(group.memberPlanIds).size)
+    }
+  })
+
+  itDb('excludes a plan starting exactly at driver soft-window end', async () => {
+    await setupTestDb()
+    const serviceDate = '2030-06-12'
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T08:30:00.000Z`,
+          windowStart: `${serviceDate}T08:00:00.000Z`,
+          windowEnd: `${serviceDate}T09:00:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const included = await planService.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-ali-78-boundary',
+      dropoffWardId: 'ward-ali-78-boundary-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T08:30:00.000Z`,
+      departureBlockEnd: `${serviceDate}T09:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const excluded = await planService.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-ali-78-boundary',
+      dropoffWardId: 'ward-ali-78-boundary-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T09:30:00.000Z`,
+      departureBlockEnd: `${serviceDate}T10:00:00.000Z`,
+      passengerCount: 1,
+    })
+
+    const results = await matching.computeMatchedDemandGroups(route.id)
+    const group = results.find((item) => item.memberPlanIds?.includes(included.id))
+    assert.ok(group)
+    assert.equal(group.memberPlanIds?.includes(excluded.id), false)
+  })
+
   itDb('returns results enriched with scoring fields', async () => {
     await setupTestDb()
     const results = await matching.computeMatchedDemandGroups('route-001')

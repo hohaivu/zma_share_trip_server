@@ -57,6 +57,97 @@ function buildGroupKey(plan: Plan): string {
   return `${serviceDate}|${pickupKey}|${dropoffKey}|${departureBlockStart}`
 }
 
+function buildRouteScopedGroupKey(plan: Plan): string {
+  const serviceDate =
+    typeof plan.serviceDate === 'string' && plan.serviceDate.includes('T')
+      ? new Date(plan.serviceDate).toISOString().split('T')[0]
+      : plan.serviceDate
+
+  const pickupKey = plan.pickupWardKey || plan.pickupWardId
+  const dropoffKey = plan.dropoffWardKey || plan.dropoffWardId
+  return `${serviceDate}|${pickupKey}|${dropoffKey}`
+}
+
+function getRouteSoftWindow(route: Route): { start: Date; end: Date } {
+  const bufferMs = 30 * 60 * 1000
+  const hardStart = route.windowStart || route.departureTime
+  const hardEnd = route.windowEnd || route.departureTime
+  return {
+    start: new Date(new Date(hardStart).getTime() - bufferMs),
+    end: new Date(new Date(hardEnd).getTime() + bufferMs),
+  }
+}
+
+function planOverlapsRouteSoftWindow(plan: Plan, route: Route): boolean {
+  const routeSoftWindow = getRouteSoftWindow(route)
+  return (
+    new Date(plan.departureBlockStart).getTime() < routeSoftWindow.end.getTime() &&
+    routeSoftWindow.start.getTime() < new Date(plan.departureBlockEnd).getTime()
+  )
+}
+
+function addPlanToDemandGroup(
+  grouped: Map<string, DemandGroupSummary>,
+  key: string,
+  plan: Plan,
+): void {
+  if (!grouped.has(key)) {
+    grouped.set(key, {
+      id: `dg-${key}`,
+      serviceDate: plan.serviceDate,
+      pickupWardId: plan.pickupWardId,
+      dropoffWardId: plan.dropoffWardId,
+      pickupWardKey: plan.pickupWardKey,
+      dropoffWardKey: plan.dropoffWardKey,
+      pickupProvinceId: plan.pickupProvinceId,
+      dropoffProvinceId: plan.dropoffProvinceId,
+      departureBlockStart: plan.departureBlockStart,
+      departureBlockEnd: plan.departureBlockEnd,
+      memberCount: 0,
+      totalPassengerCount: 0,
+      memberPlanIds: [],
+      pickup: typeof plan.pickup === 'string' ? JSON.parse(plan.pickup) : plan.pickup,
+      dropoff: typeof plan.dropoff === 'string' ? JSON.parse(plan.dropoff) : plan.dropoff,
+      clientIds: [],
+    })
+  }
+  const group = grouped.get(key)
+  if (!group || group.memberPlanIds.includes(plan.id)) return
+  group.memberCount += 1
+  group.totalPassengerCount += plan.passengerCount
+  group.memberPlanIds.push(plan.id)
+  group.clientIds.push(plan.clientId)
+  if (new Date(plan.departureBlockStart) < new Date(group.departureBlockStart)) {
+    group.departureBlockStart = plan.departureBlockStart
+  }
+  if (new Date(plan.departureBlockEnd) > new Date(group.departureBlockEnd)) {
+    group.departureBlockEnd = plan.departureBlockEnd
+  }
+}
+
+async function listAvailablePublishedPlans(): Promise<Plan[]> {
+  const result = await query(
+    `
+      SELECT *
+      FROM plans p
+      WHERE p.status = $1
+        AND NOT EXISTS (
+          SELECT 1
+          FROM route_requests sr
+          WHERE sr.plan_id = p.id AND sr.status = 'accepted'
+        )
+        AND NOW() < p.departure_block_end
+        AND NOT EXISTS (
+          SELECT 1
+          FROM group_offers go
+          WHERE go.plan_id = p.id AND go.status = 'accepted'
+        )
+    `,
+    ['published'],
+  )
+  return mapRows<Plan>(result.rows)
+}
+
 function dedupePreservingOrder(values: string[]): string[] {
   const seen = new Set<string>()
   const deduped: string[] = []
@@ -88,55 +179,20 @@ async function checkRouteAvailability(
 
 export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
   await expirePendingMatchesTx({ query })
-  const result = await query(
-    `
-      SELECT *
-      FROM plans p
-      WHERE p.status = $1
-        AND NOT EXISTS (
-          SELECT 1
-          FROM route_requests sr
-          WHERE sr.plan_id = p.id AND sr.status = 'accepted'
-        )
-        AND NOW() < p.departure_block_end
-        AND NOT EXISTS (
-          SELECT 1
-          FROM group_offers go
-          WHERE go.plan_id = p.id AND go.status = 'accepted'
-        )
-    `,
-    ['published'],
-  )
-
   const grouped = new Map<string, DemandGroupSummary>()
-  for (const plan of mapRows<Plan>(result.rows)) {
-    const key = buildGroupKey(plan)
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        id: `dg-${key}`,
-        serviceDate: plan.serviceDate,
-        pickupWardId: plan.pickupWardId,
-        dropoffWardId: plan.dropoffWardId,
-        pickupWardKey: plan.pickupWardKey,
-        dropoffWardKey: plan.dropoffWardKey,
-        pickupProvinceId: plan.pickupProvinceId,
-        dropoffProvinceId: plan.dropoffProvinceId,
-        departureBlockStart: plan.departureBlockStart,
-        departureBlockEnd: plan.departureBlockEnd,
-        memberCount: 0,
-        totalPassengerCount: 0,
-        memberPlanIds: [],
-        pickup: typeof plan.pickup === 'string' ? JSON.parse(plan.pickup) : plan.pickup,
-        dropoff: typeof plan.dropoff === 'string' ? JSON.parse(plan.dropoff) : plan.dropoff,
-        clientIds: [],
-      })
-    }
-    const group = grouped.get(key)
-    if (!group) continue
-    group.memberCount += 1
-    group.totalPassengerCount += plan.passengerCount
-    group.memberPlanIds.push(plan.id)
-    group.clientIds.push(plan.clientId)
+  for (const plan of await listAvailablePublishedPlans()) {
+    addPlanToDemandGroup(grouped, buildGroupKey(plan), plan)
+  }
+
+  return [...grouped.values()]
+}
+
+export async function deriveDemandGroupsForRoute(route: Route): Promise<DemandGroupSummary[]> {
+  await expirePendingMatchesTx({ query })
+  const grouped = new Map<string, DemandGroupSummary>()
+  for (const plan of await listAvailablePublishedPlans()) {
+    if (!planOverlapsRouteSoftWindow(plan, route)) continue
+    addPlanToDemandGroup(grouped, buildRouteScopedGroupKey(plan), plan)
   }
 
   return [...grouped.values()]

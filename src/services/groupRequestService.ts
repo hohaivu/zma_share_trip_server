@@ -1,5 +1,6 @@
 import { HttpError } from '../http-error'
 import { GroupRequest, GroupRequestCreateResult } from '../types/entities'
+import * as driverRouteRepository from '../repositories/driverRouteRepository'
 import * as groupRequestRepository from '../repositories/groupRequestRepository'
 import { emitNotification } from './notificationService'
 import { assertUserRole } from './userService'
@@ -19,7 +20,14 @@ export const groupRequestService: GroupRequestService = {
   async createGroupRequest(driverId, routeId, demandGroupId, note) {
     await assertUserRole(driverId, 'driver')
 
-    const group = await groupRequestRepository.getDemandGroup(demandGroupId)
+    let group = await groupRequestRepository.getDemandGroup(demandGroupId)
+    if (!group) {
+      const route = await driverRouteRepository.getRoute(routeId)
+      const routeScopedGroups = route
+        ? await groupRequestRepository.deriveDemandGroupsForRoute(route)
+        : []
+      group = routeScopedGroups.find((item) => item.id === demandGroupId) || null
+    }
     if (!group) throw new HttpError(404, 'Demand group not found')
 
     const result = await groupRequestRepository.createGroupRequestWithOffers({

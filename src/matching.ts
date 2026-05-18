@@ -512,7 +512,7 @@ export async function computeMatchedDemandGroups(
   if (!(await driverRouteRepository.isRouteAvailable(routeId))) return []
 
   const driver = await userService.getUser(route.driverId)
-  const groups = await demandGroupRepository.deriveDemandGroups()
+  const groups = await demandGroupRepository.deriveDemandGroupsForRoute(route)
   const results: DemandGroupResult[] = []
 
   const routeBearing = computeBearing(route.origin, route.destination)

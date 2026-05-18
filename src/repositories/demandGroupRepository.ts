@@ -4,7 +4,7 @@ import { Plan } from '../types/entities'
 import { DemandGroupSummary } from '../types/payloads'
 import { deriveDemandGroups } from './groupRequestRepository'
 
-export { deriveDemandGroups }
+export { deriveDemandGroups, deriveDemandGroupsForRoute } from './groupRequestRepository'
 
 export async function getDemandGroup(
   groupId: string,
