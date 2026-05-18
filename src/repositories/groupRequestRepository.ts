@@ -159,12 +159,12 @@ function dedupePreservingOrder(values: string[]): string[] {
   return deduped
 }
 
-function isActiveGroupOfferUniqueViolation(error: unknown): boolean {
+function isActiveRoutePlanGroupOfferUniqueViolation(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
     (error as { code?: string; constraint?: string }).code === '23505' &&
-    (error as { constraint?: string }).constraint === 'group_offers_active_client_route_idx'
+    (error as { constraint?: string }).constraint === 'group_offers_active_route_plan_idx'
   )
 }
 
@@ -212,6 +212,7 @@ export async function createGroupRequestWithOffers(
   input: CreateGroupRequestTxInput,
 ): Promise<GroupRequestCreateResult> {
   const memberPlanIds = dedupePreservingOrder(input.memberPlanIds)
+  const memberPlanOrder = new Map(memberPlanIds.map((planId, index) => [planId, index]))
 
   return withTransaction(async (tx) => {
     await expirePendingMatchesTx(tx)
@@ -239,7 +240,7 @@ export async function createGroupRequestWithOffers(
     const routeStillOpen = new Date(route.windowEnd).getTime() > Date.now()
     const offers: GroupOffer[] = []
     const candidateResults: GroupRequestCandidateResult[] = []
-    const eligiblePlans: Plan[] = []
+    let eligiblePlans: Plan[] = []
     let groupRequest: GroupRequest | undefined
 
     for (const planId of memberPlanIds) {
@@ -531,10 +532,16 @@ export async function createGroupRequestWithOffers(
           candidateResults.push({ planId: plan.id, status: 'created' })
         }
       } catch (error) {
-        if (!isActiveGroupOfferUniqueViolation(error)) throw error
+        if (!isActiveRoutePlanGroupOfferUniqueViolation(error)) throw error
         candidateResults.push({ planId: plan.id, status: 'skipped_existing' })
       }
     }
+
+    candidateResults.sort(
+      (left, right) =>
+        (memberPlanOrder.get(left.planId) ?? Number.MAX_SAFE_INTEGER) -
+        (memberPlanOrder.get(right.planId) ?? Number.MAX_SAFE_INTEGER),
+    )
 
     const createdCount = offers.length
     const skippedCount = candidateResults.length - createdCount

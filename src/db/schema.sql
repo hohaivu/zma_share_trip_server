@@ -175,8 +175,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS route_requests_active_client_route_idx
   ON route_requests (client_id, route_id)
   WHERE status IN ('pending', 'accepted');
 
-CREATE UNIQUE INDEX IF NOT EXISTS group_offers_active_client_route_idx
-  ON group_offers (client_id, route_id)
+DROP INDEX IF EXISTS group_offers_active_client_route_idx;
+
+CREATE UNIQUE INDEX IF NOT EXISTS group_offers_active_route_plan_idx
+  ON group_offers (route_id, plan_id)
   WHERE status IN ('pending', 'accepted');
 
 CREATE UNIQUE INDEX IF NOT EXISTS group_offers_accepted_route_idx

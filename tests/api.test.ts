@@ -1611,6 +1611,128 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
     assert.equal(duplicateCreateRes.body.error.details.createdCount, 0)
   })
 
+  it('creates route-scoped group offers for every same-client plan and closes siblings on accept', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const routeRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: DRIVER_001_ID,
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-route-scope-same-client-pickup',
+      destinationWardId: 'ward-route-scope-same-client-dropoff',
+      serviceDate: '2030-04-12',
+      departureTime: '2030-04-12T07:00:00.000Z',
+      tripPrice: 120000,
+    })
+    assert.equal(routeRes.status, 201)
+    await query("UPDATE routes SET status = 'published', distance_meters = COALESCE(distance_meters, 10000) WHERE id = $1", [
+      routeRes.body.id,
+    ])
+
+    const planIds: string[] = []
+    for (const [index, startMinute] of [0, 10, 20].entries()) {
+      const planRes = await request(server, 'POST', '/api/client/trip-plans', {
+        clientId: CLIENT_001_ID,
+        pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+        pickupWardId: 'ward-route-scope-same-client-pickup',
+        dropoffWardId: 'ward-route-scope-same-client-dropoff',
+        serviceDate: '2030-04-12',
+        departureBlockStart: `2030-04-12T07:${String(startMinute).padStart(2, '0')}:00.000Z`,
+        departureBlockEnd: `2030-04-12T07:${String(startMinute + 30).padStart(2, '0')}:00.000Z`,
+        passengerCount: index + 1,
+      })
+      assert.equal(planRes.status, 201)
+      planIds.push(planRes.body.id)
+    }
+    await query("UPDATE plans SET status = 'published' WHERE id = ANY($1)", [planIds])
+
+    const groupsRes = await request(server, 'GET', `/api/driver/routes/${routeRes.body.id}/matched-demand-groups`)
+    assert.equal(groupsRes.status, 200)
+    const group = groupsRes.body.find(
+      (entry: { pickupWardId: string }) =>
+        entry.pickupWardId === 'ward-route-scope-same-client-pickup',
+    )
+    assert.ok(group)
+    assert.deepEqual(group.memberPlanIds, planIds)
+
+    const createRes = await request(server, 'POST', '/api/driver/group-requests', {
+      driverId: DRIVER_001_ID,
+      routeId: routeRes.body.id,
+      demandGroupId: group.demandGroupId,
+    })
+
+    assert.equal(createRes.status, 201)
+    assert.equal(createRes.body.outcome, 'created')
+    assert.equal(createRes.body.createdCount, 3)
+    assert.equal(createRes.body.skippedCount, 0)
+    assert.deepEqual(
+      createRes.body.offers.map((offer: { planId: string }) => offer.planId),
+      planIds,
+    )
+    assert.deepEqual(
+      createRes.body.candidateResults.map((candidate: { planId: string; status: string }) => candidate),
+      [
+        { planId: planIds[0], status: 'created' },
+        { planId: planIds[1], status: 'created' },
+        { planId: planIds[2], status: 'created' },
+      ],
+    )
+
+    const offerCountRes = await query(
+      'SELECT COUNT(*)::int AS count FROM group_offers WHERE route_id = $1 AND client_id = $2 AND status = $3',
+      [routeRes.body.id, CLIENT_001_ID, 'pending'],
+    )
+    assert.equal(Number(offerCountRes.rows[0].count), 3)
+
+    const duplicateCreateRes = await request(server, 'POST', '/api/driver/group-requests', {
+      driverId: DRIVER_001_ID,
+      routeId: routeRes.body.id,
+      demandGroupId: group.demandGroupId,
+    })
+    assert.equal(duplicateCreateRes.status, 409)
+    assert.equal(duplicateCreateRes.body.error.details.outcome, 'no_new_requests')
+    assert.equal(duplicateCreateRes.body.error.details.createdCount, 0)
+    assert.deepEqual(
+      duplicateCreateRes.body.error.details.candidateResults.map((candidate: { planId: string; status: string }) => candidate),
+      planIds.map((planId) => ({ planId, status: 'skipped_existing' })),
+    )
+
+    await query(
+      "UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1",
+      [routeRes.body.id],
+    )
+    const acceptRes = await request(
+      server,
+      'POST',
+      `/api/client/group-offers/${createRes.body.offers[1].id}/accept`,
+    )
+    assert.equal(acceptRes.status, 200)
+    assert.equal(acceptRes.body.data.status, 'accepted')
+    assert.equal(acceptRes.body.data.planId, planIds[1])
+
+    const statusesRes = await query(
+      'SELECT plan_id, status FROM group_offers WHERE route_id = $1 ORDER BY plan_id ASC',
+      [routeRes.body.id],
+    )
+    assert.deepEqual(
+      statusesRes.rows.map((row: { plan_id: string; status: string }) => row),
+      [
+        { plan_id: planIds[0], status: 'closed' },
+        { plan_id: planIds[1], status: 'accepted' },
+        { plan_id: planIds[2], status: 'closed' },
+      ].sort((left, right) => left.plan_id.localeCompare(right.plan_id)),
+    )
+
+    const matchedPlansRes = await query(
+      "SELECT id, status FROM plans WHERE id = ANY($1) AND status = 'matched'",
+      [planIds],
+    )
+    assert.deepEqual(matchedPlansRes.rows.map((row: { id: string }) => row.id), [planIds[1]])
+  })
+
   it('suppresses cross-route accepted plans and restores them after cancellation', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return
