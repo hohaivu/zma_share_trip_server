@@ -76,7 +76,7 @@ Supporting shared modules may be imported where appropriate if they do not inver
 Run the MVC boundary guardrail before completing endpoint or refactor work:
 
 ```bash
-yarn mvc:guardrails
+npm run mvc:guardrails
 ```
 
 The guardrail checks TypeScript files under `src/routes` and `src/controllers` and fails with actionable file/line violations when either layer imports `src/store.ts` directly through relative paths such as `../store` or `../../store`.
@@ -103,7 +103,7 @@ Do not introduce imports in the opposite direction:
 
 - New MVC code should prefer services/repositories over direct `src/store.ts` access.
 - Existing callers may continue using the store facade until their area is refactored.
-- Routes and controllers must not import `src/store.ts` directly; use a service/repository boundary instead. This is enforced by `yarn mvc:guardrails`.
+- Routes and controllers must not import `src/store.ts` directly; use a service/repository boundary instead. This is enforced by `npm run mvc:guardrails`.
 - If a future refactor requires changing store behavior, preserve exported compatibility methods or provide a documented migration path before removing them.
 - Store facade changes must be treated as shared-contract changes because they can affect multiple endpoint areas.
 
