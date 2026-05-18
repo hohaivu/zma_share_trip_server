@@ -139,6 +139,34 @@ describe('passesHardFilters', () => {
     assert.ok(await matching.passesHardFilters(route, plan, null, []))
   })
 
+  it('matches when route block expands 30 minutes after during matching', async () => {
+    const route = {
+      ...BASE_ROUTE,
+      departureTime: '2030-03-20T07:00:00.000Z',
+    }
+    const plan = {
+      ...BASE_PLAN,
+      departureBlockStart: '2030-03-20T07:30:00.000Z',
+      departureBlockEnd: '2030-03-20T08:30:00.000Z',
+    }
+
+    assert.ok(await matching.passesHardFilters(route, plan, null, []))
+  })
+
+  it('matches when route block expands 30 minutes before during matching', async () => {
+    const route = {
+      ...BASE_ROUTE,
+      departureTime: '2030-03-20T07:30:00.000Z',
+    }
+    const plan = {
+      ...BASE_PLAN,
+      departureBlockStart: '2030-03-20T06:30:00.000Z',
+      departureBlockEnd: '2030-03-20T07:30:00.000Z',
+    }
+
+    assert.ok(await matching.passesHardFilters(route, plan, null, []))
+  })
+
   it('rejects different serviceDate', async () => {
     const plan = { ...BASE_PLAN, serviceDate: '2030-03-21' }
     assert.equal(

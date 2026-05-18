@@ -70,6 +70,10 @@ export const MAX_BEARING_DIFF = 30 // degrees
 export const MAX_PICKUP_KM = 5
 export const MAX_DROPOFF_KM = 5
 
+const MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES = 30
+const MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES = 30
+const MS_PER_MINUTE = 60 * 1000
+
 // Near-3 canonical ward-distance threshold from spec
 const NEAR_3_MAX_WARD_DISTANCE_KM = 20
 
@@ -168,8 +172,12 @@ function blocksOverlap(
   blockEnd: string,
 ): boolean {
   const routeBlock = computeDepartureBlock(routeDepartureTime)
-  const routeStartMs = new Date(routeBlock.start).getTime()
-  const routeEndMs = new Date(routeBlock.end).getTime()
+  const routeStartMs =
+    new Date(routeBlock.start).getTime() -
+    MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES * MS_PER_MINUTE
+  const routeEndMs =
+    new Date(routeBlock.end).getTime() +
+    MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
   const planStartMs = new Date(blockStart).getTime()
   const planEndMs = new Date(blockEnd).getTime()
   return routeStartMs < planEndMs && planStartMs < routeEndMs
