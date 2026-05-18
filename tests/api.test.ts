@@ -1611,7 +1611,7 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
     assert.equal(duplicateCreateRes.body.error.details.createdCount, 0)
   })
 
-  it('creates route-scoped group offers for every same-client plan and closes siblings on accept', async () => {
+  it('creates one route-scoped group offer per same-client demand group', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
@@ -1666,18 +1666,18 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
 
     assert.equal(createRes.status, 201)
     assert.equal(createRes.body.outcome, 'created')
-    assert.equal(createRes.body.createdCount, 3)
-    assert.equal(createRes.body.skippedCount, 0)
+    assert.equal(createRes.body.createdCount, 1)
+    assert.equal(createRes.body.skippedCount, 2)
     assert.deepEqual(
       createRes.body.offers.map((offer: { planId: string }) => offer.planId),
-      planIds,
+      [planIds[0]],
     )
     assert.deepEqual(
       createRes.body.candidateResults.map((candidate: { planId: string; status: string }) => candidate),
       [
         { planId: planIds[0], status: 'created' },
-        { planId: planIds[1], status: 'created' },
-        { planId: planIds[2], status: 'created' },
+        { planId: planIds[1], status: 'skipped_existing' },
+        { planId: planIds[2], status: 'skipped_existing' },
       ],
     )
 
@@ -1685,7 +1685,7 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       'SELECT COUNT(*)::int AS count FROM group_offers WHERE route_id = $1 AND client_id = $2 AND status = $3',
       [routeRes.body.id, CLIENT_001_ID, 'pending'],
     )
-    assert.equal(Number(offerCountRes.rows[0].count), 3)
+    assert.equal(Number(offerCountRes.rows[0].count), 1)
 
     const duplicateCreateRes = await request(server, 'POST', '/api/driver/group-requests', {
       driverId: DRIVER_001_ID,
@@ -1700,37 +1700,14 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       planIds.map((planId) => ({ planId, status: 'skipped_existing' })),
     )
 
-    await query(
-      "UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1",
-      [routeRes.body.id],
-    )
-    const acceptRes = await request(
-      server,
-      'POST',
-      `/api/client/group-offers/${createRes.body.offers[1].id}/accept`,
-    )
-    assert.equal(acceptRes.status, 200)
-    assert.equal(acceptRes.body.data.status, 'accepted')
-    assert.equal(acceptRes.body.data.planId, planIds[1])
-
-    const statusesRes = await query(
-      'SELECT plan_id, status FROM group_offers WHERE route_id = $1 ORDER BY plan_id ASC',
+    const offersRes = await query(
+      'SELECT plan_id, status FROM group_offers WHERE route_id = $1 ORDER BY created_at ASC, id ASC',
       [routeRes.body.id],
     )
     assert.deepEqual(
-      statusesRes.rows.map((row: { plan_id: string; status: string }) => row),
-      [
-        { plan_id: planIds[0], status: 'closed' },
-        { plan_id: planIds[1], status: 'accepted' },
-        { plan_id: planIds[2], status: 'closed' },
-      ].sort((left, right) => left.plan_id.localeCompare(right.plan_id)),
+      offersRes.rows.map((row: { plan_id: string; status: string }) => row),
+      [{ plan_id: planIds[0], status: 'pending' }],
     )
-
-    const matchedPlansRes = await query(
-      "SELECT id, status FROM plans WHERE id = ANY($1) AND status = 'matched'",
-      [planIds],
-    )
-    assert.deepEqual(matchedPlansRes.rows.map((row: { id: string }) => row.id), [planIds[1]])
   })
 
   it('suppresses cross-route accepted plans and restores them after cancellation', async () => {

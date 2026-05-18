@@ -159,20 +159,6 @@ function dedupePreservingOrder(values: string[]): string[] {
   return deduped
 }
 
-function isActiveRoutePlanGroupOfferUniqueViolation(error: unknown): boolean {
-  const activeGroupOfferUniqueConstraints = new Set([
-    'group_offers_active_route_plan_idx',
-    'group_offers_active_client_route_idx',
-  ])
-
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { code?: string; constraint?: string }).code === '23505' &&
-    activeGroupOfferUniqueConstraints.has((error as { constraint?: string }).constraint ?? '')
-  )
-}
-
 async function checkRouteAvailability(
   executor: DbQueryExecutor,
   routeId: string,
@@ -246,6 +232,7 @@ export async function createGroupRequestWithOffers(
     const offers: GroupOffer[] = []
     const candidateResults: GroupRequestCandidateResult[] = []
     let eligiblePlans: Plan[] = []
+    const eligibleClientIds = new Set<string>()
     let groupRequest: GroupRequest | undefined
 
     for (const planId of memberPlanIds) {
@@ -260,20 +247,21 @@ export async function createGroupRequestWithOffers(
         continue
       }
 
+      if (eligibleClientIds.has(plan.clientId)) {
+        candidateResults.push({ planId, status: 'skipped_existing' })
+        continue
+      }
+
       const existingOfferRes = await tx.query(
         `
           SELECT status FROM group_offers
-          WHERE route_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted')
+          WHERE route_id = $1 AND client_id = $2 AND status IN ('pending', 'accepted')
           LIMIT 1
         `,
-        [input.routeId, planId],
+        [input.routeId, plan.clientId],
       )
       if ((existingOfferRes.rowCount || 0) > 0) {
-        const status = existingOfferRes.rows[0]?.status
-        candidateResults.push({
-          planId,
-          status: status === 'accepted' ? 'skipped_matched' : 'skipped_existing',
-        })
+        candidateResults.push({ planId, status: 'skipped_existing' })
         continue
       }
 
@@ -294,6 +282,7 @@ export async function createGroupRequestWithOffers(
         const status = existingRouteRequestRes.rows[0]?.status
         if (status === 'pending') {
           eligiblePlans.push(plan)
+          eligibleClientIds.add(plan.clientId)
           continue
         }
         candidateResults.push({
@@ -318,6 +307,7 @@ export async function createGroupRequestWithOffers(
       }
 
       eligiblePlans.push(plan)
+      eligibleClientIds.add(plan.clientId)
     }
 
     const eligiblePlanIds = eligiblePlans.map((plan) => plan.id)
@@ -513,32 +503,27 @@ export async function createGroupRequestWithOffers(
     }
 
     for (const plan of eligiblePlans) {
-      try {
-        const offerRes = await tx.query(
-          `
+      const offerRes = await tx.query(
+        `
           INSERT INTO group_offers (id, group_request_id, route_id, driver_id, client_id, plan_id, trip_price, status, created_at)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
           RETURNING *
         `,
-          [
-            generateId('goffer'),
-            groupRequest.id,
-            input.routeId,
-            input.driverId,
-            plan.clientId,
-            plan.id,
-            route.tripPrice,
-            'pending',
-          ],
-        )
-        const offer = toCamelCase<GroupOffer>(offerRes.rows[0])
-        if (offer) {
-          offers.push(offer)
-          candidateResults.push({ planId: plan.id, status: 'created' })
-        }
-      } catch (error) {
-        if (!isActiveRoutePlanGroupOfferUniqueViolation(error)) throw error
-        candidateResults.push({ planId: plan.id, status: 'skipped_existing' })
+        [
+          generateId('goffer'),
+          groupRequest.id,
+          input.routeId,
+          input.driverId,
+          plan.clientId,
+          plan.id,
+          route.tripPrice,
+          'pending',
+        ],
+      )
+      const offer = toCamelCase<GroupOffer>(offerRes.rows[0])
+      if (offer) {
+        offers.push(offer)
+        candidateResults.push({ planId: plan.id, status: 'created' })
       }
     }
 
