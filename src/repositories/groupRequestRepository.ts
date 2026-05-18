@@ -32,6 +32,7 @@ export interface CreateGroupRequestTxInput {
   demandGroupId: string
   note?: string
   memberPlanIds: string[]
+  targetPlanId?: string
 }
 
 const ROUTE_ACCEPTED_SQL = `
@@ -483,10 +484,16 @@ export async function createGroupRequestWithOffers(
     }
 
     if (!groupRequest) {
+      const targetPlan = input.targetPlanId
+        ? eligiblePlans.find((plan) => plan.id === input.targetPlanId)
+        : undefined
       const requestRes = await tx.query(
         `
-        INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        INSERT INTO group_requests (
+          id, driver_id, route_id, demand_group_id, note, status,
+          client_id, accepted_plan_id, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
         RETURNING *
       `,
         [
@@ -496,6 +503,8 @@ export async function createGroupRequestWithOffers(
           input.demandGroupId,
           input.note || '',
           'pending',
+          targetPlan?.clientId ?? null,
+          targetPlan?.id ?? null,
         ],
       )
       groupRequest = toCamelCase<GroupRequest>(requestRes.rows[0]) || undefined

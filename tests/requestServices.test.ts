@@ -416,6 +416,44 @@ describe('MVC request services idempotent group send', () => {
     assert.equal(Number(offersAfterSecond.rows[0].count), uniquePlanIds.length)
   })
 
+  it('stores target plan/client identity on targeted pending group request parent', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const groups = await groupRequestRepository.deriveDemandGroups()
+    const group = groups.find((g) => g.memberCount > 1)
+    assert.ok(group, 'Need a multi-member group for targeted group-send test')
+    const targetPlanId = group.memberPlanIds[1]
+    assert.ok(targetPlanId)
+
+    const planRes = await query('SELECT client_id FROM plans WHERE id = $1', [
+      targetPlanId,
+    ])
+    const targetClientId = planRes.rows[0]?.client_id
+    assert.ok(targetClientId)
+
+    const result = await groupRequestRepository.createGroupRequestWithOffers({
+      driverId: DRIVER_001_ID,
+      routeId: 'route-001',
+      demandGroupId: group.id,
+      memberPlanIds: [targetPlanId],
+      targetPlanId,
+    })
+
+    assert.equal(result.createdCount, 1)
+    assert.equal(result.groupRequest.clientId, targetClientId)
+    assert.equal(result.groupRequest.acceptedPlanId, targetPlanId)
+    assert.deepEqual(result.offers.map((offer) => offer.planId), [targetPlanId])
+
+    const listed = await groupRequestRepository.listGroupRequestsByDriver(
+      DRIVER_001_ID,
+    )
+    const listedRequest = listed.find((request) => request.id === result.groupRequest.id)
+    assert.ok(listedRequest)
+    assert.equal(listedRequest.clientId, targetClientId)
+    assert.equal(listedRequest.acceptedPlanId, targetPlanId)
+  })
+
   it('auto-matches oldest reciprocal route request and stops group-send batch', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return

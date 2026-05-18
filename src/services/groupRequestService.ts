@@ -42,6 +42,7 @@ export const groupRequestService: GroupRequestService = {
       demandGroupId,
       note,
       memberPlanIds,
+      targetPlanId,
     })
 
     for (const offer of result.offers) {
