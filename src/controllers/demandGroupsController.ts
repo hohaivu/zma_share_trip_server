@@ -3,6 +3,12 @@ import { Request, Response } from 'express'
 import { demandGroupService } from '../services/demandGroupService'
 import { notFound } from './helpers'
 
+function getRouteIdQuery(req: Request): string | undefined {
+  return typeof req.query.routeId === 'string' && req.query.routeId.trim()
+    ? req.query.routeId
+    : undefined
+}
+
 export interface DemandGroupsController {
   getDemandGroup(req: Request, res: Response): Promise<void | Response>
   getDemandGroupMembers(req: Request, res: Response): Promise<void | Response>
@@ -11,7 +17,10 @@ export interface DemandGroupsController {
 export function createDemandGroupsController(): DemandGroupsController {
   return {
     async getDemandGroup(req, res) {
-      const group = await demandGroupService.getDemandGroup(req.params.id as string)
+      const group = await demandGroupService.getDemandGroup(
+        req.params.id as string,
+        getRouteIdQuery(req),
+      )
       if (!group) {
         return notFound(res, 'Demand group not found')
       }
@@ -20,7 +29,10 @@ export function createDemandGroupsController(): DemandGroupsController {
     },
 
     async getDemandGroupMembers(req, res) {
-      const members = await demandGroupService.getDemandGroupMembers(req.params.id as string)
+      const members = await demandGroupService.getDemandGroupMembers(
+        req.params.id as string,
+        getRouteIdQuery(req),
+      )
       if (!members) {
         return notFound(res, 'Demand group not found')
       }

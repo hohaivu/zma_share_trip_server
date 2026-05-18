@@ -1493,6 +1493,86 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
     assert.equal(res.status, 404)
   })
 
+  it('resolves route-scoped demand group details and members with routeId query', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const routeRes = await request(server, 'POST', '/api/driver/routes', {
+      driverId: DRIVER_001_ID,
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-route-scope-pickup',
+      destinationWardId: 'ward-route-scope-dropoff',
+      serviceDate: '2030-04-10',
+      departureTime: '2030-04-10T07:00:00.000Z',
+      tripPrice: 120000,
+    })
+    assert.equal(routeRes.status, 201)
+    await query("UPDATE routes SET status = 'published', distance_meters = COALESCE(distance_meters, 10000) WHERE id = $1", [
+      routeRes.body.id,
+    ])
+
+    const planRes = await request(server, 'POST', '/api/client/trip-plans', {
+      clientId: CLIENT_001_ID,
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-route-scope-pickup',
+      dropoffWardId: 'ward-route-scope-dropoff',
+      serviceDate: '2030-04-10',
+      departureBlockStart: '2030-04-10T07:15:00.000Z',
+      departureBlockEnd: '2030-04-10T07:45:00.000Z',
+      passengerCount: 2,
+    })
+    assert.equal(planRes.status, 201)
+    await query("UPDATE plans SET status = 'published' WHERE id = $1", [
+      planRes.body.id,
+    ])
+
+    const groupsRes = await request(
+      server,
+      'GET',
+      `/api/driver/routes/${routeRes.body.id}/matched-demand-groups`,
+    )
+    assert.equal(groupsRes.status, 200)
+    const group = groupsRes.body.find(
+      (entry: { pickupWardId: string }) =>
+        entry.pickupWardId === 'ward-route-scope-pickup',
+    )
+    assert.ok(group)
+    assert.equal(
+      group.demandGroupId,
+      'dg-2030-04-10|ward-route-scope-pickup|ward-route-scope-dropoff',
+    )
+
+    const legacyDetailRes = await request(
+      server,
+      'GET',
+      `/api/driver/demand-groups/${encodeURIComponent(group.demandGroupId)}`,
+    )
+    assert.equal(legacyDetailRes.status, 404)
+
+    const detailRes = await request(
+      server,
+      'GET',
+      `/api/driver/demand-groups/${encodeURIComponent(group.demandGroupId)}?routeId=${encodeURIComponent(routeRes.body.id)}`,
+    )
+    assert.equal(detailRes.status, 200)
+    assert.equal(detailRes.body.id, group.demandGroupId)
+    assert.deepEqual(detailRes.body.memberPlanIds, [planRes.body.id])
+
+    const membersRes = await request(
+      server,
+      'GET',
+      `/api/driver/demand-groups/${encodeURIComponent(group.demandGroupId)}/members?routeId=${encodeURIComponent(routeRes.body.id)}`,
+    )
+    assert.equal(membersRes.status, 200)
+    assert.deepEqual(
+      membersRes.body.map((member: { id: string }) => member.id),
+      [planRes.body.id],
+    )
+  })
+
   it('suppresses cross-route accepted plans and restores them after cancellation', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return

@@ -3,8 +3,8 @@ import { DemandGroupSummary } from '../types/payloads'
 import * as demandGroupRepository from '../repositories/demandGroupRepository'
 
 export interface DemandGroupService {
-  getDemandGroup(groupId: string): Promise<DemandGroupSummary | null>
-  getDemandGroupMembers(groupId: string): Promise<Plan[] | null>
+  getDemandGroup(groupId: string, routeId?: string): Promise<DemandGroupSummary | null>
+  getDemandGroupMembers(groupId: string, routeId?: string): Promise<Plan[] | null>
 }
 
 export const demandGroupService: DemandGroupService = {
