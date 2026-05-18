@@ -6,6 +6,7 @@ import {
   GroupRequest,
   GroupRequestCandidateResult,
   GroupRequestCreateResult,
+  GroupRequestWithOffers,
   Plan,
   Route,
   RouteRequest,
@@ -598,10 +599,25 @@ export async function cancelGroupRequestWithOffers(
 
 export async function listGroupRequestsByDriver(
   driverId: string,
-): Promise<GroupRequest[]> {
-  const result = await query(
+): Promise<GroupRequestWithOffers[]> {
+  const requestsRes = await query(
     'SELECT * FROM group_requests WHERE driver_id = $1',
     [driverId],
   )
-  return mapRows<GroupRequest>(result.rows)
+  const requests = mapRows<GroupRequest>(requestsRes.rows)
+  if (requests.length === 0) return []
+
+  const ids = requests.map((r) => r.id)
+  const offersRes = await query(
+    'SELECT * FROM group_offers WHERE group_request_id = ANY($1)',
+    [ids],
+  )
+  const offers = mapRows<GroupOffer>(offersRes.rows)
+  const byRequestId = new Map<string, GroupOffer[]>()
+  for (const offer of offers) {
+    const list = byRequestId.get(offer.groupRequestId) ?? []
+    list.push(offer)
+    byRequestId.set(offer.groupRequestId, list)
+  }
+  return requests.map((req) => ({ ...req, offers: byRequestId.get(req.id) ?? [] }))
 }

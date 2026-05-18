@@ -1,5 +1,5 @@
 import { HttpError } from '../http-error'
-import { GroupRequest, GroupRequestCreateResult } from '../types/entities'
+import { GroupRequest, GroupRequestCreateResult, GroupRequestWithOffers } from '../types/entities'
 import * as driverRouteRepository from '../repositories/driverRouteRepository'
 import * as groupRequestRepository from '../repositories/groupRequestRepository'
 import { emitNotification } from './notificationService'
@@ -13,7 +13,7 @@ export interface GroupRequestService {
     note?: string,
     targetPlanId?: string,
   ): Promise<GroupRequestCreateResult>
-  listGroupRequestsByDriver(driverId: string): Promise<GroupRequest[]>
+  listGroupRequestsByDriver(driverId: string): Promise<GroupRequestWithOffers[]>
   cancelGroupRequest(requestId: string): Promise<GroupRequest>
 }
 

@@ -174,6 +174,10 @@ export interface GroupRequest {
   createdAt?: string
 }
 
+export interface GroupRequestWithOffers extends GroupRequest {
+  offers: GroupOffer[]
+}
+
 export interface GroupOffer {
   id: string
   groupRequestId: string
