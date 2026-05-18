@@ -160,11 +160,16 @@ function dedupePreservingOrder(values: string[]): string[] {
 }
 
 function isActiveRoutePlanGroupOfferUniqueViolation(error: unknown): boolean {
+  const activeGroupOfferUniqueConstraints = new Set([
+    'group_offers_active_route_plan_idx',
+    'group_offers_active_client_route_idx',
+  ])
+
   return (
     typeof error === 'object' &&
     error !== null &&
     (error as { code?: string; constraint?: string }).code === '23505' &&
-    (error as { constraint?: string }).constraint === 'group_offers_active_route_plan_idx'
+    activeGroupOfferUniqueConstraints.has((error as { constraint?: string }).constraint ?? '')
   )
 }
 
