@@ -1,9 +1,18 @@
 import { query, withTransaction } from '../db/connection'
 import { mapRows, parseNumeric, toCamelCase } from '../db/utils'
 import { HttpError } from '../http-error'
-import { GroupOffer, GroupRequest, Plan, Route } from '../types/entities'
-import { DbQueryExecutor } from './walletRepository'
+import {
+  GroupOffer,
+  GroupRequest,
+  GroupRequestCandidateResult,
+  GroupRequestCreateResult,
+  Plan,
+  Route,
+  RouteRequest,
+} from '../types/entities'
+import { chargeRouteFeeTx, DbQueryExecutor } from './walletRepository'
 import { DemandGroupSummary } from '../types/payloads'
+import { assertRoutePlanEndsInFutureTx, expirePendingMatchesTx } from './requestLifecycleRepository'
 
 function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}${Math.random().toString().slice(2, 6)}`
@@ -26,9 +35,9 @@ export interface CreateGroupRequestTxInput {
 }
 
 const ROUTE_ACCEPTED_SQL = `
-  SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
+  SELECT 1 FROM group_offers WHERE (route_id = $1 OR plan_id = $2) AND status = 'accepted'
   UNION ALL
-  SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
+  SELECT 1 FROM route_requests WHERE (route_id = $1 OR plan_id = $2) AND status = 'accepted'
 `
 
 function normalizeUtc(value?: string | Date | null): string | undefined {
@@ -48,15 +57,37 @@ function buildGroupKey(plan: Plan): string {
   return `${serviceDate}|${pickupKey}|${dropoffKey}|${departureBlockStart}`
 }
 
+function dedupePreservingOrder(values: string[]): string[] {
+  const seen = new Set<string>()
+  const deduped: string[] = []
+  for (const value of values) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    deduped.push(value)
+  }
+  return deduped
+}
+
+function isActiveGroupOfferUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: string; constraint?: string }).code === '23505' &&
+    (error as { constraint?: string }).constraint === 'group_offers_active_client_route_idx'
+  )
+}
+
 async function checkRouteAvailability(
   executor: DbQueryExecutor,
   routeId: string,
+  planId?: string,
 ): Promise<boolean> {
-  const result = await executor.query(ROUTE_ACCEPTED_SQL, [routeId])
+  const result = await executor.query(ROUTE_ACCEPTED_SQL, [routeId, planId ?? null])
   return result.rowCount === 0
 }
 
 export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
+  await expirePendingMatchesTx({ query })
   const result = await query(
     `
       SELECT *
@@ -67,6 +98,7 @@ export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
           FROM route_requests sr
           WHERE sr.plan_id = p.id AND sr.status = 'accepted'
         )
+        AND NOW() < p.departure_block_end
         AND NOT EXISTS (
           SELECT 1
           FROM group_offers go
@@ -122,68 +154,343 @@ export interface CancelGroupRequestTxResult {
 
 export async function createGroupRequestWithOffers(
   input: CreateGroupRequestTxInput,
-): Promise<{ groupRequest: GroupRequest; offers: GroupOffer[] }> {
+): Promise<GroupRequestCreateResult> {
+  const memberPlanIds = dedupePreservingOrder(input.memberPlanIds)
+
   return withTransaction(async (tx) => {
+    await expirePendingMatchesTx(tx)
     const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [
       input.routeId,
     ])
     const route = routeRes.rows[0] ? mapRoute(routeRes.rows[0]) : null
     if (!route) throw new HttpError(404, 'Route not found')
+    if (route.driverId !== input.driverId) throw new HttpError(403, 'Route does not belong to driver')
 
-    if (!(await checkRouteAvailability(tx, input.routeId))) {
-      throw new HttpError(
-        409,
-        'Route is not available — already has an accepted client',
-      )
+    if (route.status !== 'published') {
+      throw HttpError.withSafeDetails(409, `Cannot create group request for route in status: ${route.status}`, {
+        outcome: 'no_new_requests',
+        createdCount: 0,
+        skippedCount: memberPlanIds.length,
+        refreshHint: 'no_new_candidates',
+        candidateResults: memberPlanIds.map((planId) => ({
+          planId,
+          status: 'skipped_unavailable' as const,
+        })),
+      })
     }
 
-    const groupRequestId = generateId('greq')
-    const requestRes = await tx.query(
-      `
-      INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
-      RETURNING *
-    `,
-      [
-        groupRequestId,
-        input.driverId,
-        input.routeId,
-        input.demandGroupId,
-        input.note || '',
-        'pending',
-      ],
-    )
-    const groupRequest = toCamelCase<GroupRequest>(requestRes.rows[0])
-    if (!groupRequest) throw new Error('Failed to create group request')
-
+    const routeAvailable = await checkRouteAvailability(tx, input.routeId)
+    const routeStillOpen = new Date(route.windowEnd).getTime() > Date.now()
     const offers: GroupOffer[] = []
-    for (const planId of input.memberPlanIds) {
-      const planRes = await tx.query('SELECT * FROM plans WHERE id = $1', [planId])
-      const plan = toCamelCase<Plan>(planRes.rows[0])
-      if (!plan) continue
+    const candidateResults: GroupRequestCandidateResult[] = []
+    const eligiblePlans: Plan[] = []
+    let groupRequest: GroupRequest | undefined
 
-      const offerRes = await tx.query(
+    for (const planId of memberPlanIds) {
+      const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [planId])
+      const plan = toCamelCase<Plan>(planRes.rows[0])
+      if (!plan || plan.status !== 'published') {
+        candidateResults.push({ planId, status: 'skipped_unavailable' })
+        continue
+      }
+      if (!routeStillOpen || new Date(plan.departureBlockEnd).getTime() <= Date.now()) {
+        candidateResults.push({ planId, status: 'skipped_unavailable' })
+        continue
+      }
+
+      const existingOfferRes = await tx.query(
         `
-        INSERT INTO group_offers (id, group_request_id, route_id, driver_id, client_id, plan_id, trip_price, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+          SELECT status FROM group_offers
+          WHERE route_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted')
+          LIMIT 1
+        `,
+        [input.routeId, planId],
+      )
+      if ((existingOfferRes.rowCount || 0) > 0) {
+        const status = existingOfferRes.rows[0]?.status
+        candidateResults.push({
+          planId,
+          status: status === 'accepted' ? 'skipped_matched' : 'skipped_existing',
+        })
+        continue
+      }
+
+      if (!routeAvailable) {
+        candidateResults.push({ planId, status: 'skipped_unavailable' })
+        continue
+      }
+
+      const existingRouteRequestRes = await tx.query(
+        `
+          SELECT status FROM route_requests
+          WHERE route_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted')
+          LIMIT 1
+        `,
+        [input.routeId, planId],
+      )
+      if ((existingRouteRequestRes.rowCount || 0) > 0) {
+        const status = existingRouteRequestRes.rows[0]?.status
+        if (status === 'pending') {
+          eligiblePlans.push(plan)
+          continue
+        }
+        candidateResults.push({
+          planId,
+          status: status === 'accepted' ? 'skipped_matched' : 'skipped_existing',
+        })
+        continue
+      }
+
+      const matchedPlanRes = await tx.query(
+        `
+          SELECT 1 FROM group_offers WHERE plan_id = $1 AND status = 'accepted'
+          UNION ALL
+          SELECT 1 FROM route_requests WHERE plan_id = $1 AND status = 'accepted'
+          LIMIT 1
+        `,
+        [planId],
+      )
+      if ((matchedPlanRes.rowCount || 0) > 0) {
+        candidateResults.push({ planId, status: 'skipped_matched' })
+        continue
+      }
+
+      eligiblePlans.push(plan)
+    }
+
+    const eligiblePlanIds = eligiblePlans.map((plan) => plan.id)
+
+    if (eligiblePlanIds.length > 0) {
+      const reciprocalRes = await tx.query(
+        `
+          SELECT * FROM route_requests
+          WHERE route_id = $1
+            AND plan_id = ANY($2)
+            AND status = 'pending'
+          ORDER BY created_at ASC, id ASC
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [input.routeId, eligiblePlanIds],
+      )
+      const matchedRouteRequest = toCamelCase<RouteRequest>(reciprocalRes.rows[0])
+
+      if (matchedRouteRequest) {
+        const matchedPlan = eligiblePlans.find((plan) => plan.id === matchedRouteRequest.planId)
+        if (!matchedPlan) throw new Error('Matched reciprocal request plan was not eligible')
+
+        const existingParentRes = await tx.query(
+          `
+            SELECT * FROM group_requests
+            WHERE route_id = $1 AND demand_group_id = $2 AND driver_id = $3 AND status = 'pending'
+            ORDER BY created_at DESC
+            LIMIT 1
+            FOR UPDATE
+          `,
+          [input.routeId, input.demandGroupId, input.driverId],
+        )
+        groupRequest = toCamelCase<GroupRequest>(existingParentRes.rows[0]) || undefined
+
+        if (!groupRequest) {
+          const requestRes = await tx.query(
+            `
+              INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status, created_at)
+              VALUES ($1, $2, $3, $4, $5, $6, NOW())
+              RETURNING *
+            `,
+            [
+              generateId('greq'),
+              input.driverId,
+              input.routeId,
+              input.demandGroupId,
+              input.note || '',
+              'pending',
+            ],
+          )
+          groupRequest = toCamelCase<GroupRequest>(requestRes.rows[0]) || undefined
+          if (!groupRequest) throw new Error('Failed to create group request')
+        }
+
+        if (!(await checkRouteAvailability(tx, input.routeId, matchedRouteRequest.planId))) {
+          throw new HttpError(409, 'Route or plan is no longer available — another client was accepted first')
+        }
+        await assertRoutePlanEndsInFutureTx(tx, input.routeId, matchedRouteRequest.planId, 'Route or plan has expired')
+
+        const offerRes = await tx.query(
+          `
+            INSERT INTO group_offers (
+              id, group_request_id, route_id, driver_id, client_id, plan_id,
+              trip_price, status, source_route_request_id, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'accepted', $8, NOW())
+            RETURNING *
+          `,
+          [
+            generateId('goffer'),
+            groupRequest.id,
+            input.routeId,
+            input.driverId,
+            matchedRouteRequest.clientId,
+            matchedRouteRequest.planId,
+            route.tripPrice,
+            matchedRouteRequest.id,
+          ],
+        )
+        const matchedOffer = toCamelCase<GroupOffer>(offerRes.rows[0])
+        if (!matchedOffer) throw new Error('Failed to create matched group offer')
+
+        const updatedRouteRequestRes = await tx.query(
+          `
+            UPDATE route_requests
+            SET status = 'accepted', accepted_group_offer_id = $1
+            WHERE id = $2
+              AND status = 'pending'
+            RETURNING *
+          `,
+          [matchedOffer.id, matchedRouteRequest.id],
+        )
+        const updatedRouteRequest = toCamelCase<RouteRequest>(updatedRouteRequestRes.rows[0])
+        if (!updatedRouteRequest) {
+          throw new HttpError(409, 'Matched route request is no longer pending')
+        }
+
+        const routeUpdateRes = await tx.query("UPDATE routes SET status = 'matched' WHERE id = $1 AND status = 'published'", [input.routeId])
+        if (routeUpdateRes.rowCount === 0) throw new HttpError(409, 'Route is no longer published')
+        const planUpdateRes = await tx.query("UPDATE plans SET status = 'matched' WHERE id = $1 AND status = 'published'", [
+          matchedRouteRequest.planId,
+        ])
+        if (planUpdateRes.rowCount === 0) throw new HttpError(409, 'Plan is no longer published')
+        await chargeRouteFeeTx(tx, route, mapRoute, {
+          description: 'Route fee charged on reciprocal group request match',
+        })
+        await tx.query(
+          "UPDATE group_offers SET status = 'closed' WHERE (route_id = $1 OR plan_id = $3) AND id != $2 AND status = 'pending'",
+          [input.routeId, matchedOffer.id, matchedOffer.planId],
+        )
+        await tx.query(
+          "UPDATE route_requests SET status = 'closed' WHERE (route_id = $1 OR plan_id = $3) AND id != $2 AND status = 'pending'",
+          [input.routeId, matchedRouteRequest.id, matchedOffer.planId],
+        )
+
+        const updatedParentRes = await tx.query(
+          `
+            UPDATE group_requests
+            SET status = 'accepted', accepted_client_user_id = $1, accepted_plan_id = $2, client_id = $1
+            WHERE id = $3
+            RETURNING *
+          `,
+          [matchedOffer.clientId, matchedOffer.planId, groupRequest.id],
+        )
+        groupRequest = toCamelCase<GroupRequest>(updatedParentRes.rows[0]) || groupRequest
+
+        return {
+          groupRequest,
+          offers: [matchedOffer],
+          outcome: 'matched',
+          matchedOffer,
+          matchedRouteRequest: updatedRouteRequest,
+          match: {
+            kind: 'reciprocal_request',
+            sourceRouteRequestId: updatedRouteRequest.id,
+            acceptedGroupOfferId: matchedOffer.id,
+            routeId: input.routeId,
+            planId: matchedOffer.planId,
+            clientId: matchedOffer.clientId,
+            driverId: input.driverId,
+          },
+          createdCount: 1,
+          skippedCount: 0,
+          refreshHint: 'none',
+          candidateResults: [{ planId: matchedOffer.planId, status: 'matched' }],
+        }
+      }
+    }
+
+    if (eligiblePlans.length === 0) {
+      const existingParentRes = await tx.query(
+        `
+          SELECT * FROM group_requests
+          WHERE route_id = $1 AND demand_group_id = $2 AND driver_id = $3 AND status = 'pending'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `,
+        [input.routeId, input.demandGroupId, input.driverId],
+      )
+      groupRequest = toCamelCase<GroupRequest>(existingParentRes.rows[0]) || undefined
+      if (!groupRequest) {
+        const createdCount = 0
+        const skippedCount = candidateResults.length
+        throw HttpError.withSafeDetails(409, 'No new group requests available', {
+          outcome: 'no_new_requests',
+          createdCount,
+          skippedCount,
+          refreshHint: 'no_new_candidates',
+          candidateResults,
+        })
+      }
+    }
+
+    if (!groupRequest) {
+      const requestRes = await tx.query(
+        `
+        INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
         RETURNING *
       `,
         [
-          generateId('goffer'),
-          groupRequest.id,
-          input.routeId,
+          generateId('greq'),
           input.driverId,
-          plan.clientId,
-          planId,
-          route.tripPrice,
+          input.routeId,
+          input.demandGroupId,
+          input.note || '',
           'pending',
         ],
       )
-      const offer = toCamelCase<GroupOffer>(offerRes.rows[0])
-      if (offer) offers.push(offer)
+      groupRequest = toCamelCase<GroupRequest>(requestRes.rows[0]) || undefined
+      if (!groupRequest) throw new Error('Failed to create group request')
     }
 
-    return { groupRequest, offers }
+    for (const plan of eligiblePlans) {
+      try {
+        const offerRes = await tx.query(
+          `
+          INSERT INTO group_offers (id, group_request_id, route_id, driver_id, client_id, plan_id, trip_price, status, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+          RETURNING *
+        `,
+          [
+            generateId('goffer'),
+            groupRequest.id,
+            input.routeId,
+            input.driverId,
+            plan.clientId,
+            plan.id,
+            route.tripPrice,
+            'pending',
+          ],
+        )
+        const offer = toCamelCase<GroupOffer>(offerRes.rows[0])
+        if (offer) {
+          offers.push(offer)
+          candidateResults.push({ planId: plan.id, status: 'created' })
+        }
+      } catch (error) {
+        if (!isActiveGroupOfferUniqueViolation(error)) throw error
+        candidateResults.push({ planId: plan.id, status: 'skipped_existing' })
+      }
+    }
+
+    const createdCount = offers.length
+    const skippedCount = candidateResults.length - createdCount
+    return {
+      groupRequest,
+      offers,
+      outcome: createdCount > 0 ? 'created' : 'no_new_requests',
+      createdCount,
+      skippedCount,
+      refreshHint: createdCount > 0 ? 'none' : 'no_new_candidates',
+      candidateResults,
+    }
   })
 }
 

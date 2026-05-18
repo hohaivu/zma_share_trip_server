@@ -93,7 +93,7 @@ export async function deleteSavedLocation(id: string): Promise<boolean> {
   return result.rowCount !== null && result.rowCount > 0
 }
 
-type AcceptedJourneyMatch = Awaited<ReturnType<typeof findAcceptedRouteMatchTx>>
+type AcceptedJourneyMatch = NonNullable<Awaited<ReturnType<typeof findAcceptedRouteMatchTx>>>
 
 async function unwindRouteFeeOnMatchedCancel(executor: DbQueryExecutor, route: Route): Promise<Route> {
   switch (route.walletFeeStatus) {
@@ -113,10 +113,86 @@ async function unwindRouteFeeOnMatchedCancel(executor: DbQueryExecutor, route: R
 async function cancelAcceptedMatchTx(executor: DbQueryExecutor, accepted: AcceptedJourneyMatch): Promise<void> {
   if (!accepted) return
   if (accepted.kind === 'route_request') {
-    await executor.query("UPDATE route_requests SET status = 'canceled' WHERE id = $1", [accepted.request.id])
+    if (accepted.request.acceptedGroupOfferId) {
+      await executor.query(
+        `UPDATE group_requests gr
+         SET status = 'canceled'
+         FROM group_offers go
+         WHERE go.group_request_id = gr.id
+           AND (go.id = $1 OR go.source_route_request_id = $2)
+           AND gr.status = 'accepted'`,
+        [accepted.request.acceptedGroupOfferId, accepted.request.id],
+      )
+    }
+    await executor.query(
+      `UPDATE route_requests
+       SET status = 'canceled'
+       WHERE (id = $1 OR accepted_group_offer_id = $2)
+         AND status = 'accepted'`,
+      [accepted.request.id, accepted.request.acceptedGroupOfferId],
+    )
+    if (accepted.request.acceptedGroupOfferId) {
+      await executor.query(
+        `UPDATE group_offers
+         SET status = 'canceled'
+         WHERE (id = $1 OR source_route_request_id = $2)
+           AND status = 'accepted'`,
+        [accepted.request.acceptedGroupOfferId, accepted.request.id],
+      )
+    }
   } else {
-    await executor.query("UPDATE group_offers SET status = 'canceled' WHERE id = $1", [accepted.offer.id])
+    await executor.query(
+      `UPDATE group_requests gr
+       SET status = 'canceled'
+       FROM group_offers go
+       WHERE go.group_request_id = gr.id
+         AND (go.id = $1 OR go.source_route_request_id = $2)
+         AND gr.status = 'accepted'`,
+      [accepted.offer.id, accepted.offer.sourceRouteRequestId],
+    )
+    await executor.query(
+      `UPDATE group_offers
+       SET status = 'canceled'
+       WHERE (id = $1 OR source_route_request_id = $2)
+         AND status = 'accepted'`,
+      [accepted.offer.id, accepted.offer.sourceRouteRequestId],
+    )
+    if (accepted.offer.sourceRouteRequestId) {
+      await executor.query(
+        `UPDATE route_requests
+         SET status = 'canceled'
+         WHERE (id = $1 OR accepted_group_offer_id = $2)
+           AND status = 'accepted'`,
+        [accepted.offer.sourceRouteRequestId, accepted.offer.id],
+      )
+    }
   }
+}
+
+async function updateMatchedCounterpartPlanAfterRouteCancelTx(
+  executor: DbQueryExecutor,
+  accepted: AcceptedJourneyMatch,
+): Promise<void> {
+  const planId = accepted.kind === 'route_request' ? accepted.request.planId : accepted.offer.planId
+  if (!planId) return
+  await executor.query(
+    `UPDATE plans
+     SET status = CASE WHEN departure_block_end > NOW() THEN 'published' ELSE 'canceled' END
+     WHERE id = $1 AND status = 'matched'`,
+    [planId],
+  )
+}
+
+async function updateMatchedCounterpartRouteAfterPlanCancelTx(
+  executor: DbQueryExecutor,
+  routeId: string,
+): Promise<void> {
+  await executor.query(
+    `UPDATE routes
+     SET status = CASE WHEN window_end > NOW() THEN 'published' ELSE 'canceled' END
+     WHERE id = $1 AND status = 'matched'`,
+    [routeId],
+  )
 }
 
 async function cancelRouteTripTx(executor: DbQueryExecutor, route: Route): Promise<Route> {
@@ -125,6 +201,7 @@ async function cancelRouteTripTx(executor: DbQueryExecutor, route: Route): Promi
   if (accepted) {
     route = await unwindRouteFeeOnMatchedCancel(executor, route)
     await cancelAcceptedMatchTx(executor, accepted)
+    await updateMatchedCounterpartPlanAfterRouteCancelTx(executor, accepted)
   } else if (route.walletFeeStatus === 'reserved') {
     route = await releaseRouteFeeTx(executor, route, mapRoute, { description: 'Route fee released on route cancel' })
   } else if (route.walletFeeStatus === 'charged') {
@@ -142,6 +219,7 @@ async function cancelPlanTripTx(executor: DbQueryExecutor, plan: Plan): Promise<
     const route = await loadRouteForWalletTx(executor, routeId, mapRoute)
     await unwindRouteFeeOnMatchedCancel(executor, route)
     await cancelAcceptedMatchTx(executor, accepted)
+    await updateMatchedCounterpartRouteAfterPlanCancelTx(executor, routeId)
   }
   const updatedPlan = await executor.query("UPDATE plans SET status = 'canceled' WHERE id = $1 RETURNING *", [plan.id])
   const canceledPlan = toCamelCase<Plan>(updatedPlan.rows[0])

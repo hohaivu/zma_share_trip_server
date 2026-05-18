@@ -1,11 +1,12 @@
-import { computeDepartureBlock } from './domain/departureBlock'
 import * as driverRouteRepository from './repositories/driverRouteRepository'
 import * as demandGroupRepository from './repositories/demandGroupRepository'
+import * as groupOfferRepository from './repositories/groupOfferRepository'
 import * as routeRequestRepository from './repositories/routeRequestRepository'
 import * as userService from './services/userService'
 import { Location, User } from './types/entities'
 import {
   DemandGroupResult,
+  DemandGroupCandidate,
   DemandGroupSummary,
   MatchingRouteResult,
   PlanLike,
@@ -69,10 +70,20 @@ export function bearingDifference(a: number, b: number): number {
 export const MAX_BEARING_DIFF = 30 // degrees
 export const MAX_PICKUP_KM = 5
 export const MAX_DROPOFF_KM = 5
+export const SOFT_TIME_BUFFER_MINUTES = 30
 
-const MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES = 30
-const MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES = 30
 const MS_PER_MINUTE = 60 * 1000
+
+type MatchedDemandGroupMetadata = Pick<
+  DemandGroupResult,
+  | 'candidateCount'
+  | 'eligibleToSendCount'
+  | 'sameDirectionPendingCount'
+  | 'reciprocalPendingCount'
+  | 'ctaType'
+  | 'refreshHint'
+  | 'candidates'
+>
 
 // Near-3 canonical ward-distance threshold from spec
 const NEAR_3_MAX_WARD_DISTANCE_KM = 20
@@ -161,25 +172,22 @@ export function estimateDetour(
   return Math.round(((pickupDist + dropoffDist) / 30) * 60)
 }
 
-// ─── Block Overlap ────────────────────────────────────────────────────────────
+// ─── Soft-Time Overlap ────────────────────────────────────────────────────────
 
 /**
- * Check whether a route's departure block overlaps with a plan's departure block.
+ * Check whether route and plan soft-time windows strictly overlap.
  */
-function blocksOverlap(
+function softTimeWindowsOverlap(
   routeDepartureTime: string,
   blockStart: string,
   blockEnd: string,
 ): boolean {
-  const routeBlock = computeDepartureBlock(routeDepartureTime)
-  const routeStartMs =
-    new Date(routeBlock.start).getTime() -
-    MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES * MS_PER_MINUTE
-  const routeEndMs =
-    new Date(routeBlock.end).getTime() +
-    MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
-  const planStartMs = new Date(blockStart).getTime()
-  const planEndMs = new Date(blockEnd).getTime()
+  const bufferMs = SOFT_TIME_BUFFER_MINUTES * MS_PER_MINUTE
+  const routeDepartureMs = new Date(routeDepartureTime).getTime()
+  const routeStartMs = routeDepartureMs - bufferMs
+  const routeEndMs = routeDepartureMs + bufferMs
+  const planStartMs = new Date(blockStart).getTime() - bufferMs
+  const planEndMs = new Date(blockEnd).getTime() + bufferMs
   return routeStartMs < planEndMs && planStartMs < routeEndMs
 }
 
@@ -199,7 +207,7 @@ async function passesHardFiltersWithBearings(
   if (route.serviceDate !== planLike.serviceDate) return false
 
   if (
-    !blocksOverlap(
+    !softTimeWindowsOverlap(
       route.departureTime,
       planLike.departureBlockStart,
       planLike.departureBlockEnd,
@@ -382,7 +390,7 @@ function classifyMatch(
 ): 'exact_3' | 'near_3' | null {
   if (route.serviceDate !== group.serviceDate) return null
   if (
-    !blocksOverlap(
+    !softTimeWindowsOverlap(
       route.departureTime,
       group.departureBlockStart,
       group.departureBlockEnd,
@@ -417,6 +425,79 @@ function sortByTierThenScore<
   return b.matchScore - a.matchScore
 }
 
+async function buildMatchedDemandGroupMetadata(
+  routeId: string,
+  group: DemandGroupSummary,
+): Promise<MatchedDemandGroupMetadata> {
+  const [routeRequests, groupOffers] = await Promise.all([
+    routeRequestRepository.listRouteRequestsByRoute(routeId),
+    groupOfferRepository.listGroupOffersByRoute(routeId),
+  ])
+  const routeRequestsByPlan = new Map(
+    routeRequests.map((request) => [request.planId, request]),
+  )
+  const groupOffersByPlan = new Map(
+    groupOffers.map((offer) => [offer.planId, offer]),
+  )
+
+  let sameDirectionPendingCount = 0
+  let reciprocalPendingCount = 0
+  let matchedCount = 0
+  const candidates: DemandGroupCandidate[] = group.memberPlanIds.map(
+    (planId, index) => {
+      const offer = groupOffersByPlan.get(planId)
+      const request = routeRequestsByPlan.get(planId)
+      const activeOffer = offer?.status === 'pending' || offer?.status === 'accepted'
+      const activeRequest =
+        request?.status === 'pending' || request?.status === 'accepted'
+
+      let requestState: DemandGroupCandidate['requestState'] = 'none'
+      if (offer?.status === 'accepted' || request?.status === 'accepted') {
+        requestState = 'matched'
+        matchedCount += 1
+      } else if (offer?.status === 'pending') {
+        requestState = 'sent-by-me'
+        sameDirectionPendingCount += 1
+      } else if (request?.status === 'pending') {
+        requestState = 'sent-to-me'
+        reciprocalPendingCount += 1
+      }
+
+      return {
+        planId,
+        clientId: group.clientIds[index],
+        requestState,
+        sendable: !activeOffer && !activeRequest,
+      }
+    },
+  )
+
+  const eligibleToSendCount = candidates.filter(
+    (candidate) => candidate.requestState === 'none' && candidate.sendable,
+  ).length
+  const ctaType =
+    reciprocalPendingCount > 0
+      ? 'reciprocal'
+      : eligibleToSendCount > 0
+        ? 'send'
+        : 'none'
+
+  return {
+    candidateCount: candidates.length,
+    eligibleToSendCount,
+    sameDirectionPendingCount,
+    reciprocalPendingCount,
+    ctaType,
+    refreshHint:
+      eligibleToSendCount === 0 && reciprocalPendingCount === 0
+        ? matchedCount > 0
+          ? 'refresh_available'
+          : 'no_new_candidates'
+        : 'none',
+    candidates,
+  }
+}
+
 // ─── Main matching functions ──────────────────────────────────────────────────
 
 /**
@@ -432,23 +513,11 @@ export async function computeMatchedDemandGroups(
 
   const driver = await userService.getUser(route.driverId)
   const groups = await demandGroupRepository.deriveDemandGroups()
-  const pendingInboundPlanIds = new Set(
-    (await routeRequestRepository.listRouteRequestsByRoute(routeId))
-      .filter((request) => request.status === 'pending') // only pending; accepted/declined do not suppress matches
-      .map((request) => request.planId)
-      .filter((planId): planId is string => Boolean(planId)),
-  )
   const results: DemandGroupResult[] = []
 
   const routeBearing = computeBearing(route.origin, route.destination)
 
   for (const group of groups) {
-    if (
-      group.memberPlanIds.some((planId) => pendingInboundPlanIds.has(planId))
-    ) {
-      continue
-    }
-
     const matchTier = classifyMatch(route, group)
     if (!matchTier) continue
 
@@ -472,6 +541,8 @@ export async function computeMatchedDemandGroups(
       planBearing,
     )
 
+    const metadata = await buildMatchedDemandGroupMetadata(routeId, group)
+
     results.push({
       demandGroupId: group.id,
       matchTier,
@@ -491,6 +562,7 @@ export async function computeMatchedDemandGroups(
       memberCount: group.memberCount,
       totalPassengerCount: group.totalPassengerCount,
       memberPlanIds: group.memberPlanIds,
+      ...metadata,
       ...scores,
     })
   }

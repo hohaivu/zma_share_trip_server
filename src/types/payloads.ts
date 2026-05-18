@@ -183,6 +183,27 @@ export interface DemandGroupResult extends ScoreFields {
   memberCount: number
   totalPassengerCount: number
   memberPlanIds?: string[]
+  candidateCount?: number
+  eligibleToSendCount?: number
+  sameDirectionPendingCount?: number
+  reciprocalPendingCount?: number
+  ctaType?: 'reciprocal' | 'send' | 'none'
+  refreshHint?: 'none' | 'no_new_candidates' | 'refresh_available'
+  candidates?: DemandGroupCandidate[]
+}
+
+export type DemandGroupCandidateRequestState =
+  | 'none'
+  | 'sent-by-me'
+  | 'sent-to-me'
+  | 'matched'
+  | 'unavailable'
+
+export interface DemandGroupCandidate {
+  planId: string
+  clientId?: string
+  requestState: DemandGroupCandidateRequestState
+  sendable: boolean
 }
 
 export interface MatchingRouteResult extends ScoreFields {

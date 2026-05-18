@@ -3,6 +3,7 @@ import { mapRows, normalizeUtc, parseNumeric, toCamelCase } from '../db/utils'
 import { computeDepartureBlock } from '../domain/departureBlock'
 import { loadRouteForWalletTx, reserveRouteFeeTx } from './walletRepository'
 import * as planRepository from './planRepository'
+import { closePendingMatchesForRoute } from './requestLifecycleRepository'
 import {
   filterTripsByScope,
   findAcceptedPlanMatchTx,
@@ -19,9 +20,14 @@ function toSnakeCase(key: string): string { return key.replace(/[A-Z]/g, (letter
 function isTerminalTripStatus(status?: string | null): boolean { return status === 'completed' || status === 'canceled' }
 function isActiveTripStatus(status?: string | null): boolean { return status === 'draft' || status === 'published' || status === 'matched' }
 function mapRoute(row: Record<string, unknown>): Route { const route = toCamelCase<Route>(row); if (!route) throw new Error('Cannot map null row to Route'); route.tripPrice = parseNumeric(route.tripPrice); route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd); return route }
-async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> { const keys = Object.keys(data).filter((k) => data[k] !== undefined); if (keys.length === 0) { const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id]); return toCamelCase<T>(existing.rows[0]) } const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`); const timeFields = ['departureTime','windowStart','windowEnd','departureBlockStart','departureBlockEnd']; const vals = keys.map((k) => { const val = data[k]; if (jsonFields.includes(k)) return JSON.stringify(val); if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString(); return val }); const result = await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`, [id, ...vals]); return toCamelCase<T>(result.rows[0]) }
+const ROUTE_CORE_FIELDS = new Set(['origin','destination','originWardKey','originWardId','originProvinceId','destinationWardKey','destinationWardId','destinationProvinceId','serviceDate','departureTime','windowStart','windowEnd'])
+function hasRouteCoreFieldUpdate(data: Record<string, unknown>): boolean { return Object.keys(data).some((key) => data[key] !== undefined && ROUTE_CORE_FIELDS.has(key)) }
+type QueryExecutor = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }
+async function dynamicUpdate<T>(executor: QueryExecutor, table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> { const keys = Object.keys(data).filter((k) => data[k] !== undefined); if (keys.length === 0) { const existing = await executor.query(`SELECT * FROM ${table} WHERE id = $1`, [id]); return toCamelCase<T>(existing.rows[0]) } const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`); const timeFields = ['departureTime','windowStart','windowEnd','departureBlockStart','departureBlockEnd']; const vals = keys.map((k) => { const val = data[k]; if (jsonFields.includes(k)) return JSON.stringify(val); if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString(); return val }); const result = await executor.query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`, [id, ...vals]); return toCamelCase<T>(result.rows[0]) }
 
 const ROUTE_ACCEPTED_SQL = `
+  SELECT 1 FROM routes WHERE id = $1 AND window_end <= NOW()
+  UNION ALL
   SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
   UNION ALL
   SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
@@ -161,15 +167,22 @@ export async function updateRoute(
   id: string,
   data: UpdateRoutePayload,
 ): Promise<Route | null> {
-  const updated = await dynamicUpdate<Route>(
-    'routes',
-    id,
-    data as unknown as Record<string, unknown>,
-    ['origin', 'destination'],
-  )
-  return updated
-    ? mapRoute(updated as unknown as Record<string, unknown>)
-    : null
+  const fields = data as unknown as Record<string, unknown>
+  return withTransaction(async (tx) => {
+    const updated = await dynamicUpdate<Route>(
+      tx,
+      'routes',
+      id,
+      fields,
+      ['origin', 'destination'],
+    )
+    if (updated && hasRouteCoreFieldUpdate(fields)) {
+      await closePendingMatchesForRoute(id, tx)
+    }
+    return updated
+      ? mapRoute(updated as unknown as Record<string, unknown>)
+      : null
+  })
 }
 
 export async function runPublishTransition(

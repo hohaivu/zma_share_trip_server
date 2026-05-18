@@ -149,9 +149,51 @@ CREATE TABLE IF NOT EXISTS route_requests (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+ALTER TABLE group_offers
+  ADD COLUMN IF NOT EXISTS source_route_request_id VARCHAR(255) REFERENCES route_requests(id) ON DELETE SET NULL;
+
+ALTER TABLE route_requests
+  ADD COLUMN IF NOT EXISTS accepted_group_offer_id VARCHAR(255) REFERENCES group_offers(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS group_offers_source_route_request_id_idx
+  ON group_offers (source_route_request_id)
+  WHERE source_route_request_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS route_requests_accepted_group_offer_id_idx
+  ON route_requests (accepted_group_offer_id)
+  WHERE accepted_group_offer_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS group_offers_source_route_request_id_unique_idx
+  ON group_offers (source_route_request_id)
+  WHERE source_route_request_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS route_requests_accepted_group_offer_id_unique_idx
+  ON route_requests (accepted_group_offer_id)
+  WHERE accepted_group_offer_id IS NOT NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS route_requests_active_client_route_idx
   ON route_requests (client_id, route_id)
   WHERE status IN ('pending', 'accepted');
+
+CREATE UNIQUE INDEX IF NOT EXISTS group_offers_active_client_route_idx
+  ON group_offers (client_id, route_id)
+  WHERE status IN ('pending', 'accepted');
+
+CREATE UNIQUE INDEX IF NOT EXISTS group_offers_accepted_route_idx
+  ON group_offers (route_id)
+  WHERE status = 'accepted';
+
+CREATE UNIQUE INDEX IF NOT EXISTS group_offers_accepted_plan_idx
+  ON group_offers (plan_id)
+  WHERE status = 'accepted';
+
+CREATE UNIQUE INDEX IF NOT EXISTS route_requests_accepted_route_idx
+  ON route_requests (route_id)
+  WHERE status = 'accepted';
+
+CREATE UNIQUE INDEX IF NOT EXISTS route_requests_accepted_plan_idx
+  ON route_requests (plan_id)
+  WHERE status = 'accepted';
 
 CREATE TABLE IF NOT EXISTS saved_locations (
   id VARCHAR(255) PRIMARY KEY,

@@ -121,6 +121,10 @@ describe('bearingDifference', () => {
 // ─── 2.2 passesHardFilters ────────────────────────────────────────────────────
 
 describe('passesHardFilters', () => {
+  it('exports the ALI-78 soft-time buffer', () => {
+    assert.equal(matching.SOFT_TIME_BUFFER_MINUTES, 30)
+  })
+
   it('passes for a well-aligned route/plan pair', async () => {
     assert.ok(await matching.passesHardFilters(BASE_ROUTE, BASE_PLAN, null, []))
   })
@@ -175,11 +179,12 @@ describe('passesHardFilters', () => {
     )
   })
 
-  it('rejects non-overlapping departure block', async () => {
+  it('rejects boundary-only soft-time contact', async () => {
     const plan = {
       ...BASE_PLAN,
-      departureBlockStart: '2030-03-20T08:00:00.000Z',
-      departureBlockEnd: '2030-03-20T08:30:00.000Z',
+      // Route soft window is 06:45-07:45; plan soft window starts at 07:45.
+      departureBlockStart: '2030-03-20T08:15:00.000Z',
+      departureBlockEnd: '2030-03-20T08:45:00.000Z',
     }
     assert.equal(
       await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
@@ -322,6 +327,10 @@ describe('computeMatchedDemandGroups', () => {
       assert.ok('dropoffFit' in r, 'Missing dropoffFit')
       assert.ok('timeFit' in r, 'Missing timeFit')
       assert.ok('detourEstimate' in r, 'Missing detourEstimate')
+      assert.ok('candidateCount' in r, 'Missing candidateCount')
+      assert.ok('eligibleToSendCount' in r, 'Missing eligibleToSendCount')
+      assert.ok('ctaType' in r, 'Missing ctaType')
+      assert.ok(Array.isArray(r.candidates), 'Missing candidates')
     }
   })
 
@@ -361,7 +370,7 @@ describe('computeMatchedDemandGroups', () => {
   })
 
   itDb(
-    'excludes groups whose plan has a pending inbound search request for the route',
+    'marks pending inbound search requests as reciprocal non-sendable candidates',
     async () => {
       await setupTestDb()
       const serviceDate = '2030-04-30'
@@ -398,15 +407,18 @@ describe('computeMatchedDemandGroups', () => {
       await routeRequestService.createRouteRequest(CLIENT_001_ID, plan.id, route.id)
 
       const afterRequest = await matching.computeMatchedDemandGroups(route.id)
-      assert.equal(
-        afterRequest.some((group) => group.memberPlanIds?.includes(plan.id)),
-        false,
-      )
+      const group = afterRequest.find((item) => item.memberPlanIds?.includes(plan.id))
+      assert.ok(group, 'Expected group to remain visible with metadata')
+      assert.equal(group.reciprocalPendingCount, 1)
+      assert.equal(group.eligibleToSendCount, 0)
+      assert.equal(group.ctaType, 'reciprocal')
+      assert.equal(group.candidates?.[0]?.requestState, 'sent-to-me')
+      assert.equal(group.candidates?.[0]?.sendable, false)
     },
   )
 
   itDb(
-    'excludes pending inbound route requests even when linked plan is no longer active',
+    'does not re-introduce unavailable plans with pending inbound route requests',
     async () => {
       await setupTestDb()
       const serviceDate = '2030-04-29'
@@ -444,6 +456,53 @@ describe('computeMatchedDemandGroups', () => {
       )
     },
   )
+
+  itDb('marks driver-sent pending group offers as same-direction non-sendable candidates', async () => {
+    await setupTestDb()
+    const serviceDate = '2030-04-28'
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:15:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const plan = await planService.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-pending-group-offer',
+      dropoffWardId: 'ward-pending-group-offer-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const beforeRequest = await matching.computeMatchedDemandGroups(route.id)
+    const initial = beforeRequest.find((group) => group.memberPlanIds?.includes(plan.id))
+    assert.ok(initial)
+
+    await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      route.id,
+      initial.demandGroupId,
+    )
+
+    const afterRequest = await matching.computeMatchedDemandGroups(route.id)
+    const group = afterRequest.find((item) => item.memberPlanIds?.includes(plan.id))
+    assert.ok(group)
+    assert.equal(group.sameDirectionPendingCount, 1)
+    assert.equal(group.eligibleToSendCount, 0)
+    assert.equal(group.ctaType, 'none')
+    assert.equal(group.refreshHint, 'no_new_candidates')
+    assert.equal(group.candidates?.[0]?.requestState, 'sent-by-me')
+    assert.equal(group.candidates?.[0]?.sendable, false)
+  })
 
   itDb(
     'keeps groups when pending inbound search request has no linked plan',
@@ -568,6 +627,70 @@ describe('computeMatchedDemandGroups', () => {
 
     assert.deepEqual(await matching.computeMatchedDemandGroups(route.id), [])
   })
+
+  itDb('discovers client demand via strict overlapping soft-time windows without changing group times', async () => {
+    const serviceDate = '2030-05-06'
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:00:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const plan = await planService.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-soft-driver-client',
+      dropoffWardId: 'ward-soft-driver-client-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:30:00.000Z`,
+      departureBlockEnd: `${serviceDate}T08:00:00.000Z`,
+      passengerCount: 1,
+    })
+
+    const results = await matching.computeMatchedDemandGroups(route.id)
+    const match = results.find((group) => group.memberPlanIds?.includes(plan.id))
+
+    assert.ok(match, 'Expected soft-time overlap to discover client demand')
+    assert.equal(match.departureBlockStart, `${serviceDate}T07:30:00.000Z`)
+    assert.equal(match.departureBlockEnd, `${serviceDate}T08:00:00.000Z`)
+  })
+
+  itDb('omits expired published route from driver demand discovery', async () => {
+    const serviceDate = '2030-05-08'
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:15:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    await planService.createPlan(CLIENT_001_ID, {
+      pickup: Q1_PICKUP,
+      dropoff: TD_DROPOFF,
+      pickupWardId: 'ward-expired-driver-discovery',
+      dropoffWardId: 'ward-expired-driver-discovery-dest',
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    await query("UPDATE routes SET window_end = NOW() - INTERVAL '1 minute' WHERE id = $1", [route.id])
+
+    assert.deepEqual(await matching.computeMatchedDemandGroups(route.id), [])
+  })
 })
 
 // ─── 2.5 computeMatchingRoutesFromCriteria ────────────────────────────────────
@@ -666,6 +789,64 @@ describe('computeMatchingRoutesFromCriteria', () => {
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       clientId: CLIENT_001_ID,
     })
+    assert.equal(results.some((result) => result.routeId === route.id), false)
+  })
+
+  itDb('discovers driver route via strict overlapping soft-time windows without changing departureTime', async () => {
+    const serviceDate = '2030-05-07'
+    const originalDepartureTime = `${serviceDate}T07:00:00.000Z`
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: originalDepartureTime,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const results = await matching.computeMatchingRoutesFromCriteria({
+      ...BASE_PLAN,
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:30:00.000Z`,
+      departureBlockEnd: `${serviceDate}T08:00:00.000Z`,
+      clientId: CLIENT_001_ID,
+    })
+    const match = results.find((result) => result.routeId === route.id)
+
+    assert.ok(match, 'Expected soft-time overlap to discover driver route')
+    assert.equal(match.departureTime, originalDepartureTime)
+  })
+
+  itDb('omits expired published route from client route discovery', async () => {
+    const serviceDate = '2030-05-09'
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          serviceDate,
+          departureTime: `${serviceDate}T07:15:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    await query("UPDATE routes SET window_end = NOW() - INTERVAL '1 minute' WHERE id = $1", [route.id])
+
+    const results = await matching.computeMatchingRoutesFromCriteria({
+      ...BASE_PLAN,
+      serviceDate,
+      departureBlockStart: `${serviceDate}T07:00:00.000Z`,
+      departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
+      clientId: CLIENT_001_ID,
+    })
+
     assert.equal(results.some((result) => result.routeId === route.id), false)
   })
 })

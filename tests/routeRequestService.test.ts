@@ -134,7 +134,9 @@ describe('MVC route request service single active invariant', () => {
         serviceDate: `2030-04-2${terminalStatus.length}`,
         departureTime: `2030-04-2${terminalStatus.length}T07:00:00.000Z`,
         tripPrice: 100000,
+        distanceMeters: 10000,
       })
+      await driverRouteService.publishRoute(route.id)
       const initialRequest = await routeRequestService.createRouteRequest(
         CLIENT_001_ID,
         'plan-001',

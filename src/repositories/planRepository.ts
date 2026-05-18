@@ -14,8 +14,10 @@ import {
   type TripListScope,
   withReviewEligibility,
 } from './tripListRepository'
+import { closePendingMatchesForPlan } from './requestLifecycleRepository'
 
 export type { TripListScope } from './tripListRepository'
+type QueryExecutor = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }
 
 function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}${Math.random().toString().slice(2, 6)}`
@@ -60,7 +62,11 @@ function mapPlan(row: Record<string, unknown>): Plan {
   return plan
 }
 
+const PLAN_CORE_FIELDS = new Set(['pickup','dropoff','pickupWardId','pickupWardKey','pickupProvinceId','dropoffWardId','dropoffWardKey','dropoffProvinceId','serviceDate','departureBlockStart','departureBlockEnd','passengerCount'])
+function hasPlanCoreFieldUpdate(data: Record<string, unknown>): boolean { return Object.keys(data).some((key) => data[key] !== undefined && PLAN_CORE_FIELDS.has(key)) }
+
 async function dynamicUpdate<T>(
+  executor: QueryExecutor,
   table: string,
   id: string,
   data: Record<string, unknown>,
@@ -68,7 +74,7 @@ async function dynamicUpdate<T>(
 ): Promise<T | null> {
   const keys = Object.keys(data).filter((key) => data[key] !== undefined)
   if (keys.length === 0) {
-    const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id])
+    const existing = await executor.query(`SELECT * FROM ${table} WHERE id = $1`, [id])
     return toCamelCase<T>(existing.rows[0])
   }
 
@@ -89,7 +95,7 @@ async function dynamicUpdate<T>(
     return val
   })
 
-  const result = await query(
+  const result = await executor.query(
     `UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
     [id, ...vals],
   )
@@ -177,10 +183,17 @@ export async function updatePlan(
   data: UpdatePlanPayload,
 ): Promise<Plan | null> {
   assertServiceDateIsNotPast(data.serviceDate)
-  return dynamicUpdate<Plan>('plans', id, data as unknown as Record<string, unknown>, [
-    'pickup',
-    'dropoff',
-  ])
+  const fields = data as unknown as Record<string, unknown>
+  return withTransaction(async (tx) => {
+    const updated = await dynamicUpdate<Plan>(tx, 'plans', id, fields, [
+      'pickup',
+      'dropoff',
+    ])
+    if (updated && hasPlanCoreFieldUpdate(fields)) {
+      await closePendingMatchesForPlan(id, tx)
+    }
+    return updated
+  })
 }
 
 export async function cancelPlanByClient(

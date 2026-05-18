@@ -183,7 +183,43 @@ export interface GroupOffer {
   planId: string
   tripPrice: number
   status: string
+  sourceRouteRequestId?: string | null
   createdAt?: string
+}
+
+export type GroupRequestCandidateStatus =
+  | 'created'
+  | 'skipped_existing'
+  | 'skipped_unavailable'
+  | 'skipped_matched'
+  | 'matched'
+
+export interface GroupRequestCandidateResult {
+  planId: string
+  status: GroupRequestCandidateStatus
+}
+
+export type GroupRequestCreateOutcome = 'created' | 'no_new_requests' | 'matched'
+
+export interface GroupRequestCreateResult {
+  groupRequest: GroupRequest
+  offers: GroupOffer[]
+  outcome?: GroupRequestCreateOutcome
+  matchedOffer?: GroupOffer
+  matchedRouteRequest?: RouteRequest
+  match?: {
+    kind: 'reciprocal_request'
+    sourceRouteRequestId: string
+    acceptedGroupOfferId: string
+    routeId: string
+    planId: string
+    clientId: string
+    driverId: string
+  }
+  createdCount?: number
+  skippedCount?: number
+  refreshHint?: 'none' | 'no_new_candidates'
+  candidateResults?: GroupRequestCandidateResult[]
 }
 
 export interface RouteRequest {
@@ -195,6 +231,7 @@ export interface RouteRequest {
   tripPrice?: number
   note?: string | null
   status: string
+  acceptedGroupOfferId?: string | null
   createdAt?: string
 }
 

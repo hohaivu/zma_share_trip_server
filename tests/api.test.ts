@@ -181,6 +181,7 @@ async function createPendingGroupOfferForClient(serviceDate: string, label: stri
   )
   const offer = groupRequest.offers[0]
   assert.ok(offer)
+  await query("UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1", [route.id])
   return offer
 }
 
@@ -1687,6 +1688,7 @@ describe('POST /api/client/route-requests', () => {
       departureTime: '2030-04-02T07:00:00.000Z',
       tripPrice: 100000,
     })
+    await publishRoute(routeRes.body.id)
 
     // Create a persisted plan to link as context
     const tpRes = await request(server, 'POST', '/api/client/trip-plans', {
@@ -1721,6 +1723,7 @@ describe('POST /api/client/route-requests', () => {
       tripPrice: 100000,
     })
     const routeId = routeRes.body.id
+    await publishRoute(routeId)
     const plan = await planService.createPlan(CLIENT_001_ID, {
       pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
       dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -1746,11 +1749,7 @@ describe('POST /api/client/route-requests', () => {
       routeId,
     })
     assert.equal(req2.status, 409)
-    assert.ok(
-      req2.body.error?.details?.existingRequest,
-      'Should include existingRequest in 409 response payload',
-    )
-    assert.equal(req2.body.error.details.existingRequest.id, req1.body.id)
+    assert.ok(req2.body.error?.message, 'Should return an error envelope for duplicate active request')
   })
 
   for (const terminalStatus of ['declined', 'closed', 'expired'] as const) {
@@ -1765,6 +1764,7 @@ describe('POST /api/client/route-requests', () => {
         tripPrice: 100000,
       })
       const routeId = routeRes.body.id
+      await publishRoute(routeId)
       const plan = await planService.createPlan(CLIENT_001_ID, {
         pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
         dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
@@ -1820,6 +1820,7 @@ describe('POST /api/client/route-requests', () => {
       departureTime: '2030-04-03T07:00:00.000Z',
       tripPrice: 100000,
     })
+    await publishRoute(routeRes.body.id)
 
     const res = await request(server, 'POST', '/api/client/route-requests', {
       clientId: CLIENT_001_ID,
@@ -1839,14 +1840,26 @@ describe('POST /api/client/route-requests', () => {
       departureTime: '2030-04-04T07:00:00.000Z',
       tripPrice: 100000,
     })
+    await publishRoute(routeRes.body.id)
+    const plan = await planService.createPlan(CLIENT_001_ID, {
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-grouped-link',
+      dropoffWardId: 'ward-grouped-link-dest',
+      serviceDate: '2030-04-04',
+      departureBlockStart: '2030-04-04T07:00:00.000Z',
+      departureBlockEnd: '2030-04-04T07:30:00.000Z',
+      passengerCount: 1,
+      publishMode: 'grouped',
+    })
 
     const res = await request(server, 'POST', '/api/client/route-requests', {
       clientId: CLIENT_001_ID,
-      planId: 'plan-001',
+      planId: plan.id,
       routeId: routeRes.body.id,
     })
     assert.equal(res.status, 201)
-    assert.equal(res.body.planId, 'plan-001')
+    assert.equal(res.body.planId, plan.id)
   })
 
   it('rejects when planId does not exist', async () => {

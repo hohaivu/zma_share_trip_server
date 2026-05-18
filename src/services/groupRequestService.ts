@@ -1,5 +1,5 @@
 import { HttpError } from '../http-error'
-import { GroupOffer, GroupRequest } from '../types/entities'
+import { GroupRequest, GroupRequestCreateResult } from '../types/entities'
 import * as groupRequestRepository from '../repositories/groupRequestRepository'
 import { emitNotification } from './notificationService'
 import { assertUserRole } from './userService'
@@ -10,7 +10,7 @@ export interface GroupRequestService {
     routeId: string,
     demandGroupId: string,
     note?: string,
-  ): Promise<{ groupRequest: GroupRequest; offers: GroupOffer[] }>
+  ): Promise<GroupRequestCreateResult>
   listGroupRequestsByDriver(driverId: string): Promise<GroupRequest[]>
   cancelGroupRequest(requestId: string): Promise<GroupRequest>
 }
