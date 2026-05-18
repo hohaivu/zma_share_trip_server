@@ -1529,6 +1529,22 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       planRes.body.id,
     ])
 
+    const secondPlanRes = await request(server, 'POST', '/api/client/trip-plans', {
+      clientId: CLIENT_002_ID,
+      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      pickupWardId: 'ward-route-scope-pickup',
+      dropoffWardId: 'ward-route-scope-dropoff',
+      serviceDate: '2030-04-10',
+      departureBlockStart: '2030-04-10T07:00:00.000Z',
+      departureBlockEnd: '2030-04-10T07:30:00.000Z',
+      passengerCount: 1,
+    })
+    assert.equal(secondPlanRes.status, 201)
+    await query("UPDATE plans SET status = 'published' WHERE id = $1", [
+      secondPlanRes.body.id,
+    ])
+
     const groupsRes = await request(
       server,
       'GET',
@@ -1559,7 +1575,7 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
     )
     assert.equal(detailRes.status, 200)
     assert.equal(detailRes.body.id, group.demandGroupId)
-    assert.deepEqual(detailRes.body.memberPlanIds, [planRes.body.id])
+    assert.deepEqual(detailRes.body.memberPlanIds, [planRes.body.id, secondPlanRes.body.id])
 
     const membersRes = await request(
       server,
@@ -1569,8 +1585,30 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
     assert.equal(membersRes.status, 200)
     assert.deepEqual(
       membersRes.body.map((member: { id: string }) => member.id),
-      [planRes.body.id],
+      [planRes.body.id, secondPlanRes.body.id],
     )
+
+    const createRes = await request(server, 'POST', '/api/driver/group-requests', {
+      driverId: DRIVER_001_ID,
+      routeId: routeRes.body.id,
+      demandGroupId: group.demandGroupId,
+    })
+    assert.equal(createRes.status, 201)
+    assert.equal(createRes.body.outcome, 'created')
+    assert.equal(createRes.body.createdCount, 2)
+    assert.deepEqual(
+      createRes.body.offers.map((offer: { planId: string }) => offer.planId),
+      [planRes.body.id, secondPlanRes.body.id],
+    )
+
+    const duplicateCreateRes = await request(server, 'POST', '/api/driver/group-requests', {
+      driverId: DRIVER_001_ID,
+      routeId: routeRes.body.id,
+      demandGroupId: group.demandGroupId,
+    })
+    assert.equal(duplicateCreateRes.status, 409)
+    assert.equal(duplicateCreateRes.body.error.details.outcome, 'no_new_requests')
+    assert.equal(duplicateCreateRes.body.error.details.createdCount, 0)
   })
 
   it('suppresses cross-route accepted plans and restores them after cancellation', async () => {

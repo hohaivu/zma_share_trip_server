@@ -538,6 +538,16 @@ export async function createGroupRequestWithOffers(
 
     const createdCount = offers.length
     const skippedCount = candidateResults.length - createdCount
+    if (createdCount === 0) {
+      throw HttpError.withSafeDetails(409, 'No new group requests available', {
+        outcome: 'no_new_requests',
+        createdCount,
+        skippedCount,
+        refreshHint: 'no_new_candidates',
+        candidateResults,
+      })
+    }
+
     return {
       groupRequest,
       offers,
