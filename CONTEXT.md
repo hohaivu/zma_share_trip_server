@@ -2,7 +2,7 @@
 
 The backend context covers the backend Module that owns matching, group request/offer flows, accepted journeys, review eligibility, and wallet accounting. It exposes Interfaces consumed by the frontend while keeping backend Implementations expressed in backend domain language.
 
-ADRs are intentionally empty for this context; no ADR files have been created yet.
+ADRs for this context live in `docs/adr/` when a matching or backend architecture decision needs durable rationale.
 
 ## Language
 
@@ -90,9 +90,21 @@ _Avoid_: End.
 The time window used for route and plan compatibility.
 _Avoid_: Departure time when a range is meant.
 
+**Soft-time search window**:
+The matching tolerance around a Route or Plan's original time used to find compatible counterparties.
+_Avoid_: Proposed time window, matched time.
+
+**Proposed time**:
+The sender's original Route or Plan time that becomes the accepted time when the recipient accepts.
+_Avoid_: Search window, adjusted time.
+
 **Request edge**:
 The directional relationship between a requester and receiver in a group request flow.
 _Avoid_: Link.
+
+**Reciprocal request**:
+An opposite pending Request edge between the exact same Route and Plan.
+_Avoid_: Duplicate request, counter-offer.
 
 **Inbound request**:
 A group request received by the current user or route owner.
@@ -110,11 +122,31 @@ _Avoid_: Best offer unless selection is final.
 A group request awaiting acceptance, decline, or expiry.
 _Avoid_: Open request.
 
+**Active match**:
+The single current accepted counterpart for a Route or Plan.
+_Avoid_: Current pairing, active request.
+
+**One-match constraint**:
+The rule that a Route or Plan can have at most one Active match at a time.
+_Avoid_: Unique request rule.
+
+**Trip unavailability**:
+The state after a Route or Plan's original end time when it should no longer receive new requests or matches.
+_Avoid_: Hidden trip, stale trip.
+
 ### Acceptance, review, and wallet
 
 **Accepted state**:
 The backend state indicating a route, plan, group request, or group offer has a confirmed counterpart.
 _Avoid_: Confirmed state.
+
+**Match cancellation**:
+Ending an Active match for one side without implying the counterpart Journey is cancelled.
+_Avoid_: Trip cancellation when only the match ends.
+
+**Reopened Journey**:
+A Route or Plan made available again after its counterpart cancels the match.
+_Avoid_: New Journey, restored request.
 
 **Review eligibility**:
 Whether backend facts allow a user to review a counterpart.
@@ -166,12 +198,17 @@ _Avoid_: Deposit if product language says top-up.
 
 ## Relationships
 
-- A **Route** may match one or more **Plans** through **Demand groups** and **Group offers**.
+- A **Route** may be evaluated against one or more **Plans** through **Demand groups** and **Group offers**.
 - A **Demand group** contains one or more **Member plans**.
 - **Member count** counts plans; **Total passenger count** counts passengers represented by those plans.
-- **Hard filters** must pass before **Score** and **Match tier** are assigned.
+- **Hard filters**, including the **Soft-time search window**, must pass before **Score** and **Match tier** are assigned.
+- A **Soft-time search window** broadens discovery around a Route or Plan; it does not change the **Proposed time**.
 - A **Group request** has a **Request edge** and may be **Inbound** or **Outbound** from the current user's perspective.
+- A **Reciprocal request** between the same **Route** and **Plan** resolves into the same **Active match** rather than two independent matches.
+- The **One-match constraint** means each **Route** or **Plan** has zero or one **Active match** at a time.
+- **Trip unavailability** is determined by the Route or Plan's original end time, not by the Soft-time search window.
 - An **Accepted group offer** can create or reflect an **Accepted state** with a **Counterpart**.
+- **Match cancellation** reopens the non-cancelling counterpart as a **Reopened Journey** when that counterpart can still receive matches.
 - **Wallet** money movement is recorded through **Ledger transactions** such as **Reserve**, **Charge**, **Release**, **Refund**, and **Top-up**.
 
 ## Example dialogue
@@ -180,6 +217,10 @@ _Avoid_: Deposit if product language says top-up.
 > **Domain expert:** “No. The backend owns **Group requests** and **Group offers**. **Offer inbox** is the frontend Adapter language.”  
 > **Dev:** “When a group accepts, do we count users or passengers?”  
 > **Domain expert:** “Use **Member count** for plans in the group and **Total passenger count** for represented passengers.”
+> **Dev:** “If a Plan is found through a **Soft-time search window**, is the matched time adjusted to the center of that window?”  
+> **Domain expert:** “No. The window is only for discovery; the accepted **Proposed time** is the sender's original time.”
+> **Dev:** “What if the Route and Plan both sent requests to each other?”  
+> **Domain expert:** “That is a **Reciprocal request**. The first pending **Request edge** wins and acceptance creates one **Active match**.”
 
 ## Flagged ambiguities
 
@@ -187,4 +228,6 @@ _Avoid_: Deposit if product language says top-up.
 - **Offer inbox** is not backend core language; use it only when discussing frontend-facing adapters.
 - **Member count** and **Total passenger count** are distinct and should not be collapsed.
 - **Release** and **Refund** are different wallet ledger actions: release returns reserved funds; refund returns charged funds.
-- ADRs are intentionally empty and not created yet.
+- **Soft-time search window** and **Proposed time** are distinct: tolerance helps find matches but does not redefine the time being accepted.
+- A **Reciprocal request** is not a second independent match; it resolves the opposite pending **Request edge** for the same Route/Plan pair.
+- **Match cancellation** cancels the relationship, not necessarily either underlying **Journey**; the non-cancelling side can become a **Reopened Journey**.
