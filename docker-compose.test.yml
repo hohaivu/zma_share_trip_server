@@ -1,19 +1,20 @@
 services:
-  postgres-test:
-    image: postgres:16-alpine
+  mariadb-test:
+    image: mariadb:10.6
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: share_trip_db
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: share_trip_db
+      MARIADB_USER: mariadb
+      MARIADB_PASSWORD: mariadb
     ports:
-      - "5433:5432"
+      - "3307:3306"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d share_trip_db"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
       timeout: 5s
       retries: 10
     volumes:
-      - postgres-test-data:/var/lib/postgresql/data
+      - mariadb-test-data:/var/lib/mysql
 
 volumes:
-  postgres-test-data:
+  mariadb-test-data:

@@ -8,9 +8,9 @@ import {
 } from './walletRepository'
 import { Plan, Route, RouteRequest } from '../types/entities'
 
-function isPgUniqueViolation(e: unknown, constraint: string): boolean {
+function isMariadbDuplicateEntry(e: unknown): boolean {
   const err = e as Record<string, unknown>
-  return err?.code === '23505' && err?.constraint === constraint
+  return err?.errno === 1062
 }
 
 function generateId(prefix: string): string {
@@ -35,11 +35,11 @@ async function checkRouteAvailability(
 ): Promise<boolean> {
   const result = await executor.query(
     `
-      SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
+      SELECT 1 FROM group_offers WHERE route_id = ? AND status = 'accepted'
       UNION ALL
-      SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
+      SELECT 1 FROM route_requests WHERE route_id = ? AND status = 'accepted'
     `,
-    [routeId],
+    [routeId, routeId],
   )
   return result.rowCount === 0
 }
@@ -52,23 +52,23 @@ export async function createRouteRequest(
 ): Promise<{ routeRequest: RouteRequest; route: Route }> {
   return withTransaction(async (tx) => {
     const existingRes = await tx.query(
-      `SELECT * FROM route_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
+      `SELECT * FROM route_requests WHERE client_id = ? AND route_id = ? AND status IN ('pending', 'accepted')`,
       [clientId, routeId],
     )
     if (existingRes.rows.length > 0) {
       const existingReq = toCamelCase<RouteRequest>(existingRes.rows[0])
-      throw new HttpError<{ existingRequest: RouteRequest }>(
+      throw HttpError.withSafeDetails(
         409,
         'Duplicate active request already exists',
         { existingRequest: existingReq! },
       )
     }
 
-    const tpRes = await tx.query('SELECT * FROM plans WHERE id = $1', [planId])
+    const tpRes = await tx.query('SELECT * FROM plans WHERE id = ?', [planId])
     const tp = toCamelCase<Plan>(tpRes.rows[0])
     if (!tp) throw new HttpError(400, 'Plan not found')
 
-    const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [routeId])
+    const routeRes = await tx.query('SELECT * FROM routes WHERE id = ? FOR UPDATE', [routeId])
     const route = mapRoute(routeRes.rows[0])
     if (!route) throw new HttpError(404, 'Route not found')
 
@@ -80,7 +80,7 @@ export async function createRouteRequest(
       const sreqRes = await tx.query(
         `
           INSERT INTO route_requests (id, client_id, plan_id, route_id, driver_id, trip_price, note, status, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
           RETURNING *
         `,
         [generateId('sreq'), clientId, planId, routeId, route.driverId, route.tripPrice, note || '', 'pending'],
@@ -89,13 +89,13 @@ export async function createRouteRequest(
       if (!routeRequest) throw new Error('Failed to create search request')
       return { routeRequest, route }
     } catch (e: unknown) {
-      if (isPgUniqueViolation(e, 'route_requests_active_client_route_idx')) {
+      if (isMariadbDuplicateEntry(e)) {
         const raceRes = await tx.query(
-          `SELECT * FROM route_requests WHERE client_id = $1 AND route_id = $2 AND status IN ('pending', 'accepted')`,
+          `SELECT * FROM route_requests WHERE client_id = ? AND route_id = ? AND status IN ('pending', 'accepted')`,
           [clientId, routeId],
         )
         const existingReqRace = toCamelCase<RouteRequest>(raceRes.rows[0])
-        throw new HttpError<{ existingRequest: RouteRequest }>(
+        throw HttpError.withSafeDetails(
           409,
           'Duplicate active request already exists (race)',
           { existingRequest: existingReqRace! },
@@ -107,19 +107,19 @@ export async function createRouteRequest(
 }
 
 export async function getRoute(routeId: string): Promise<Route | null> {
-  const result = await query('SELECT * FROM routes WHERE id = $1', [routeId])
+  const result = await query('SELECT * FROM routes WHERE id = ?', [routeId])
   return result.rows[0] ? mapRoute(result.rows[0]) : null
 }
 
 export async function getPlan(planId?: string): Promise<Plan | null> {
   if (!planId) return null
-  const result = await query('SELECT * FROM plans WHERE id = $1', [planId])
+  const result = await query('SELECT * FROM plans WHERE id = ?', [planId])
   return toCamelCase<Plan>(result.rows[0])
 }
 
 export async function acceptRouteRequest(requestId: string): Promise<RouteRequest> {
   return withTransaction(async (tx) => {
-    const sreqRes = await tx.query('SELECT * FROM route_requests WHERE id = $1 FOR UPDATE', [requestId])
+    const sreqRes = await tx.query('SELECT * FROM route_requests WHERE id = ? FOR UPDATE', [requestId])
     let sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
     if (!sreq) throw new HttpError(404, 'Search request not found')
     if (sreq.status === 'accepted') return sreq
@@ -135,40 +135,43 @@ export async function acceptRouteRequest(requestId: string): Promise<RouteReques
       throw new HttpError(409, 'Route is no longer available — another client was accepted first')
     }
 
-    const updatedRes = await tx.query("UPDATE route_requests SET status = 'accepted' WHERE id = $1 RETURNING *", [requestId])
+    await tx.query("UPDATE route_requests SET status = 'accepted' WHERE id = ?", [requestId])
+    const updatedRes = await tx.query('SELECT * FROM route_requests WHERE id = ?', [requestId])
     sreq = toCamelCase<RouteRequest>(updatedRes.rows[0])
     if (!sreq) throw new Error('Failed to accept search request')
 
-    await tx.query("UPDATE routes SET status = 'matched' WHERE id = $1", [sreq.routeId])
+    await tx.query("UPDATE routes SET status = 'matched' WHERE id = ?", [sreq.routeId])
     if (sreq.planId) {
-      await tx.query("UPDATE plans SET status = 'matched' WHERE id = $1 AND status = 'published'", [sreq.planId])
+      await tx.query("UPDATE plans SET status = 'matched' WHERE id = ? AND status = 'published'", [sreq.planId])
     }
     await chargeRouteFeeTx(tx, route, mapRoute, { description: 'Route fee charged on accepted search request' })
-    await tx.query("UPDATE group_offers SET status = 'closed' WHERE route_id = $1 AND status = 'pending'", [sreq.routeId])
-    await tx.query("UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND id != $2 AND status = 'pending'", [sreq.routeId, requestId])
+    await tx.query("UPDATE group_offers SET status = 'closed' WHERE route_id = ? AND status = 'pending'", [sreq.routeId])
+    await tx.query("UPDATE route_requests SET status = 'closed' WHERE route_id = ? AND id != ? AND status = 'pending'", [sreq.routeId, requestId])
     return sreq
   })
 }
 
 export async function declineRouteRequest(requestId: string): Promise<RouteRequest> {
-  const sreqRes = await query('SELECT * FROM route_requests WHERE id = $1', [requestId])
+  const sreqRes = await query('SELECT * FROM route_requests WHERE id = ?', [requestId])
   const sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
   if (!sreq) throw new Error('Search request not found')
   if (sreq.status !== 'pending') throw new Error(`Cannot decline search request in status: ${sreq.status}`)
-  const updatedRes = await query("UPDATE route_requests SET status = 'declined' WHERE id = $1 RETURNING *", [requestId])
+  await query("UPDATE route_requests SET status = 'declined' WHERE id = ?", [requestId])
+  const updatedRes = await query('SELECT * FROM route_requests WHERE id = ?', [requestId])
   const updated = toCamelCase<RouteRequest>(updatedRes.rows[0])
   if (!updated) throw new Error('Failed to decline search request')
   return updated
 }
 
 export async function cancelRouteRequest(requestId: string): Promise<RouteRequest> {
-  const sreqRes = await query('SELECT * FROM route_requests WHERE id = $1', [requestId])
+  const sreqRes = await query('SELECT * FROM route_requests WHERE id = ?', [requestId])
   const sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
   if (!sreq) throw new Error('Search request not found')
   if (sreq.status !== 'pending') {
     throw new HttpError(409, `Cannot cancel search request in status: ${sreq.status}`)
   }
-  const updatedRes = await query("UPDATE route_requests SET status = 'canceled' WHERE id = $1 RETURNING *", [requestId])
+  await query("UPDATE route_requests SET status = 'canceled' WHERE id = ?", [requestId])
+  const updatedRes = await query('SELECT * FROM route_requests WHERE id = ?', [requestId])
   const updated = toCamelCase<RouteRequest>(updatedRes.rows[0])
   if (!updated) throw new Error('Failed to cancel search request')
   return updated
@@ -176,7 +179,7 @@ export async function cancelRouteRequest(requestId: string): Promise<RouteReques
 
 export async function listRouteRequestsByDriver(driverId: string): Promise<RouteRequest[]> {
   const requestsRes = await query(
-    'SELECT * FROM route_requests WHERE driver_id = $1 ORDER BY created_at DESC, id DESC',
+    'SELECT * FROM route_requests WHERE driver_id = ? ORDER BY created_at DESC, id DESC',
     [driverId],
   )
   return mapRows<RouteRequest>(requestsRes.rows)
@@ -184,7 +187,7 @@ export async function listRouteRequestsByDriver(driverId: string): Promise<Route
 
 export async function listRouteRequestsByClient(clientId: string): Promise<RouteRequest[]> {
   const requestsRes = await query(
-    'SELECT * FROM route_requests WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
+    'SELECT * FROM route_requests WHERE client_id = ? ORDER BY created_at DESC, id DESC',
     [clientId],
   )
   return mapRows<RouteRequest>(requestsRes.rows)
@@ -192,7 +195,7 @@ export async function listRouteRequestsByClient(clientId: string): Promise<Route
 
 export async function listRouteRequestsByRoute(routeId: string): Promise<RouteRequest[]> {
   const requestsRes = await query(
-    'SELECT * FROM route_requests WHERE route_id = $1 ORDER BY created_at DESC, id DESC',
+    'SELECT * FROM route_requests WHERE route_id = ? ORDER BY created_at DESC, id DESC',
     [routeId],
   )
   return mapRows<RouteRequest>(requestsRes.rows)

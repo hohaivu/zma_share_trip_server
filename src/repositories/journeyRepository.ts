@@ -44,7 +44,7 @@ function listByColumn<T>(
   mapFn: (row: Record<string, unknown>) => T | null = toCamelCase,
 ) {
   return async (value: string | number): Promise<T[]> => {
-    const result = await query(`SELECT * FROM ${table} WHERE ${column} = $1`, [
+    const result = await query(`SELECT * FROM ${table} WHERE ${column} = ?`, [
       value,
     ])
     return result.rows.map(mapFn).filter(Boolean) as T[]
@@ -60,12 +60,12 @@ export const getPlan = planRepository.getPlan
 export const getUser = findUserById
 
 export async function listRouteRequestsByPlan(planId: string): Promise<RouteRequest[]> {
-  const requestsRes = await query('SELECT * FROM route_requests WHERE plan_id = $1 ORDER BY created_at DESC, id DESC', [planId])
+  const requestsRes = await query('SELECT * FROM route_requests WHERE plan_id = ? ORDER BY created_at DESC, id DESC', [planId])
   return mapRows<RouteRequest>(requestsRes.rows)
 }
 
 export async function listGroupOffersByPlan(planId: string): Promise<GroupOffer[]> {
-  const offersRes = await query('SELECT * FROM group_offers WHERE plan_id = $1 ORDER BY created_at DESC, id DESC', [planId])
+  const offersRes = await query('SELECT * FROM group_offers WHERE plan_id = ? ORDER BY created_at DESC, id DESC', [planId])
   return mapRows<GroupOffer>(offersRes.rows)
 }
 
@@ -73,11 +73,11 @@ export const listRouteRequestsByRoute = listByColumn<RouteRequest>('route_reques
 export const listGroupOffersByRoute = listByColumn<GroupOffer>('group_offers', 'route_id')
 
 export async function createSavedLocation(payload: { label: string; lat: number; lng: number }): Promise<SavedLocation> {
-  const result = await query('SELECT COUNT(*) FROM saved_locations')
-  if (parseInt(result.rows[0].count, 10) >= 10) throw new Error('Maximum 10 saved locations allowed')
+  const result = await query('SELECT COUNT(*) AS count FROM saved_locations')
+  if (parseInt(result.rows[0].count as string, 10) >= 10) throw new Error('Maximum 10 saved locations allowed')
   const insertRes = await query(`
     INSERT INTO saved_locations (id, label, lat, lng, created_at)
-    VALUES ($1, $2, $3, $4, NOW())
+    VALUES (?, ?, ?, ?, NOW())
     RETURNING *
   `, [generateId('savedloc'), payload.label, payload.lat, payload.lng])
   return parseLocationRow(insertRes.rows[0])
@@ -89,7 +89,7 @@ export async function listSavedLocations(): Promise<SavedLocation[]> {
 }
 
 export async function deleteSavedLocation(id: string): Promise<boolean> {
-  const result = await query('DELETE FROM saved_locations WHERE id = $1 RETURNING id', [id])
+  const result = await query('DELETE FROM saved_locations WHERE id = ? RETURNING id', [id])
   return result.rowCount !== null && result.rowCount > 0
 }
 
@@ -113,9 +113,9 @@ async function unwindRouteFeeOnMatchedCancel(executor: DbQueryExecutor, route: R
 async function cancelAcceptedMatchTx(executor: DbQueryExecutor, accepted: AcceptedJourneyMatch): Promise<void> {
   if (!accepted) return
   if (accepted.kind === 'route_request') {
-    await executor.query("UPDATE route_requests SET status = 'canceled' WHERE id = $1", [accepted.request.id])
+    await executor.query("UPDATE route_requests SET status = 'canceled' WHERE id = ?", [accepted.request.id])
   } else {
-    await executor.query("UPDATE group_offers SET status = 'canceled' WHERE id = $1", [accepted.offer.id])
+    await executor.query("UPDATE group_offers SET status = 'canceled' WHERE id = ?", [accepted.offer.id])
   }
 }
 
@@ -130,8 +130,9 @@ async function cancelRouteTripTx(executor: DbQueryExecutor, route: Route): Promi
   } else if (route.walletFeeStatus === 'charged') {
     throw new HttpError(409, 'Cannot cancel an unmatched route after the fee has already been charged')
   }
-  const updatedRoute = await executor.query("UPDATE routes SET status = 'canceled' WHERE id = $1 RETURNING *", [route.id])
-  return mapRoute(updatedRoute.rows[0])
+  await executor.query("UPDATE routes SET status = 'canceled' WHERE id = ?", [route.id])
+  const updatedRouteRes = await executor.query('SELECT * FROM routes WHERE id = ?', [route.id])
+  return mapRoute(updatedRouteRes.rows[0])
 }
 
 async function cancelPlanTripTx(executor: DbQueryExecutor, plan: Plan): Promise<Plan> {
@@ -143,17 +144,18 @@ async function cancelPlanTripTx(executor: DbQueryExecutor, plan: Plan): Promise<
     await unwindRouteFeeOnMatchedCancel(executor, route)
     await cancelAcceptedMatchTx(executor, accepted)
   }
-  const updatedPlan = await executor.query("UPDATE plans SET status = 'canceled' WHERE id = $1 RETURNING *", [plan.id])
-  const canceledPlan = toCamelCase<Plan>(updatedPlan.rows[0])
+  await executor.query("UPDATE plans SET status = 'canceled' WHERE id = ?", [plan.id])
+  const updatedPlanRes = await executor.query('SELECT * FROM plans WHERE id = ?', [plan.id])
+  const canceledPlan = toCamelCase<Plan>(updatedPlanRes.rows[0])
   if (!canceledPlan) throw new Error('Failed to cancel plan')
   return canceledPlan
 }
 
 export async function cancelTripTx(tripId: string): Promise<Route | Plan> {
   return withTransaction(async (tx) => {
-    const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [tripId])
+    const routeRes = await tx.query('SELECT * FROM routes WHERE id = ? FOR UPDATE', [tripId])
     if (routeRes.rows[0]) return cancelRouteTripTx(tx, mapRoute(routeRes.rows[0]))
-    const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [tripId])
+    const planRes = await tx.query('SELECT * FROM plans WHERE id = ? FOR UPDATE', [tripId])
     const plan = toCamelCase<Plan>(planRes.rows[0])
     if (plan) return cancelPlanTripTx(tx, plan)
     throw new HttpError(404, 'Trip not found')
@@ -177,8 +179,8 @@ async function markEntityCompletedTx(
   completedAt: Date,
 ): Promise<void> {
   await executor.query(
-    `UPDATE ${table} SET status = 'completed', completed_at = $2 WHERE id = $1`,
-    [id, completedAt],
+    `UPDATE ${table} SET status = 'completed', completed_at = ? WHERE id = ?`,
+    [completedAt, id],
   )
 }
 
@@ -186,13 +188,17 @@ export async function completeTripTx(tripId: string): Promise<Route | Plan> {
   return withTransaction(async (tx) => {
     const completedAt = new Date()
 
-    const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [tripId])
+    const routeRes = await tx.query('SELECT * FROM routes WHERE id = ? FOR UPDATE', [tripId])
     if (routeRes.rows[0]) {
       const route = mapRoute(routeRes.rows[0])
       const accepted = await findAcceptedRouteMatchTx(tx, route.id)
+      await tx.query(
+        "UPDATE routes SET status = 'completed', completed_at = ? WHERE id = ?",
+        [completedAt, route.id],
+      )
       const updatedRouteRes = await tx.query(
-        "UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *",
-        [route.id, completedAt],
+        'SELECT * FROM routes WHERE id = ?',
+        [route.id],
       )
       const counterpartPlanId = acceptedPlanId(accepted)
       if (counterpartPlanId) {
@@ -201,13 +207,17 @@ export async function completeTripTx(tripId: string): Promise<Route | Plan> {
       return mapRoute(updatedRouteRes.rows[0])
     }
 
-    const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [tripId])
+    const planRes = await tx.query('SELECT * FROM plans WHERE id = ? FOR UPDATE', [tripId])
     const plan = planRes.rows[0] ? toCamelCase<Plan>(planRes.rows[0]) : null
     if (plan) {
       const accepted = await findAcceptedPlanMatchTx(tx, plan)
+      await tx.query(
+        "UPDATE plans SET status = 'completed', completed_at = ? WHERE id = ?",
+        [completedAt, plan.id],
+      )
       const updatedPlanRes = await tx.query(
-        "UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *",
-        [plan.id, completedAt],
+        'SELECT * FROM plans WHERE id = ?',
+        [plan.id],
       )
       const counterpartRouteId = acceptedRouteId(accepted)
       if (counterpartRouteId) {

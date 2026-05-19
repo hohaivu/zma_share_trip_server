@@ -12,6 +12,7 @@ export function mapAppNotification(row: Record<string, unknown>): AppNotificatio
   if (!notification) throw new Error('Cannot map null row to AppNotification')
   notification.metadata =
     parseJsonb<Record<string, unknown>>(row.metadata) || {}
+  notification.read = Boolean(notification.read)
   return notification
 }
 
@@ -22,7 +23,7 @@ export async function listNotifications(
     `
       SELECT *
       FROM notifications
-      WHERE recipient_id = $1
+      WHERE recipient_id = ?
       ORDER BY created_at DESC, id DESC
     `,
     [recipientId],
@@ -37,9 +38,9 @@ export async function createNotification(
     `
       INSERT INTO notifications (
         id, recipient_id, type, title, body, target_route, deep_link,
-        request_source, metadata, read, created_at
+        request_source, metadata, \`read\`, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, NOW())
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NOW())
       RETURNING *
     `,
     [
@@ -61,12 +62,17 @@ export async function markNotificationRead(
   recipientId: string,
   notificationId: string,
 ): Promise<AppNotification | null> {
-  const result = await query(
+  await query(
     `
       UPDATE notifications
-      SET read = TRUE, read_at = NOW()
-      WHERE id = $1 AND recipient_id = $2
-      RETURNING *
+      SET \`read\` = TRUE, read_at = NOW()
+      WHERE id = ? AND recipient_id = ?
+    `,
+    [notificationId, recipientId],
+  )
+  const result = await query(
+    `
+      SELECT * FROM notifications WHERE id = ? AND recipient_id = ?
     `,
     [notificationId, recipientId],
   )
@@ -77,8 +83,8 @@ export async function markAllNotificationsRead(recipientId: string): Promise<voi
   await query(
     `
       UPDATE notifications
-      SET read = TRUE, read_at = NOW()
-      WHERE recipient_id = $1 AND read = FALSE
+      SET \`read\` = TRUE, read_at = NOW()
+      WHERE recipient_id = ? AND \`read\` = FALSE
     `,
     [recipientId],
   )

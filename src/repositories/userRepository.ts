@@ -48,7 +48,7 @@ const USER_SELECT_SQL = `
          i.preferred_mode, i.mode_selected_at
   FROM users u
   LEFT JOIN identities i ON i.id = u.identity_id
-  WHERE u.id = $1
+  WHERE u.id = ?
 `
 
 const PERSONA_SELECT_SQL = `
@@ -56,7 +56,7 @@ const PERSONA_SELECT_SQL = `
          i.preferred_mode, i.mode_selected_at
   FROM users u
   JOIN identities i ON i.id = u.identity_id
-  WHERE u.identity_id = $1
+  WHERE u.identity_id = ?
 `
 
 function generateId(prefix: string): string {
@@ -69,40 +69,46 @@ export async function bootstrapUser(
   avatarUrl?: string,
 ): Promise<BootstrapResult> {
   return withTransaction(async (tx) => {
-    const existing = await tx.query('SELECT * FROM identities WHERE mauid = $1', [
+    const existing = await tx.query('SELECT * FROM identities WHERE mauid = ?', [
       mauid,
     ])
     const wasCreated = existing.rows.length === 0
-    const identityResult = wasCreated
-      ? await tx.query(
-          `
+    let identity: Identity
+    if (wasCreated) {
+      const identityResult = await tx.query(
+        `
           INSERT INTO identities (mauid, display_name, avatar_url, preferred_mode, created_at, updated_at)
-          VALUES ($1, $2, $3, 'client', NOW(), NOW())
+          VALUES (?, ?, ?, 'client', NOW(), NOW())
           RETURNING *
         `,
-          [mauid, displayName || '', avatarUrl || ''],
-        )
-      : await tx.query(
-          `
+        [mauid, displayName || '', avatarUrl || ''],
+      )
+      identity = mapIdentity(identityResult.rows[0])
+    } else {
+      await tx.query(
+        `
           UPDATE identities
-          SET display_name = $1, avatar_url = $2, updated_at = NOW()
-          WHERE mauid = $3
-          RETURNING *
+          SET display_name = ?, avatar_url = ?, updated_at = NOW()
+          WHERE mauid = ?
         `,
-          [
-            displayName || existing.rows[0].display_name,
-            avatarUrl ?? existing.rows[0].avatar_url,
-            mauid,
-          ],
-        )
-    const identity = mapIdentity(identityResult.rows[0])
+        [
+          displayName || existing.rows[0].display_name,
+          avatarUrl ?? existing.rows[0].avatar_url,
+          mauid,
+        ],
+      )
+      const identityResult = await tx.query(
+        'SELECT * FROM identities WHERE mauid = ?',
+        [mauid],
+      )
+      identity = mapIdentity(identityResult.rows[0])
+    }
 
     for (const role of ['driver', 'client']) {
       await tx.query(
         `
-        INSERT INTO users (id, identity_id, role, verification_status, rating_avg, trip_count, created_at)
-        VALUES ($1, $2, $3, 'unverified', 0, 0, NOW())
-        ON CONFLICT DO NOTHING
+        INSERT IGNORE INTO users (id, identity_id, role, verification_status, rating_avg, trip_count, created_at)
+        VALUES (?, ?, ?, 'unverified', 0, 0, NOW())
       `,
         [generateId(`user-${role}`), identity.id, role],
       )
@@ -127,26 +133,27 @@ export async function updateUserIdentity(
   identityId: string,
   data: UpdateUserPayload,
 ): Promise<Identity | null> {
-  const result = await query(
+  await query(
     `
     UPDATE identities
-    SET display_name = COALESCE($2, display_name),
-        avatar_url = COALESCE($3, avatar_url),
-        phone = COALESCE($4, phone),
-        preferred_mode = COALESCE($5, preferred_mode),
-        mode_selected_at = CASE WHEN $5::text IS NULL THEN mode_selected_at ELSE NOW() END,
+    SET display_name = COALESCE(?, display_name),
+        avatar_url = COALESCE(?, avatar_url),
+        phone = COALESCE(?, phone),
+        preferred_mode = COALESCE(?, preferred_mode),
+        mode_selected_at = CASE WHEN ? IS NULL THEN mode_selected_at ELSE NOW() END,
         updated_at = NOW()
-    WHERE id = $1
-    RETURNING *
+    WHERE id = ?
   `,
     [
-      identityId,
       data.displayName ?? null,
       data.avatarUrl ?? null,
       data.phone ?? null,
       data.preferredMode ?? null,
+      data.preferredMode ?? null,
+      identityId,
     ],
   )
+  const result = await query('SELECT * FROM identities WHERE id = ?', [identityId])
   return result.rows[0] ? mapIdentity(result.rows[0]) : null
 }
 
@@ -154,10 +161,11 @@ export async function updateIdentityMode(
   identityId: string,
   mode: string,
 ): Promise<Identity | null> {
-  const result = await query(
-    'UPDATE identities SET preferred_mode = $1, mode_selected_at = NOW(), updated_at = NOW() WHERE id = $2 RETURNING *',
+  await query(
+    'UPDATE identities SET preferred_mode = ?, mode_selected_at = NOW(), updated_at = NOW() WHERE id = ?',
     [mode, identityId],
   )
+  const result = await query('SELECT * FROM identities WHERE id = ?', [identityId])
   return result.rows[0] ? mapIdentity(result.rows[0]) : null
 }
 
@@ -165,7 +173,7 @@ export async function findIdentityMode(
   identityId: string,
 ): Promise<{ preferredMode: string; modeSelectedAt: string } | null> {
   const result = await query(
-    'SELECT preferred_mode, mode_selected_at FROM identities WHERE id = $1',
+    'SELECT preferred_mode, mode_selected_at FROM identities WHERE id = ?',
     [identityId],
   )
   if (result.rowCount === 0) return null
@@ -200,7 +208,7 @@ export async function getBlockedUsers(blockerId: string): Promise<string[]> {
       SELECT u.id
       FROM identity_blocks b
       JOIN users u ON u.identity_id = b.blocked_identity_id
-      WHERE b.blocker_identity_id = $1
+      WHERE b.blocker_identity_id = ?
       ORDER BY u.id
     `,
     [blocker.identityId],
@@ -220,9 +228,8 @@ export async function blockUser(
 
   await query(
     `
-      INSERT INTO identity_blocks (blocker_identity_id, blocked_identity_id, created_at)
-      VALUES ($1, $2, NOW())
-      ON CONFLICT DO NOTHING
+      INSERT IGNORE INTO identity_blocks (blocker_identity_id, blocked_identity_id, created_at)
+      VALUES (?, ?, NOW())
     `,
     [blocker.identityId, blocked.identityId],
   )
@@ -242,7 +249,7 @@ export async function unblockUser(
   await query(
     `
       DELETE FROM identity_blocks
-      WHERE blocker_identity_id = $1 AND blocked_identity_id = $2
+      WHERE blocker_identity_id = ? AND blocked_identity_id = ?
     `,
     [blocker.identityId, blocked.identityId],
   )

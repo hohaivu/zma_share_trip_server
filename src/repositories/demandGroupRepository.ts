@@ -15,7 +15,7 @@ export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
     `
       SELECT *
       FROM plans p
-      WHERE p.status = $1
+      WHERE p.status = ?
         AND NOT EXISTS (
           SELECT 1
           FROM route_requests sr
@@ -36,7 +36,7 @@ export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
     if (!grouped.has(key)) {
       grouped.set(key, {
         id: `dg-${key}`,
-        departureDate: plan.departureDate,
+        departureDate: plan.departureDate.slice(0, 10),
         originWardId: plan.originWardId,
         destinationWardId: plan.destinationWardId,
         originProvinceId: plan.originProvinceId,
@@ -75,9 +75,11 @@ export async function getDemandGroupMembers(
   const group = await getDemandGroup(groupId)
   if (!group) return null
 
+  if (group.memberPlanIds.length === 0) return []
+  const placeholders = group.memberPlanIds.map(() => '?').join(',')
   const result = await query(
-    'SELECT * FROM plans WHERE id = ANY($1::varchar[])',
-    [group.memberPlanIds],
+    `SELECT * FROM plans WHERE id IN (${placeholders})`,
+    group.memberPlanIds,
   )
   return mapRows<Plan>(result.rows)
 }

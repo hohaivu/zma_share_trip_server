@@ -24,14 +24,14 @@ export async function findAcceptedRouteMatchTx(
   routeId: string,
 ): Promise<AcceptedJourneyMatch | null> {
   const searchRes = await executor.query(
-    `SELECT * FROM route_requests WHERE route_id = $1 AND status = 'accepted' FOR UPDATE`,
+    `SELECT * FROM route_requests WHERE route_id = ? AND status = 'accepted' FOR UPDATE`,
     [routeId],
   )
   const acceptedSearch = mapRows<RouteRequest>(searchRes.rows)[0]
   if (acceptedSearch) return { kind: 'route_request', request: acceptedSearch }
 
   const offerRes = await executor.query(
-    `SELECT * FROM group_offers WHERE route_id = $1 AND status = 'accepted' FOR UPDATE`,
+    `SELECT * FROM group_offers WHERE route_id = ? AND status = 'accepted' FOR UPDATE`,
     [routeId],
   )
   const acceptedOffer = mapRows<GroupOffer>(offerRes.rows)[0]
@@ -43,7 +43,7 @@ export async function findAcceptedPlanMatchTx(
   plan: Plan,
 ): Promise<AcceptedJourneyMatch | null> {
   const searchRes = await executor.query(
-    `SELECT * FROM route_requests WHERE client_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted') FOR UPDATE`,
+    `SELECT * FROM route_requests WHERE client_id = ? AND plan_id = ? AND status IN ('pending', 'accepted') FOR UPDATE`,
     [plan.clientId, plan.id],
   )
   const acceptedSearch = mapRows<RouteRequest>(searchRes.rows).find(
@@ -52,7 +52,7 @@ export async function findAcceptedPlanMatchTx(
   if (acceptedSearch) return { kind: 'route_request', request: acceptedSearch }
 
   const offerRes = await executor.query(
-    `SELECT * FROM group_offers WHERE client_id = $1 AND plan_id = $2 AND status IN ('pending', 'accepted') FOR UPDATE`,
+    `SELECT * FROM group_offers WHERE client_id = ? AND plan_id = ? AND status IN ('pending', 'accepted') FOR UPDATE`,
     [plan.clientId, plan.id],
   )
   const acceptedOffer = mapRows<GroupOffer>(offerRes.rows).find(
@@ -103,7 +103,7 @@ async function hasReviewerSubmittedTripReview(
   reviewerId: string,
 ): Promise<boolean> {
   const result = await query(
-    'SELECT 1 FROM reviews WHERE trip_id = $1 AND reviewer_id = $2 LIMIT 1',
+    'SELECT 1 FROM reviews WHERE trip_id = ? AND reviewer_id = ? LIMIT 1',
     [tripId, reviewerId],
   )
   return result.rows.length > 0

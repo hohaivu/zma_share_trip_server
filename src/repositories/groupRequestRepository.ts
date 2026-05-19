@@ -25,7 +25,7 @@ export async function createGroupRequestWithOffers(
   input: CreateGroupRequestTxInput,
 ): Promise<{ groupRequest: GroupRequest; offers: GroupOffer[] }> {
   return withTransaction(async (tx) => {
-    const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [
+    const routeRes = await tx.query('SELECT * FROM routes WHERE id = ? FOR UPDATE', [
       input.routeId,
     ])
     const route = routeRes.rows[0] ? mapRoute(routeRes.rows[0]) : null
@@ -42,7 +42,7 @@ export async function createGroupRequestWithOffers(
     const requestRes = await tx.query(
       `
       INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      VALUES (?, ?, ?, ?, ?, ?, NOW())
       RETURNING *
     `,
       [
@@ -59,14 +59,14 @@ export async function createGroupRequestWithOffers(
 
     const offers: GroupOffer[] = []
     for (const planId of input.memberPlanIds) {
-      const planRes = await tx.query('SELECT * FROM plans WHERE id = $1', [planId])
+      const planRes = await tx.query('SELECT * FROM plans WHERE id = ?', [planId])
       const plan = toCamelCase<Plan>(planRes.rows[0])
       if (!plan) continue
 
       const offerRes = await tx.query(
         `
         INSERT INTO group_offers (id, group_request_id, route_id, driver_id, client_id, plan_id, trip_price, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
         RETURNING *
       `,
         [
@@ -93,7 +93,7 @@ export async function cancelGroupRequestWithOffers(
 ): Promise<CancelGroupRequestTxResult> {
   return withTransaction(async (tx) => {
     const requestRes = await tx.query(
-      'SELECT * FROM group_requests WHERE id = $1 FOR UPDATE',
+      'SELECT * FROM group_requests WHERE id = ? FOR UPDATE',
       [requestId],
     )
     let groupRequest = toCamelCase<GroupRequest>(requestRes.rows[0])
@@ -102,19 +102,36 @@ export async function cancelGroupRequestWithOffers(
       throw new Error(`Cannot cancel request in status: ${groupRequest.status}`)
     }
 
+    await tx.query(
+      "UPDATE group_requests SET status = 'canceled' WHERE id = ?",
+      [requestId],
+    )
     const updatedRes = await tx.query(
-      "UPDATE group_requests SET status = 'canceled' WHERE id = $1 RETURNING *",
+      'SELECT * FROM group_requests WHERE id = ?',
       [requestId],
     )
     groupRequest = toCamelCase<GroupRequest>(updatedRes.rows[0])
     if (!groupRequest) throw new Error('Failed to cancel group request')
 
-    const offersRes = await tx.query(
-      "UPDATE group_offers SET status = 'closed' WHERE group_request_id = $1 AND status = 'pending' RETURNING *",
+    const offerIdsRes = await tx.query(
+      "SELECT id FROM group_offers WHERE group_request_id = ? AND status = 'pending'",
       [requestId],
     )
+    const offerIds = offerIdsRes.rows.map((r) => String(r.id))
+    await tx.query(
+      "UPDATE group_offers SET status = 'closed' WHERE group_request_id = ? AND status = 'pending'",
+      [requestId],
+    )
+    let closedOffers: GroupOffer[] = []
+    if (offerIds.length > 0) {
+      const offersRes = await tx.query(
+        `SELECT * FROM group_offers WHERE id IN (${offerIds.map(() => '?').join(',')})`,
+        offerIds,
+      )
+      closedOffers = mapRows<GroupOffer>(offersRes.rows)
+    }
 
-    return { groupRequest, closedOffers: mapRows<GroupOffer>(offersRes.rows) }
+    return { groupRequest, closedOffers }
   })
 }
 
@@ -122,7 +139,7 @@ export async function listGroupRequestsByDriver(
   driverId: string,
 ): Promise<GroupRequest[]> {
   const result = await query(
-    'SELECT * FROM group_requests WHERE driver_id = $1',
+    'SELECT * FROM group_requests WHERE driver_id = ?',
     [driverId],
   )
   return mapRows<GroupRequest>(result.rows)

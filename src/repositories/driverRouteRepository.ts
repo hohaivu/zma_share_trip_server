@@ -19,12 +19,29 @@ function toSnakeCase(key: string): string { return key.replace(/[A-Z]/g, (letter
 function isTerminalTripStatus(status?: string | null): boolean { return status === 'completed' || status === 'canceled' }
 function isActiveTripStatus(status?: string | null): boolean { return status === 'draft' || status === 'published' || status === 'matched' }
 function mapRoute(row: Record<string, unknown>): Route { const route = toCamelCase<Route>(row); if (!route) throw new Error('Cannot map null row to Route'); route.tripPrice = parseNumeric(route.tripPrice); route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd); return route }
-async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> { const keys = Object.keys(data).filter((k) => data[k] !== undefined); if (keys.length === 0) { const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id]); return toCamelCase<T>(existing.rows[0]) } const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`); const timeFields = ['departureDate','windowStart','windowEnd']; const vals = keys.map((k) => { const val = data[k]; if (jsonFields.includes(k)) return JSON.stringify(val); if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString(); return val }); const result = await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`, [id, ...vals]); return toCamelCase<T>(result.rows[0]) }
+async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> {
+  const keys = Object.keys(data).filter((k) => data[k] !== undefined)
+  if (keys.length === 0) {
+    const existing = await query(`SELECT * FROM ${table} WHERE id = ?`, [id])
+    return toCamelCase<T>(existing.rows[0])
+  }
+  const setClauses = keys.map((key) => `${toSnakeCase(key)} = ?`)
+  const timeFields = ['departureDate', 'windowStart', 'windowEnd']
+  const vals = keys.map((k) => {
+    const val = data[k]
+    if (jsonFields.includes(k)) return JSON.stringify(val)
+    if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString()
+    return val
+  })
+  await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = ?`, [...vals, id])
+  const result = await query(`SELECT * FROM ${table} WHERE id = ?`, [id])
+  return toCamelCase<T>(result.rows[0])
+}
 
 const ROUTE_ACCEPTED_SQL = `
-  SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
+  SELECT 1 FROM group_offers WHERE route_id = ? AND status = 'accepted'
   UNION ALL
-  SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
+  SELECT 1 FROM route_requests WHERE route_id = ? AND status = 'accepted'
 `
 
 export async function checkRouteAvailability(
@@ -36,7 +53,7 @@ export async function checkRouteAvailability(
   },
   routeId: string,
 ): Promise<boolean> {
-  const result = await executor.query(ROUTE_ACCEPTED_SQL, [routeId])
+  const result = await executor.query(ROUTE_ACCEPTED_SQL, [routeId, routeId])
   return result.rowCount === 0
 }
 
@@ -84,6 +101,8 @@ export async function createRoute(
   const origin = extractWardFields(fields, 'origin', data.origin)
   const dest = extractWardFields(fields, 'destination', data.destination)
   const departureWindow = computeDepartureBlock(data.departureDate)
+  const windowStart = data.windowStart ? normalizeUtc(data.windowStart) : departureWindow.start
+  const windowEnd = data.windowEnd ? normalizeUtc(data.windowEnd) : departureWindow.end
 
   const res = await query(
     `
@@ -94,7 +113,7 @@ export async function createRoute(
       departure_date, window_start, window_end,
       trip_price, distance_meters, notes, status, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     RETURNING *
   `,
     [
@@ -107,9 +126,9 @@ export async function createRoute(
       origin.provinceId,
       dest.wardId,
       dest.provinceId,
-      normalizeUtc(data.departureDate),
-      data.windowStart ? normalizeUtc(data.windowStart) : departureWindow.start,
-      data.windowEnd ? normalizeUtc(data.windowEnd) : departureWindow.end,
+      windowStart,
+      windowStart,
+      windowEnd,
       data.tripPrice,
       data.distanceMeters ?? null,
       data.notes || '',
@@ -144,7 +163,7 @@ export async function getReviewEligibility(
 }
 
 export async function getRoute(id: string): Promise<Route | null> {
-  const result = await query('SELECT * FROM routes WHERE id = $1', [id])
+  const result = await query('SELECT * FROM routes WHERE id = ?', [id])
   return result.rows[0] ? mapRoute(result.rows[0]) : null
 }
 
@@ -180,28 +199,26 @@ export async function runPublishTransition(
       description: reservationDescription,
     })
 
-    const updatedRoute = await tx.query(
+    await tx.query(
       `
       UPDATE routes
-      SET car_id = $2,
-          origin = $3,
-          destination = $4,
-          origin_ward_id = $5,
-          origin_province_id = $6,
-          destination_ward_id = $7,
-          destination_province_id = $8,
-          departure_date = $9,
-          window_start = $10,
-          window_end = $11,
-          trip_price = $12,
-          distance_meters = $13,
-          notes = $14,
+      SET car_id = ?,
+          origin = ?,
+          destination = ?,
+          origin_ward_id = ?,
+          origin_province_id = ?,
+          destination_ward_id = ?,
+          destination_province_id = ?,
+          departure_date = ?,
+          window_start = ?,
+          window_end = ?,
+          trip_price = ?,
+          distance_meters = ?,
+          notes = ?,
           status = 'published'
-      WHERE id = $1
-      RETURNING *
+      WHERE id = ?
     `,
       [
-        id,
         nextValues.carId,
         JSON.stringify(nextValues.origin),
         JSON.stringify(nextValues.destination),
@@ -215,9 +232,11 @@ export async function runPublishTransition(
         nextValues.tripPrice,
         nextValues.distanceMeters,
         nextValues.notes,
+        id,
       ],
     )
 
+    const updatedRoute = await tx.query('SELECT * FROM routes WHERE id = ?', [id])
     return mapRoute(updatedRoute.rows[0])
   })
 }
@@ -235,7 +254,7 @@ export async function listRoutesByDriver(
   driverId: string,
   scope: TripListScope = 'active',
 ): Promise<Array<WithReviewEligibility<Route>>> {
-  const result = await query('SELECT * FROM routes WHERE driver_id = $1', [driverId])
+  const result = await query('SELECT * FROM routes WHERE driver_id = ?', [driverId])
   const routes = result.rows.map(mapRoute)
   const filtered = await filterTripsByScope(
     routes,

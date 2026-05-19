@@ -13,7 +13,7 @@ export async function createReport(
   const result = await query(
     `
       INSERT INTO reports (id, trip_id, reporter_id, reportee_id, reason, detail, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      VALUES (?, ?, ?, ?, ?, ?, NOW())
       RETURNING *
     `,
     [
@@ -30,7 +30,7 @@ export async function createReport(
 
 export async function listReportsByReporter(userId: string): Promise<Report[]> {
   const result = await query(
-    'SELECT * FROM reports WHERE reporter_id = $1 ORDER BY created_at DESC, id DESC',
+    'SELECT * FROM reports WHERE reporter_id = ? ORDER BY created_at DESC, id DESC',
     [userId],
   )
   return mapRows<Report>(result.rows)

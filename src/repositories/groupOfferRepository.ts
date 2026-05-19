@@ -5,25 +5,25 @@ import { mapRoute, ROUTE_ACCEPTED_SQL } from './routeAvailabilityRepository'
 import { chargeRouteFeeTx, loadRouteForWalletTx } from './walletRepository'
 
 export async function getGroupOfferById(offerId: string): Promise<GroupOffer | null> {
-  const result = await query('SELECT * FROM group_offers WHERE id = $1', [offerId])
+  const result = await query('SELECT * FROM group_offers WHERE id = ?', [offerId])
   return toCamelCase<GroupOffer>(result.rows[0])
 }
 
 export async function getRouteStatus(routeId: string): Promise<string | null> {
-  const result = await query('SELECT status FROM routes WHERE id = $1', [routeId])
+  const result = await query('SELECT status FROM routes WHERE id = ?', [routeId])
   const row = result.rows[0] as { status?: string } | undefined
   return row?.status ?? null
 }
 
 export async function getPlanStatus(planId: string): Promise<string | null> {
-  const result = await query('SELECT status FROM plans WHERE id = $1', [planId])
+  const result = await query('SELECT status FROM plans WHERE id = ?', [planId])
   const row = result.rows[0] as { status?: string } | undefined
   return row?.status ?? null
 }
 
 export async function listGroupOffersByClient(clientId: string): Promise<GroupOffer[]> {
   const offersRes = await query(
-    'SELECT * FROM group_offers WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
+    'SELECT * FROM group_offers WHERE client_id = ? ORDER BY created_at DESC, id DESC',
     [clientId],
   )
   return mapRows<GroupOffer>(offersRes.rows)
@@ -46,7 +46,7 @@ export interface AcceptGroupOfferTxResult {
 export async function acceptGroupOfferTx(offerId: string): Promise<AcceptGroupOfferTxResult> {
   return withTransaction(async (tx) => {
     const offerRes = await tx.query(
-      'SELECT * FROM group_offers WHERE id = $1 FOR UPDATE',
+      'SELECT * FROM group_offers WHERE id = ? FOR UPDATE',
       [offerId],
     )
     const offer = toCamelCase<GroupOffer>(offerRes.rows[0])
@@ -63,22 +63,23 @@ export async function acceptGroupOfferTx(offerId: string): Promise<AcceptGroupOf
       return { status: 'route_unpublished' as const, offer, routeStatus: route.status }
     }
 
-    const availabilityRes = await tx.query(ROUTE_ACCEPTED_SQL, [offer.routeId])
+    const availabilityRes = await tx.query(ROUTE_ACCEPTED_SQL, [offer.routeId, offer.routeId])
     if (availabilityRes.rowCount !== 0) {
       return { status: 'route_unavailable' as const, offer }
     }
 
-    const updatedRes = await tx.query(
-      "UPDATE group_offers SET status = 'accepted' WHERE id = $1 RETURNING *",
+    await tx.query(
+      "UPDATE group_offers SET status = 'accepted' WHERE id = ?",
       [offerId],
     )
+    const updatedRes = await tx.query('SELECT * FROM group_offers WHERE id = ?', [offerId])
     const updatedOffer = toCamelCase<GroupOffer>(updatedRes.rows[0])
     if (!updatedOffer) throw new Error('Failed to update group offer')
 
-    await tx.query("UPDATE routes SET status = 'matched' WHERE id = $1", [offer.routeId])
+    await tx.query("UPDATE routes SET status = 'matched' WHERE id = ?", [offer.routeId])
     if (updatedOffer.planId) {
       await tx.query(
-        "UPDATE plans SET status = 'matched' WHERE id = $1 AND status = 'published'",
+        "UPDATE plans SET status = 'matched' WHERE id = ? AND status = 'published'",
         [updatedOffer.planId],
       )
     }
@@ -87,23 +88,35 @@ export async function acceptGroupOfferTx(offerId: string): Promise<AcceptGroupOf
       description: 'Route fee charged on accepted group offer',
     })
 
-    const siblingsRes = await tx.query(
-      "UPDATE group_offers SET status = 'closed' WHERE group_request_id = $1 AND id != $2 AND status = 'pending' RETURNING *",
+    const siblingIdsRes = await tx.query(
+      "SELECT id FROM group_offers WHERE group_request_id = ? AND id != ? AND status = 'pending'",
       [offer.groupRequestId, offerId],
     )
-    const siblings = mapRows<GroupOffer>(siblingsRes.rows)
+    const siblingIds = siblingIdsRes.rows.map((r) => String(r.id))
+    await tx.query(
+      "UPDATE group_offers SET status = 'closed' WHERE group_request_id = ? AND id != ? AND status = 'pending'",
+      [offer.groupRequestId, offerId],
+    )
+    let siblings: GroupOffer[] = []
+    if (siblingIds.length > 0) {
+      const siblingsRes = await tx.query(
+        `SELECT * FROM group_offers WHERE id IN (${siblingIds.map(() => '?').join(',')})`,
+        siblingIds,
+      )
+      siblings = mapRows<GroupOffer>(siblingsRes.rows)
+    }
 
     await tx.query(
       `
       UPDATE group_requests
-      SET status = 'accepted', accepted_client_user_id = $1, accepted_plan_id = $2, client_id = $1
-      WHERE id = $3
+      SET status = 'accepted', accepted_client_user_id = ?, accepted_plan_id = ?, client_id = ?
+      WHERE id = ?
       `,
-      [updatedOffer.clientId, updatedOffer.planId, updatedOffer.groupRequestId],
+      [updatedOffer.clientId, updatedOffer.planId, updatedOffer.clientId, updatedOffer.groupRequestId],
     )
 
     await tx.query(
-      "UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND status = 'pending'",
+      "UPDATE route_requests SET status = 'closed' WHERE route_id = ? AND status = 'pending'",
       [offer.routeId],
     )
 
@@ -112,9 +125,10 @@ export async function acceptGroupOfferTx(offerId: string): Promise<AcceptGroupOf
 }
 
 export async function markGroupOfferDeclined(offerId: string): Promise<GroupOffer | null> {
-  const updatedRes = await query(
-    "UPDATE group_offers SET status = 'declined' WHERE id = $1 RETURNING *",
+  await query(
+    "UPDATE group_offers SET status = 'declined' WHERE id = ?",
     [offerId],
   )
+  const updatedRes = await query('SELECT * FROM group_offers WHERE id = ?', [offerId])
   return toCamelCase<GroupOffer>(updatedRes.rows[0])
 }

@@ -20,20 +20,19 @@ const TABLES = [
 
 export async function truncateDatabase() {
   const pool = initPool()
-  const client = await pool.connect()
+  const conn = await pool.getConnection()
   try {
-    await client.query('BEGIN')
-    await client.query(
-      `TRUNCATE TABLE ${TABLES.join(', ')} RESTART IDENTITY CASCADE`,
-    )
-    await client.query('COMMIT')
+    await conn.query('SET FOREIGN_KEY_CHECKS=0')
+    for (const table of TABLES) {
+      await conn.query(`TRUNCATE TABLE ${table}`)
+    }
+    await conn.query('SET FOREIGN_KEY_CHECKS=1')
     console.log('Database truncated successfully.')
   } catch (err: unknown) {
-    await client.query('ROLLBACK')
     console.error('Database truncate failed:', err)
     throw err
   } finally {
-    client.release()
+    conn.release()
     await closePool()
   }
 }

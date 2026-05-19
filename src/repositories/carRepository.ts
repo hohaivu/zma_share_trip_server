@@ -35,12 +35,13 @@ export function mapCar(row: Record<string, unknown>): Car & { colorHex?: string 
 async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> {
   const keys = Object.keys(data).filter((k) => data[k] !== undefined)
   if (keys.length === 0) {
-    const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id])
+    const existing = await query(`SELECT * FROM ${table} WHERE id = ?`, [id])
     return toCamelCase<T>(existing.rows[0])
   }
-  const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`)
+  const setClauses = keys.map((key) => `${toSnakeCase(key)} = ?`)
   const vals = keys.map((k) => (jsonFields.includes(k) ? JSON.stringify(data[k]) : data[k]))
-  const result = await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`, [id, ...vals])
+  await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = ?`, [...vals, id])
+  const result = await query(`SELECT * FROM ${table} WHERE id = ?`, [id])
   return toCamelCase<T>(result.rows[0])
 }
 
@@ -48,7 +49,7 @@ export async function createCar(ownerId: string, data: CreateCarPayload): Promis
   const result = await query(
     `
     INSERT INTO cars (id, owner_id, nickname, plate_number_masked, plate_number_full, brand, model, color, seat_capacity, verification_status, photos, created_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     RETURNING *
   `,
     [generateId('car'), ownerId, data.nickname, data.plateNumberMasked, data.plateNumberFull, data.brand, data.model, data.color, data.seatCapacity, data.verificationStatus || 'unverified', JSON.stringify(data.photos || [])],
@@ -57,12 +58,12 @@ export async function createCar(ownerId: string, data: CreateCarPayload): Promis
 }
 
 export async function listCarsByOwner(ownerId: string): Promise<(Car & { colorHex?: string })[]> {
-  const result = await query('SELECT * FROM cars WHERE owner_id = $1', [ownerId])
+  const result = await query('SELECT * FROM cars WHERE owner_id = ?', [ownerId])
   return result.rows.map(mapCar)
 }
 
 export async function getCarById(id: string): Promise<(Car & { colorHex?: string }) | null> {
-  const result = await query('SELECT * FROM cars WHERE id = $1', [id])
+  const result = await query('SELECT * FROM cars WHERE id = ?', [id])
   return result.rows[0] ? mapCar(result.rows[0]) : null
 }
 
@@ -72,6 +73,6 @@ export async function updateCar(id: string, data: UpdateCarPayload): Promise<(Ca
 }
 
 export async function deleteCar(id: string): Promise<boolean> {
-  const result = await query('DELETE FROM cars WHERE id = $1 RETURNING id', [id])
+  const result = await query('DELETE FROM cars WHERE id = ? RETURNING id', [id])
   return result.rowCount !== null && result.rowCount > 0
 }

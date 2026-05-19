@@ -7,9 +7,11 @@ function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}${Math.random().toString().slice(2, 6)}`
 }
 
-export function isPgUniqueViolation(e: unknown, constraint: string): boolean {
+export function isMariadbDuplicateEntry(e: unknown, keyName: string): boolean {
   const err = e as Record<string, unknown>
-  return err?.code === '23505' && err?.constraint === constraint
+  if (err?.errno !== 1062) return false
+  const sqlMessage = typeof err.sqlMessage === 'string' ? err.sqlMessage : ''
+  return sqlMessage.includes(keyName)
 }
 
 export async function createReview(
@@ -18,7 +20,7 @@ export async function createReview(
   const result = await query(
     `
       INSERT INTO reviews (id, trip_id, reviewer_id, reviewee_id, rating, comment, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      VALUES (?, ?, ?, ?, ?, ?, NOW())
       RETURNING *
     `,
     [
@@ -36,7 +38,7 @@ export async function createReview(
 
 export async function listReviewsByReviewer(userId: string): Promise<Review[]> {
   const result = await query(
-    'SELECT * FROM reviews WHERE reviewer_id = $1 ORDER BY created_at DESC, id DESC',
+    'SELECT * FROM reviews WHERE reviewer_id = ? ORDER BY created_at DESC, id DESC',
     [userId],
   )
   return mapRows<Review>(result.rows)

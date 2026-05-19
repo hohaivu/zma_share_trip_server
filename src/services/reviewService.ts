@@ -37,7 +37,7 @@ export async function createReview(
     return await reviewRepository.createReview(payload)
   } catch (error) {
     if (
-      reviewRepository.isPgUniqueViolation(
+      reviewRepository.isMariadbDuplicateEntry(
         error,
         'reviews_unique_trip_reviewer_reviewee',
       )

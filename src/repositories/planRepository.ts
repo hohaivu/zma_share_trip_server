@@ -70,11 +70,11 @@ async function dynamicUpdate<T>(
 ): Promise<T | null> {
   const keys = Object.keys(data).filter((key) => data[key] !== undefined)
   if (keys.length === 0) {
-    const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id])
+    const existing = await query(`SELECT * FROM ${table} WHERE id = ?`, [id])
     return toCamelCase<T>(existing.rows[0])
   }
 
-  const setClauses = keys.map((key, index) => `${toSnakeCase(key)} = $${index + 2}`)
+  const setClauses = keys.map((key) => `${toSnakeCase(key)} = ?`)
   const timeFields = ['departureDate', 'windowStart', 'windowEnd']
   const vals = keys.map((key) => {
     const val = data[key]
@@ -85,15 +85,16 @@ async function dynamicUpdate<T>(
     return val
   })
 
-  const result = await query(
-    `UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
-    [id, ...vals],
+  await query(
+    `UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = ?`,
+    [...vals, id],
   )
+  const result = await query(`SELECT * FROM ${table} WHERE id = ?`, [id])
   return toCamelCase<T>(result.rows[0])
 }
 
 async function getRouteLocal(id: string): Promise<Route | null> {
-  const result = await query('SELECT * FROM routes WHERE id = $1', [id])
+  const result = await query('SELECT * FROM routes WHERE id = ?', [id])
   return result.rows[0] ? toCamelCase<Route>(result.rows[0]) : null
 }
 
@@ -113,7 +114,7 @@ export async function createPlan(
         window_end, passenger_count, publish_mode, notes, status,
         created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       RETURNING *
     `,
     [
@@ -144,7 +145,7 @@ export async function listPlansByClient(
   scope: TripListScope = 'active',
 ): Promise<Array<WithReviewEligibility<Plan>>> {
   await assertUserRole(clientId, 'client')
-  const result = await query('SELECT * FROM plans WHERE client_id = $1', [clientId])
+  const result = await query('SELECT * FROM plans WHERE client_id = ?', [clientId])
   const plans = result.rows.map(mapPlan)
   const filtered = await filterTripsByScope(
     plans,
@@ -162,7 +163,7 @@ export async function listPlansByClient(
 
 export async function getPlan(id?: string): Promise<Plan | null> {
   if (!id) return null
-  const result = await query('SELECT * FROM plans WHERE id = $1', [id])
+  const result = await query('SELECT * FROM plans WHERE id = ?', [id])
   return result.rows[0] ? mapPlan(result.rows[0]) : null
 }
 
@@ -182,7 +183,7 @@ export async function cancelPlanByClient(
   clientId: string,
 ): Promise<Plan> {
   return withTransaction(async (tx) => {
-    const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [
+    const planRes = await tx.query('SELECT * FROM plans WHERE id = ? FOR UPDATE', [
       planId,
     ])
     const plan = toCamelCase<Plan>(planRes.rows[0])
@@ -195,8 +196,12 @@ export async function cancelPlanByClient(
     const accepted = await findAcceptedPlanMatchTx(tx, plan)
     if (accepted) throw new HttpError(409, 'Cannot cancel an accepted plan')
 
+    await tx.query(
+      "UPDATE plans SET status = 'canceled' WHERE id = ?",
+      [plan.id],
+    )
     const updatedPlan = await tx.query(
-      "UPDATE plans SET status = 'canceled' WHERE id = $1 RETURNING *",
+      'SELECT * FROM plans WHERE id = ?',
       [plan.id],
     )
     const canceledPlan = toCamelCase<Plan>(updatedPlan.rows[0])

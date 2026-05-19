@@ -57,7 +57,7 @@ export async function getOrCreateDriverWalletTx(
   driverId: string,
 ): Promise<Wallet> {
   const existing = await executor.query(
-    'SELECT * FROM wallets WHERE driver_id = $1 FOR UPDATE',
+    'SELECT * FROM wallets WHERE driver_id = ? FOR UPDATE',
     [driverId],
   )
   if (existing.rowCount && existing.rows[0]) {
@@ -70,16 +70,16 @@ export async function getOrCreateDriverWalletTx(
       INSERT INTO wallets (
         id, driver_id, balance_vnd, reserved_balance_vnd, created_at, updated_at
       )
-      VALUES ($1, $2, 0, 0, NOW(), NOW())
+      VALUES (?, ?, 0, 0, NOW(), NOW())
       RETURNING *
     `,
       [generateId('wallet'), driverId],
     )
     return mapWallet(inserted.rows[0])
   } catch (error) {
-    if ((error as Record<string, unknown>)?.code === '23505') {
+    if ((error as Record<string, unknown>)?.errno === 1062) {
       const retry = await executor.query(
-        'SELECT * FROM wallets WHERE driver_id = $1 FOR UPDATE',
+        'SELECT * FROM wallets WHERE driver_id = ? FOR UPDATE',
         [driverId],
       )
       if (retry.rowCount && retry.rows[0]) {
@@ -95,16 +95,19 @@ export async function updateWalletRowTx(
   walletId: string,
   data: Partial<Pick<Wallet, 'balanceVnd' | 'reservedBalanceVnd'>>,
 ): Promise<Wallet> {
-  const updated = await executor.query(
+  await executor.query(
     `
     UPDATE wallets
-    SET balance_vnd = COALESCE($2, balance_vnd),
-        reserved_balance_vnd = COALESCE($3, reserved_balance_vnd),
+    SET balance_vnd = COALESCE(?, balance_vnd),
+        reserved_balance_vnd = COALESCE(?, reserved_balance_vnd),
         updated_at = NOW()
-    WHERE id = $1
-    RETURNING *
+    WHERE id = ?
   `,
-    [walletId, data.balanceVnd ?? null, data.reservedBalanceVnd ?? null],
+    [data.balanceVnd ?? null, data.reservedBalanceVnd ?? null, walletId],
+  )
+  const updated = await executor.query(
+    'SELECT * FROM wallets WHERE id = ?',
+    [walletId],
   )
   const wallet = mapWallet(updated.rows[0])
   if (!wallet) throw new Error('Failed to update wallet')
@@ -131,7 +134,7 @@ export async function insertWalletTransactionTx(
       id, wallet_id, driver_id, route_id, type, amount_vnd,
       balance_after_vnd, reserved_balance_after_vnd, description, metadata, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     RETURNING *
   `,
     [
@@ -168,7 +171,7 @@ export async function loadRouteForWalletTx(
   mapRoute: RouteMapper,
 ): Promise<Route> {
   const result = await executor.query(
-    'SELECT * FROM routes WHERE id = $1 FOR UPDATE',
+    'SELECT * FROM routes WHERE id = ? FOR UPDATE',
     [routeId],
   )
   const route = mapRoute(result.rows[0])
@@ -225,19 +228,22 @@ export async function reserveRouteFeeTx(
   })
 
   const feeRateVndPerKm = getWalletFeeRateVndPerKm()
-  const updatedRoute = await executor.query(
+  await executor.query(
     `
     UPDATE routes
-    SET fee_rate_vnd_per_km = $1,
-        fee_required_vnd = $2,
+    SET fee_rate_vnd_per_km = ?,
+        fee_required_vnd = ?,
         wallet_fee_status = 'reserved',
         wallet_reserved_at = NOW()
-    WHERE id = $3
-    RETURNING *
+    WHERE id = ?
   `,
     [feeRateVndPerKm, feeRequiredVnd, route.id],
   )
-  return mapRoute(updatedRoute.rows[0])
+  const updatedRouteRes = await executor.query(
+    'SELECT * FROM routes WHERE id = ?',
+    [route.id],
+  )
+  return mapRoute(updatedRouteRes.rows[0])
 }
 
 export async function releaseRouteFeeTx(
@@ -276,17 +282,20 @@ export async function releaseRouteFeeTx(
     },
   })
 
-  const updatedRoute = await executor.query(
+  await executor.query(
     `
     UPDATE routes
     SET wallet_fee_status = 'released',
         wallet_released_at = NOW()
-    WHERE id = $1
-    RETURNING *
+    WHERE id = ?
   `,
     [route.id],
   )
-  return mapRoute(updatedRoute.rows[0])
+  const updatedRouteRes = await executor.query(
+    'SELECT * FROM routes WHERE id = ?',
+    [route.id],
+  )
+  return mapRoute(updatedRouteRes.rows[0])
 }
 
 export async function chargeRouteFeeTx(
@@ -326,17 +335,20 @@ export async function chargeRouteFeeTx(
     },
   })
 
-  const updatedRoute = await executor.query(
+  await executor.query(
     `
     UPDATE routes
     SET wallet_fee_status = 'charged',
         wallet_charged_at = NOW()
-    WHERE id = $1
-    RETURNING *
+    WHERE id = ?
   `,
     [route.id],
   )
-  return mapRoute(updatedRoute.rows[0])
+  const updatedRouteRes = await executor.query(
+    'SELECT * FROM routes WHERE id = ?',
+    [route.id],
+  )
+  return mapRoute(updatedRouteRes.rows[0])
 }
 
 export async function refundRouteFeeTx(
@@ -375,17 +387,20 @@ export async function refundRouteFeeTx(
     },
   })
 
-  const updatedRoute = await executor.query(
+  await executor.query(
     `
     UPDATE routes
     SET wallet_fee_status = 'refunded',
         wallet_refunded_at = NOW()
-    WHERE id = $1
-    RETURNING *
+    WHERE id = ?
   `,
     [route.id],
   )
-  return mapRoute(updatedRoute.rows[0])
+  const updatedRouteRes = await executor.query(
+    'SELECT * FROM routes WHERE id = ?',
+    [route.id],
+  )
+  return mapRoute(updatedRouteRes.rows[0])
 }
 
 export async function getOrCreateDriverWallet(driverId: string): Promise<Wallet> {
@@ -404,9 +419,9 @@ export async function findDriverWalletTransactions(
     `
     SELECT *
     FROM wallet_transactions
-    WHERE driver_id = $1
+    WHERE driver_id = ?
     ORDER BY created_at DESC, id DESC
-    LIMIT $2
+    LIMIT ?
   `,
     [driverId, limit],
   )

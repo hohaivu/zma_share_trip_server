@@ -1,4 +1,4 @@
-// Helper functions to safely convert pg results to TS domains.
+// Helper functions to safely convert DB results to TS domains.
 
 export function normalizeUtc(
   val: string | Date | null | undefined,
@@ -34,6 +34,12 @@ export function toCamelCaseRecord(
     let val = row[key]
     if (val instanceof Date) {
       val = val.toISOString()
+    } else if (
+      typeof val === 'string' &&
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(val)
+    ) {
+      // MariaDB DATETIME(3) with dateStrings:true — treat as UTC
+      val = new Date(val.replace(' ', 'T') + 'Z').toISOString()
     }
     const camelKey = key.replace(/_([a-z])/g, (g) => g[1].toUpperCase())
     res[camelKey] = val
@@ -50,7 +56,7 @@ export function toCamelCase<T>(
 }
 
 /**
- * Map an array of pg rows through toCamelCase, filtering out nulls.
+ * Map an array of rows through toCamelCase, filtering out nulls.
  * Replaces the repeated `.map(row => toCamelCase<T>(row)).filter(Boolean) as T[]` pattern.
  */
 export function mapRows<T>(rows: Record<string, unknown>[]): T[] {

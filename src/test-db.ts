@@ -1,13 +1,29 @@
 import fs from 'fs'
 import { TestContext, it as nodeIt } from 'node:test'
 import path from 'path'
-import { Pool } from 'pg'
 
-import { closePool, initPool, query } from './db/connection'
+import { closePool, initPool } from './db/connection'
 import { seed } from './db/seed'
 
-let pool: Pool | undefined
 let dbAvailable = false
+
+const TABLES_IN_ORDER = [
+  'notifications',
+  'reports',
+  'reviews',
+  'wallet_transactions',
+  'wallets',
+  'saved_locations',
+  'route_requests',
+  'group_offers',
+  'group_requests',
+  'plans',
+  'routes',
+  'cars',
+  'identity_blocks',
+  'users',
+  'identities',
+]
 
 const UNAVAILABLE_CODES = new Set([
   'ECONNREFUSED',
@@ -15,19 +31,9 @@ const UNAVAILABLE_CODES = new Set([
   'ETIMEDOUT',
   'EACCES',
   'EPERM',
-  '28000',
+  'ER_ACCESS_DENIED_ERROR',
 ])
-const UNAVAILABLE_MESSAGES = ['permission denied', 'operation not permitted']
-
-const TRUNCATE_ALL_SQL = `
-  DO $$ DECLARE
-      r RECORD;
-  BEGIN
-      FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema()) LOOP
-          EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
-      END LOOP;
-  END $$;
-`
+const UNAVAILABLE_MESSAGES = ['access denied', 'permission denied', 'operation not permitted']
 
 function isUnavailableDatabaseError(error: unknown): boolean {
   const errors = [error, (error as Record<string, unknown>)?.cause].filter(
@@ -53,26 +59,45 @@ function isUnavailableDatabaseError(error: unknown): boolean {
   return false
 }
 
+async function truncateAll(conn: { query: (sql: string) => Promise<unknown> }) {
+  await conn.query('SET FOREIGN_KEY_CHECKS=0')
+  for (const table of TABLES_IN_ORDER) {
+    await conn.query(`TRUNCATE TABLE ${table}`)
+  }
+  await conn.query('SET FOREIGN_KEY_CHECKS=1')
+}
+
 export async function setupTestDb() {
   process.env.DATABASE_URL =
     process.env.DATABASE_URL ||
-    'postgres://postgres:postgres@localhost:5432/zma_share_trip'
+    'mariadb://mariadb:mariadb@localhost:3307/share_trip_db'
   try {
-    pool = initPool()
-    await query(TRUNCATE_ALL_SQL)
+    const pool = initPool()
+    const conn = await pool.getConnection()
+    try {
+      await truncateAll(conn)
 
-    const schemaPath = path.join(__dirname, 'db', 'schema.sql')
-    const schemaSql = fs.readFileSync(schemaPath, 'utf8')
-    await query(schemaSql)
-    await query(TRUNCATE_ALL_SQL)
+      const schemaPath = path.join(__dirname, 'db', 'schema.sql')
+      const schemaSql = fs.readFileSync(schemaPath, 'utf8')
+      const statements = schemaSql
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+      for (const stmt of statements) {
+        await conn.query(stmt)
+      }
+
+      await truncateAll(conn)
+    } finally {
+      conn.release()
+    }
 
     await seed()
-    pool = initPool()
+    initPool()
     dbAvailable = true
     return true
   } catch (error: unknown) {
     await closePool().catch(() => {})
-    pool = undefined
     dbAvailable = false
 
     if (isUnavailableDatabaseError(error)) {
@@ -81,7 +106,7 @@ export async function setupTestDb() {
         [err.name, err.code, err.message].filter(Boolean).join(': ') ||
         String(error)
       console.warn(
-        '[test-db] Skipping DB-backed tests — Postgres unavailable:',
+        '[test-db] Skipping DB-backed tests — MariaDB unavailable:',
         detail,
       )
       return false
@@ -96,9 +121,9 @@ export async function teardownTestDb() {
 }
 
 /**
- * Creates a test wrapper that auto-skips when Postgres is unavailable.
+ * Creates a test wrapper that auto-skips when MariaDB is unavailable.
  * @param skipReason - Message shown when test is skipped
- * @returns Drop-in replacement for node:test \`it\`
+ * @returns Drop-in replacement for node:test `it`
  */
 export function createDbTest(skipReason: string) {
   return (name: string, fn: (t: TestContext) => Promise<void> | void) =>

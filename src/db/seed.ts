@@ -1,4 +1,4 @@
-import { Location, Plan, Route, User } from '../types/entities'
+import { Location, User } from '../types/entities'
 import { closePool, initPool } from './connection'
 
 // --- Named constants ---
@@ -183,8 +183,8 @@ const users = [
     tripCount: 112,
     role: 'driver',
     preferredMode: 'driver',
-    modeSelectedAt: '2026-01-01T00:00:00.000Z',
-    createdAt: '2026-01-01T00:00:00.000Z',
+    modeSelectedAt: '2026-01-01 00:00:00.000',
+    createdAt: '2026-01-01 00:00:00.000',
   }),
   makeUser({
     id: DRIVER_001_CLIENT_ID,
@@ -193,8 +193,8 @@ const users = [
     displayName: 'Tài xế 001',
     role: 'client',
     preferredMode: 'driver',
-    modeSelectedAt: '2026-01-01T00:00:00.000Z',
-    createdAt: '2026-01-01T00:00:00.000Z',
+    modeSelectedAt: '2026-01-01 00:00:00.000',
+    createdAt: '2026-01-01 00:00:00.000',
   }),
   makeUser({
     id: DRIVER_002_ID,
@@ -205,8 +205,8 @@ const users = [
     tripCount: 45,
     role: 'driver',
     preferredMode: 'driver',
-    modeSelectedAt: '2026-01-02T00:00:00.000Z',
-    createdAt: '2026-01-02T00:00:00.000Z',
+    modeSelectedAt: '2026-01-02 00:00:00.000',
+    createdAt: '2026-01-02 00:00:00.000',
   }),
   makeUser({
     id: DRIVER_002_CLIENT_ID,
@@ -215,8 +215,8 @@ const users = [
     displayName: 'Tài xế 002',
     role: 'client',
     preferredMode: 'driver',
-    modeSelectedAt: '2026-01-02T00:00:00.000Z',
-    createdAt: '2026-01-02T00:00:00.000Z',
+    modeSelectedAt: '2026-01-02 00:00:00.000',
+    createdAt: '2026-01-02 00:00:00.000',
   }),
   makeUser({
     id: CLIENT_001_ID,
@@ -227,8 +227,8 @@ const users = [
     tripCount: 52,
     role: 'client',
     preferredMode: 'client',
-    modeSelectedAt: '2026-01-01T00:00:00.000Z',
-    createdAt: '2026-01-01T00:00:00.000Z',
+    modeSelectedAt: '2026-01-01 00:00:00.000',
+    createdAt: '2026-01-01 00:00:00.000',
   }),
   makeUser({
     id: CLIENT_001_DRIVER_ID,
@@ -237,8 +237,8 @@ const users = [
     displayName: 'Hành khách 001',
     role: 'driver',
     preferredMode: 'client',
-    modeSelectedAt: '2026-01-01T00:00:00.000Z',
-    createdAt: '2026-01-01T00:00:00.000Z',
+    modeSelectedAt: '2026-01-01 00:00:00.000',
+    createdAt: '2026-01-01 00:00:00.000',
   }),
   makeUser({
     id: CLIENT_002_ID,
@@ -249,8 +249,8 @@ const users = [
     tripCount: 30,
     role: 'client',
     preferredMode: 'client',
-    modeSelectedAt: '2026-01-02T00:00:00.000Z',
-    createdAt: '2026-01-02T00:00:00.000Z',
+    modeSelectedAt: '2026-01-02 00:00:00.000',
+    createdAt: '2026-01-02 00:00:00.000',
   }),
   makeUser({
     id: CLIENT_002_DRIVER_ID,
@@ -259,8 +259,8 @@ const users = [
     displayName: 'Hành khách 002',
     role: 'driver',
     preferredMode: 'client',
-    modeSelectedAt: '2026-01-02T00:00:00.000Z',
-    createdAt: '2026-01-02T00:00:00.000Z',
+    modeSelectedAt: '2026-01-02 00:00:00.000',
+    createdAt: '2026-01-02 00:00:00.000',
   }),
 ]
 
@@ -277,7 +277,7 @@ const cars = [
     seatCapacity: 5,
     verificationStatus: 'verified',
     photos: [],
-    createdAt: '2026-01-03T00:00:00.000Z',
+    createdAt: '2026-01-03 00:00:00.000',
   },
   {
     id: 'car-002',
@@ -291,7 +291,7 @@ const cars = [
     seatCapacity: 5,
     verificationStatus: 'verified',
     photos: [],
-    createdAt: '2026-01-04T00:00:00.000Z',
+    createdAt: '2026-01-04 00:00:00.000',
   },
 ]
 
@@ -301,16 +301,16 @@ const wallets: SeedWallet[] = [
     driverId: DRIVER_001_ID,
     balanceVnd: 500000,
     reservedBalanceVnd: 0,
-    createdAt: '2026-01-03T00:00:00.000Z',
-    updatedAt: '2026-01-03T00:00:00.000Z',
+    createdAt: '2026-01-03 00:00:00.000',
+    updatedAt: '2026-01-03 00:00:00.000',
   },
   {
     id: 'wallet-002',
     driverId: DRIVER_002_ID,
     balanceVnd: 250000,
     reservedBalanceVnd: 0,
-    createdAt: '2026-01-04T00:00:00.000Z',
-    updatedAt: '2026-01-04T00:00:00.000Z',
+    createdAt: '2026-01-04 00:00:00.000',
+    updatedAt: '2026-01-04 00:00:00.000',
   },
 ]
 
@@ -319,21 +319,21 @@ const routes = [
     id: 'route-001',
     driverId: DRIVER_001_ID,
     carId: 'car-001',
-    departureDate: '2030-03-19T23:45:00.000Z', // 06:45 local
-    windowStart: '2030-03-19T23:45:00.000Z', // 06:45 local
-    windowEnd: '2030-03-20T00:15:00.000Z', // 07:15 local
+    departureDate: '2030-03-19 23:45:00.000', // 06:45 local
+    windowStart: '2030-03-19 23:45:00.000', // 06:45 local
+    windowEnd: '2030-03-20 00:15:00.000', // 07:15 local
     tripPrice: 120000,
-    createdAt: '2026-01-05T00:00:00.000Z',
+    createdAt: '2026-01-05 00:00:00.000',
   }),
   makeRoute({
     id: 'route-002',
     driverId: DRIVER_002_ID,
     carId: 'car-002',
-    departureDate: '2030-03-20T00:15:00.000Z',
-    windowStart: '2030-03-20T00:15:00.000Z',
-    windowEnd: '2030-03-20T00:45:00.000Z',
+    departureDate: '2030-03-20 00:15:00.000',
+    windowStart: '2030-03-20 00:15:00.000',
+    windowEnd: '2030-03-20 00:45:00.000',
     tripPrice: 100000,
-    createdAt: '2026-01-05T00:00:00.000Z',
+    createdAt: '2026-01-05 00:00:00.000',
   }),
 ]
 
@@ -341,21 +341,21 @@ const plans = [
   makePlan({
     id: 'plan-001',
     clientId: CLIENT_001_ID,
-    departureDate: '2030-03-20T00:00:00.000Z',
-    windowStart: '2030-03-20T00:00:00.000Z',
-    windowEnd: '2030-03-20T00:30:00.000Z',
-    createdAt: '2026-01-05T00:00:00.000Z',
+    departureDate: '2030-03-20 00:00:00.000',
+    windowStart: '2030-03-20 00:00:00.000',
+    windowEnd: '2030-03-20 00:30:00.000',
+    createdAt: '2026-01-05 00:00:00.000',
   }),
   makePlan({
     id: 'plan-002',
     clientId: CLIENT_002_ID,
     origin: COORD_Q1_NEAR,
     destination: COORD_TD_NEAR,
-    departureDate: '2030-03-20T00:00:00.000Z',
-    windowStart: '2030-03-20T00:00:00.000Z',
-    windowEnd: '2030-03-20T00:30:00.000Z',
+    departureDate: '2030-03-20 00:00:00.000',
+    windowStart: '2030-03-20 00:00:00.000',
+    windowEnd: '2030-03-20 00:30:00.000',
     passengerCount: 2,
-    createdAt: '2026-01-05T01:00:00.000Z',
+    createdAt: '2026-01-05 01:00:00.000',
   }),
   makePlan({
     id: 'plan-003',
@@ -363,19 +363,19 @@ const plans = [
     origin: COORD_TB,
     destination: COORD_TD_TB,
     originWardId: 'ward-tb-p15',
-    departureDate: '2030-03-20T00:00:00.000Z',
-    windowStart: '2030-03-20T00:00:00.000Z',
-    windowEnd: '2030-03-20T00:30:00.000Z',
-    createdAt: '2026-01-05T02:00:00.000Z',
+    departureDate: '2030-03-20 00:00:00.000',
+    windowStart: '2030-03-20 00:00:00.000',
+    windowEnd: '2030-03-20 00:30:00.000',
+    createdAt: '2026-01-05 02:00:00.000',
   }),
   makePlan({
     id: 'plan-004',
     clientId: CLIENT_002_ID,
-    departureDate: '2030-03-21T00:00:00.000Z',
-    windowStart: '2030-03-21T00:00:00.000Z',
-    windowEnd: '2030-03-21T00:30:00.000Z',
+    departureDate: '2030-03-21 00:00:00.000',
+    windowStart: '2030-03-21 00:00:00.000',
+    windowEnd: '2030-03-21 00:30:00.000',
     notes: 'Tìm tài xế trực tiếp',
-    createdAt: '2026-01-05T03:00:00.000Z',
+    createdAt: '2026-01-05 03:00:00.000',
   }),
 ]
 
@@ -386,23 +386,37 @@ const savedLocations = [
 
 export async function seed() {
   const pool = initPool()
-  const client = await pool.connect()
+  const conn = await pool.getConnection()
 
   console.log('Seeding database...')
   try {
-    await client.query('BEGIN')
+    // Truncate all tables with FK checks disabled (MariaDB TRUNCATE does not support CASCADE)
+    await conn.query('SET FOREIGN_KEY_CHECKS=0')
+    for (const table of [
+      'wallet_transactions',
+      'wallets',
+      'group_offers',
+      'route_requests',
+      'group_requests',
+      'plans',
+      'routes',
+      'cars',
+      'users',
+      'identities',
+      'saved_locations',
+    ]) {
+      await conn.query(`TRUNCATE TABLE ${table}`)
+    }
+    await conn.query('SET FOREIGN_KEY_CHECKS=1')
 
-    await client.query(`
-      TRUNCATE TABLE wallet_transactions, wallets, group_offers, route_requests, group_requests, plans, routes, cars, users, identities, saved_locations CASCADE;
-    `)
+    await conn.query('BEGIN')
 
     // Insert identities and role-specific personas
     for (const u of users) {
-      await client.query(
+      await conn.query(
         `
-        INSERT INTO identities (id, mauid, display_name, avatar_url, preferred_mode, mode_selected_at, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-        ON CONFLICT (mauid) DO NOTHING
+        INSERT IGNORE INTO identities (id, mauid, display_name, avatar_url, preferred_mode, mode_selected_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           u.identityId,
@@ -412,12 +426,13 @@ export async function seed() {
           u.preferredMode,
           u.modeSelectedAt,
           u.createdAt,
+          u.createdAt,
         ],
       )
-      await client.query(
+      await conn.query(
         `
         INSERT INTO users (id, identity_id, verification_status, rating_avg, trip_count, role, blocked_user_ids, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           u.id,
@@ -434,10 +449,10 @@ export async function seed() {
 
     // Insert cars
     for (const c of cars) {
-      await client.query(
+      await conn.query(
         `
         INSERT INTO cars (id, owner_id, nickname, plate_number_masked, plate_number_full, brand, model, color, seat_capacity, verification_status, photos, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           c.id,
@@ -458,7 +473,7 @@ export async function seed() {
 
     // Insert routes
     for (const r of routes) {
-      await client.query(
+      await conn.query(
         `
         INSERT INTO routes (
           id, driver_id, car_id, origin, destination,
@@ -470,8 +485,8 @@ export async function seed() {
           wallet_released_at, wallet_refunded_at, notes, status, created_at
         )
         VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-          $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `,
         [
@@ -505,12 +520,12 @@ export async function seed() {
 
     // Insert wallets
     for (const wallet of wallets) {
-      await client.query(
+      await conn.query(
         `
         INSERT INTO wallets (
           id, driver_id, balance_vnd, reserved_balance_vnd, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES (?, ?, ?, ?, ?, ?)
       `,
         [
           wallet.id,
@@ -525,10 +540,10 @@ export async function seed() {
 
     // Insert plans
     for (const t of plans) {
-      await client.query(
+      await conn.query(
         `
         INSERT INTO plans (id, client_id, origin, destination, origin_ward_id, destination_ward_id, origin_province_id, destination_province_id, departure_date, window_start, window_end, passenger_count, publish_mode, notes, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           t.id,
@@ -553,23 +568,23 @@ export async function seed() {
 
     // Insert saved locations
     for (const sl of savedLocations) {
-      await client.query(
+      await conn.query(
         `
         INSERT INTO saved_locations (id, label, lat, lng)
-        VALUES ($1, $2, $3, $4)
+        VALUES (?, ?, ?, ?)
       `,
         [sl.id, sl.label, sl.lat, sl.lng],
       )
     }
 
-    await client.query('COMMIT')
+    await conn.query('COMMIT')
     console.log('Seed completed successfully.')
   } catch (err) {
-    await client.query('ROLLBACK')
+    await conn.query('ROLLBACK')
     console.error('Seed failed:', err)
     throw err
   } finally {
-    client.release()
+    conn.release()
     await closePool()
   }
 }

@@ -8,20 +8,24 @@ export async function setupSchema() {
   const schemaPath = path.join(__dirname, 'schema.sql')
   const schemaSql = fs.readFileSync(schemaPath, 'utf8')
 
+  const statements = schemaSql
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+
   console.log('Applying database schema...')
 
-  const client = await pool.connect()
+  const conn = await pool.getConnection()
   try {
-    await client.query('BEGIN')
-    await client.query(schemaSql)
-    await client.query('COMMIT')
+    for (const stmt of statements) {
+      await conn.query(stmt)
+    }
     console.log('Database schema applied successfully.')
   } catch (err: unknown) {
-    await client.query('ROLLBACK')
     console.error('Database schema setup failed:', err)
     throw err
   } finally {
-    client.release()
+    conn.release()
     await closePool()
   }
 }

@@ -11,15 +11,15 @@ export function mapRoute(row: Record<string, unknown>): Route {
 }
 
 export const ROUTE_ACCEPTED_SQL = `
-  SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
+  SELECT 1 FROM group_offers WHERE route_id = ? AND status = 'accepted'
   UNION ALL
-  SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
+  SELECT 1 FROM route_requests WHERE route_id = ? AND status = 'accepted'
 `
 
 export async function checkRouteAvailability(
   executor: DbQueryExecutor,
   routeId: string,
 ): Promise<boolean> {
-  const result = await executor.query(ROUTE_ACCEPTED_SQL, [routeId])
+  const result = await executor.query(ROUTE_ACCEPTED_SQL, [routeId, routeId])
   return result.rowCount === 0
 }
