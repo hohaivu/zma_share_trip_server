@@ -21,8 +21,6 @@ const COORD_TD_TB = { lat: 10.85, lng: 106.76, label: 'Thủ Đức' }
 
 const WARD_Q1 = 'ward-q1-bennghe'
 const WARD_TD = 'ward-td-binhtho'
-const WARD_KEY_Q1 = 'ward-q1-bennghe_79'
-const WARD_KEY_TD = 'ward-td-binhtho_79'
 const PROVINCE_HCM = '79'
 
 interface SeedUser extends Omit<User, 'createdAt' | 'modeSelectedAt'> {
@@ -38,10 +36,8 @@ interface SeedRoute {
   origin: Location
   destination: Location
   originWardId: string
-  originWardKey: string
   originProvinceId: string
   destinationWardId: string
-  destinationWardKey: string
   destinationProvinceId: string
   departureDate: string
   windowStart: string
@@ -75,10 +71,8 @@ interface SeedPlan {
   origin: Location
   destination: Location
   originWardId: string
-  originWardKey: string
   originProvinceId: string
   destinationWardId: string
-  destinationWardKey: string
   destinationProvinceId: string
   departureDate: string
   windowStart: string
@@ -132,10 +126,8 @@ function makeRoute(
     origin: COORD_Q1,
     destination: COORD_TD,
     originWardId: WARD_Q1,
-    originWardKey: WARD_KEY_Q1,
     originProvinceId: PROVINCE_HCM,
     destinationWardId: WARD_TD,
-    destinationWardKey: WARD_KEY_TD,
     destinationProvinceId: PROVINCE_HCM,
     distanceMeters: null,
     feeRateVndPerKm: 0,
@@ -168,8 +160,6 @@ function makePlan(
     destination: COORD_TD,
     originWardId: WARD_Q1,
     destinationWardId: WARD_TD,
-    originWardKey: WARD_KEY_Q1,
-    destinationWardKey: WARD_KEY_TD,
     originProvinceId: PROVINCE_HCM,
     destinationProvinceId: PROVINCE_HCM,
     passengerCount: 1,
@@ -373,7 +363,6 @@ const plans = [
     origin: COORD_TB,
     destination: COORD_TD_TB,
     originWardId: 'ward-tb-p15',
-    originWardKey: 'ward-tb-p15_79',
     departureDate: '2030-03-20T00:00:00.000Z',
     windowStart: '2030-03-20T00:00:00.000Z',
     windowEnd: '2030-03-20T00:30:00.000Z',
@@ -473,16 +462,16 @@ export async function seed() {
         `
         INSERT INTO routes (
           id, driver_id, car_id, origin, destination,
-          origin_ward_id, origin_ward_key, origin_province_id,
-          destination_ward_id, destination_ward_key, destination_province_id,
+          origin_ward_id, origin_province_id,
+          destination_ward_id, destination_province_id,
           departure_date, window_start, window_end,
           trip_price, distance_meters, fee_rate_vnd_per_km, fee_required_vnd,
           wallet_fee_status, wallet_reserved_at, wallet_charged_at,
           wallet_released_at, wallet_refunded_at, notes, status, created_at
         )
         VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-          $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+          $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
         )
       `,
         [
@@ -492,10 +481,8 @@ export async function seed() {
           JSON.stringify(r.origin),
           JSON.stringify(r.destination),
           r.originWardId,
-          r.originWardKey,
           r.originProvinceId,
           r.destinationWardId,
-          r.destinationWardKey,
           r.destinationProvinceId,
           r.departureDate,
           r.windowStart,
@@ -540,8 +527,8 @@ export async function seed() {
     for (const t of plans) {
       await client.query(
         `
-        INSERT INTO plans (id, client_id, origin, destination, origin_ward_id, destination_ward_id, origin_ward_key, destination_ward_key, origin_province_id, destination_province_id, departure_date, window_start, window_end, passenger_count, publish_mode, notes, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        INSERT INTO plans (id, client_id, origin, destination, origin_ward_id, destination_ward_id, origin_province_id, destination_province_id, departure_date, window_start, window_end, passenger_count, publish_mode, notes, status, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       `,
         [
           t.id,
@@ -550,8 +537,6 @@ export async function seed() {
           JSON.stringify(t.destination),
           t.originWardId,
           t.destinationWardId,
-          t.originWardKey,
-          t.destinationWardKey,
           t.originProvinceId,
           t.destinationProvinceId,
           t.departureDate,

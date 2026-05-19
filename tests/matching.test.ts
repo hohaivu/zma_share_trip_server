@@ -63,14 +63,18 @@ const NORMALIZED_ROUTE_WITHOUT_GEOMETRY = {
   ...BASE_ROUTE,
   origin: { lat: 0, lng: 0, label: 'Quận 1' },
   destination: { lat: 0, lng: 0, label: 'Thủ Đức' },
-  originWardKey: 'ward-q1_province-hcm',
-  destinationWardKey: 'ward-td_province-hcm',
+  originWardId: 'ward-q1',
+  originProvinceId: 'province-hcm',
+  destinationWardId: 'ward-td',
+  destinationProvinceId: 'province-hcm',
 }
 
 const NORMALIZED_PLAN_WITH_GEOMETRY = {
   ...BASE_PLAN,
-  originWardKey: 'ward-q1_province-hcm',
-  destinationWardKey: 'ward-td_province-hcm',
+  originWardId: 'ward-q1',
+  originProvinceId: 'province-hcm',
+  destinationWardId: 'ward-td',
+  destinationProvinceId: 'province-hcm',
 }
 
 // ─── 2.1 Geo helpers ──────────────────────────────────────────────────────────

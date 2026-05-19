@@ -109,12 +109,14 @@ function hasUsableGeometry(routeLike: RouteLike, planLike: PlanLike): boolean {
 
 function hasExactAdminMatch(route: RouteLike, planLike: PlanLike): boolean {
   return (
-    !!route?.originWardKey &&
-    !!planLike?.originWardKey &&
-    route.originWardKey === planLike.originWardKey &&
-    !!route?.destinationWardKey &&
-    !!planLike?.destinationWardKey &&
-    route.destinationWardKey === planLike.destinationWardKey
+    !!route?.originWardId &&
+    !!planLike?.originWardId &&
+    route.originWardId === planLike.originWardId &&
+    route.originProvinceId === planLike.originProvinceId &&
+    !!route?.destinationWardId &&
+    !!planLike?.destinationWardId &&
+    route.destinationWardId === planLike.destinationWardId &&
+    route.destinationProvinceId === planLike.destinationProvinceId
   )
 }
 
@@ -490,8 +492,6 @@ export async function computeMatchedDemandGroups(
       destinationWardId: group.destinationWardId,
       originWardName: group.origin?.label || group.originWardId,
       destinationWardName: group.destination?.label || group.destinationWardId,
-      originWardKey: group.originWardKey,
-      destinationWardKey: group.destinationWardKey,
       originProvinceId: group.originProvinceId,
       destinationProvinceId: group.destinationProvinceId,
       windowStart: group.windowStart,

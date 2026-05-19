@@ -5,7 +5,6 @@ export interface Location {
   lng: number
   wardName?: string
   wardId?: string
-  wardKey?: string
   districtName?: string
   districtId?: string
   provinceName?: string
@@ -76,10 +75,8 @@ export interface Route {
   carId: string
   origin: Location
   destination: Location
-  originWardKey: string
   originWardId: string
   originProvinceId: string
-  destinationWardKey: string
   destinationWardId: string
   destinationProvinceId: string
   waypoints?: Location[] | null
@@ -146,10 +143,8 @@ export interface Plan {
   origin: Location
   destination: Location
   originWardId: string
-  originWardKey: string
   originProvinceId: string
   destinationWardId: string
-  destinationWardKey: string
   destinationProvinceId: string
   // Product invariant: departureDate equals windowStart at write time.
   departureDate: string

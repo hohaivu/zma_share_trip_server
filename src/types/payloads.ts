@@ -31,10 +31,8 @@ export interface CreateRoutePayload {
   carId: string
   origin: Location
   destination: Location
-  originWardKey?: string
   originWardId?: string
   originProvinceId?: string
-  destinationWardKey?: string
   destinationWardId?: string
   destinationProvinceId?: string
   departureDate: string
@@ -54,10 +52,8 @@ export interface UpdateRoutePayload {
   carId?: string
   origin?: Location
   destination?: Location
-  originWardKey?: string
   originWardId?: string
   originProvinceId?: string
-  destinationWardKey?: string
   destinationWardId?: string
   destinationProvinceId?: string
   departureDate?: string
@@ -73,10 +69,8 @@ export interface CreatePlanPayload {
   origin: Location
   destination: Location
   originWardId?: string
-  originWardKey?: string
   originProvinceId?: string
   destinationWardId?: string
-  destinationWardKey?: string
   destinationProvinceId?: string
   departureDate: string
   windowStart: string
@@ -94,10 +88,8 @@ export interface UpdatePlanPayload {
   origin?: Location
   destination?: Location
   originWardId?: string
-  originWardKey?: string
   originProvinceId?: string
   destinationWardId?: string
-  destinationWardKey?: string
   destinationProvinceId?: string
   departureDate?: string
   windowStart?: string
@@ -112,10 +104,8 @@ export interface SearchRoutesCriteriaPayload {
   origin: Location
   destination: Location
   originWardId?: string
-  originWardKey?: string
   originProvinceId?: string
   destinationWardId?: string
-  destinationWardKey?: string
   destinationProvinceId?: string
   departureDate: string
   windowStart: string
@@ -130,8 +120,10 @@ export interface RouteLike {
   departureDate: string
   windowStart: string
   windowEnd: string
-  originWardKey?: string
-  destinationWardKey?: string
+  originWardId?: string
+  originProvinceId?: string
+  destinationWardId?: string
+  destinationProvinceId?: string
 }
 
 export interface PlanLike {
@@ -140,8 +132,10 @@ export interface PlanLike {
   departureDate: string
   windowStart: string
   windowEnd: string
-  originWardKey?: string
-  destinationWardKey?: string
+  originWardId?: string
+  originProvinceId?: string
+  destinationWardId?: string
+  destinationProvinceId?: string
 }
 
 // -- Matching Engine Results --
@@ -173,8 +167,6 @@ export interface DemandGroupResult extends ScoreFields {
   destinationWardId: string
   originWardName: string
   destinationWardName: string
-  originWardKey: string
-  destinationWardKey: string
   originProvinceId: string
   destinationProvinceId: string
   windowStart: string
@@ -203,8 +195,6 @@ export interface DemandGroupSummary {
   departureDate: string
   originWardId: string
   destinationWardId: string
-  originWardKey: string
-  destinationWardKey: string
   originProvinceId: string
   destinationProvinceId: string
   windowStart: string

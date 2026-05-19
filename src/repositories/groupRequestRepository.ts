@@ -33,9 +33,9 @@ const ROUTE_ACCEPTED_SQL = `
 
 function buildGroupKey(plan: Plan): string {
   const departureDate = plan.departureDate.slice(0, 10)
-  const originKey = plan.originWardKey || plan.originWardId
-  const destinationKey = plan.destinationWardKey || plan.destinationWardId
-  return `${departureDate}|${originKey}|${destinationKey}|${plan.windowStart}`
+  const origin = `${plan.originWardId}_${plan.originProvinceId}`
+  const destination = `${plan.destinationWardId}_${plan.destinationProvinceId}`
+  return `${departureDate}|${origin}|${destination}|${plan.windowStart}`
 }
 
 async function checkRouteAvailability(
@@ -75,8 +75,6 @@ export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
         departureDate: plan.departureDate,
         originWardId: plan.originWardId,
         destinationWardId: plan.destinationWardId,
-        originWardKey: plan.originWardKey,
-        destinationWardKey: plan.destinationWardKey,
         originProvinceId: plan.originProvinceId,
         destinationProvinceId: plan.destinationProvinceId,
         windowStart: plan.windowStart,

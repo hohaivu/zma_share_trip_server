@@ -48,20 +48,15 @@ function extractWardFields(
   const wardId = (data[`${prefix}WardId`] as string) || geoObj?.wardId || ''
   const provinceId =
     (data[`${prefix}ProvinceId`] as string) || geoObj?.provinceId || ''
-  const wardKey =
-    (data[`${prefix}WardKey`] as string) ||
-    (wardId && provinceId ? `${wardId}_${provinceId}` : '')
-  return { wardId, provinceId, wardKey }
+  return { wardId, provinceId }
 }
 
 export interface RouteWriteValues {
   carId: string
   origin: Location
   destination: Location
-  originWardKey: string
   originWardId: string
   originProvinceId: string
-  destinationWardKey: string
   destinationWardId: string
   destinationProvinceId: string
   departureDate: string
@@ -94,12 +89,12 @@ export async function createRoute(
     `
     INSERT INTO routes (
       id, driver_id, car_id, origin, destination,
-      origin_ward_key, origin_ward_id, origin_province_id,
-      destination_ward_key, destination_ward_id, destination_province_id,
+      origin_ward_id, origin_province_id,
+      destination_ward_id, destination_province_id,
       departure_date, window_start, window_end,
       trip_price, distance_meters, notes, status, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
     RETURNING *
   `,
     [
@@ -108,10 +103,8 @@ export async function createRoute(
       data.carId,
       JSON.stringify(data.origin),
       JSON.stringify(data.destination),
-      origin.wardKey,
       origin.wardId,
       origin.provinceId,
-      dest.wardKey,
       dest.wardId,
       dest.provinceId,
       normalizeUtc(data.departureDate),
@@ -193,18 +186,16 @@ export async function runPublishTransition(
       SET car_id = $2,
           origin = $3,
           destination = $4,
-          origin_ward_key = $5,
-          origin_ward_id = $6,
-          origin_province_id = $7,
-          destination_ward_key = $8,
-          destination_ward_id = $9,
-          destination_province_id = $10,
-          departure_date = $11,
-          window_start = $12,
-          window_end = $13,
-          trip_price = $14,
-          distance_meters = $15,
-          notes = $16,
+          origin_ward_id = $5,
+          origin_province_id = $6,
+          destination_ward_id = $7,
+          destination_province_id = $8,
+          departure_date = $9,
+          window_start = $10,
+          window_end = $11,
+          trip_price = $12,
+          distance_meters = $13,
+          notes = $14,
           status = 'published'
       WHERE id = $1
       RETURNING *
@@ -214,10 +205,8 @@ export async function runPublishTransition(
         nextValues.carId,
         JSON.stringify(nextValues.origin),
         JSON.stringify(nextValues.destination),
-        nextValues.originWardKey,
         nextValues.originWardId,
         nextValues.originProvinceId,
-        nextValues.destinationWardKey,
         nextValues.destinationWardId,
         nextValues.destinationProvinceId,
         nextValues.departureDate,

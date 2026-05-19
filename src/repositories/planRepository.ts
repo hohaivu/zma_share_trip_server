@@ -108,12 +108,12 @@ export async function createPlan(
     `
       INSERT INTO plans (
         id, client_id, origin, destination, origin_ward_id, destination_ward_id,
-        origin_ward_key, destination_ward_key, origin_province_id,
+        origin_province_id,
         destination_province_id, departure_date, window_start,
         window_end, passenger_count, publish_mode, notes, status,
         created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
       RETURNING *
     `,
     [
@@ -123,8 +123,6 @@ export async function createPlan(
       JSON.stringify(data.destination),
       data.originWardId,
       data.destinationWardId,
-      data.originWardKey,
-      data.destinationWardKey,
       data.originProvinceId,
       data.destinationProvinceId,
       normalizeUtc(data.departureDate),

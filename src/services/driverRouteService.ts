@@ -36,10 +36,8 @@ function assertDepartureDateIsNotPast(departureDate?: string | null): void {
 const IMMUTABLE_PUBLISHED_ROUTE_FIELDS: Array<keyof UpdateRoutePayload> = [
   'origin',
   'destination',
-  'originWardKey',
   'originWardId',
   'originProvinceId',
-  'destinationWardKey',
   'destinationWardId',
   'destinationProvinceId',
   'departureDate',
@@ -67,10 +65,8 @@ function buildRouteWriteValues(
     carId: data.carId ?? route.carId,
     origin: data.origin ?? route.origin,
     destination: data.destination ?? route.destination,
-    originWardKey: data.originWardKey ?? route.originWardKey,
     originWardId: data.originWardId ?? route.originWardId,
     originProvinceId: data.originProvinceId ?? route.originProvinceId,
-    destinationWardKey: data.destinationWardKey ?? route.destinationWardKey,
     destinationWardId: data.destinationWardId ?? route.destinationWardId,
     destinationProvinceId:
       data.destinationProvinceId ?? route.destinationProvinceId,
