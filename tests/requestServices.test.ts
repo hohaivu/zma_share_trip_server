@@ -65,8 +65,9 @@ describe('MVC request services first-accept-wins behavior', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          serviceDate: '2030-06-01',
-          departureTime: '2030-06-01T07:00:00.000Z',
+          departureDate: '2030-06-01T07:00:00.000Z',
+          windowStart: '2030-06-01T07:00:00.000Z',
+          windowEnd: '2030-06-01T07:30:00.000Z',
           tripPrice: 110000,
             distanceMeters: 10000,
         })
@@ -78,8 +79,9 @@ describe('MVC request services first-accept-wins behavior', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          serviceDate: '2030-06-02',
-          departureTime: '2030-06-02T07:00:00.000Z',
+          departureDate: '2030-06-02T07:00:00.000Z',
+          windowStart: '2030-06-02T07:00:00.000Z',
+          windowEnd: '2030-06-02T07:30:00.000Z',
           tripPrice: 120000,
             distanceMeters: 10000,
         })
@@ -90,9 +92,9 @@ describe('MVC request services first-accept-wins behavior', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-order-old',
       destinationWardId: 'ward-order-old-dest',
-      serviceDate: '2030-06-01',
-      departureBlockStart: '2030-06-01T07:00:00.000Z',
-      departureBlockEnd: '2030-06-01T07:30:00.000Z',
+      departureDate: '2030-06-01T07:00:00.000Z',
+      windowStart: '2030-06-01T07:00:00.000Z',
+      windowEnd: '2030-06-01T07:30:00.000Z',
       passengerCount: 1,
     })
     const newerPlan = await planService.createPlan(CLIENT_001_ID, {
@@ -100,9 +102,9 @@ describe('MVC request services first-accept-wins behavior', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-order-new',
       destinationWardId: 'ward-order-new-dest',
-      serviceDate: '2030-06-02',
-      departureBlockStart: '2030-06-02T07:00:00.000Z',
-      departureBlockEnd: '2030-06-02T07:30:00.000Z',
+      departureDate: '2030-06-02T07:00:00.000Z',
+      windowStart: '2030-06-02T07:00:00.000Z',
+      windowEnd: '2030-06-02T07:30:00.000Z',
       passengerCount: 1,
     })
 

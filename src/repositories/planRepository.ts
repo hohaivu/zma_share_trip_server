@@ -32,14 +32,16 @@ function formatLocalDateValue(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-function isPastServiceDate(serviceDate?: string | null): boolean {
-  if (!serviceDate) return false
-  return serviceDate < formatLocalDateValue(new Date())
+function isPastDepartureDate(departureDate?: string | null): boolean {
+  if (!departureDate) return false
+  const date = new Date(departureDate)
+  if (Number.isNaN(date.getTime())) return false
+  return formatLocalDateValue(date) < formatLocalDateValue(new Date())
 }
 
-function assertServiceDateIsNotPast(serviceDate?: string | null): void {
-  if (isPastServiceDate(serviceDate)) {
-    throw new HttpError(400, 'serviceDate cannot be in the past')
+function assertDepartureDateIsNotPast(departureDate?: string | null): void {
+  if (isPastDepartureDate(departureDate)) {
+    throw new HttpError(400, 'departureDate cannot be in the past')
   }
 }
 
@@ -73,13 +75,7 @@ async function dynamicUpdate<T>(
   }
 
   const setClauses = keys.map((key, index) => `${toSnakeCase(key)} = $${index + 2}`)
-  const timeFields = [
-    'departureTime',
-    'windowStart',
-    'windowEnd',
-    'departureBlockStart',
-    'departureBlockEnd',
-  ]
+  const timeFields = ['departureDate', 'windowStart', 'windowEnd']
   const vals = keys.map((key) => {
     const val = data[key]
     if (jsonFields.includes(key)) return JSON.stringify(val)
@@ -106,15 +102,15 @@ export async function createPlan(
   data: CreatePlanPayload,
 ): Promise<Plan> {
   await assertUserRole(clientId, 'client')
-  assertServiceDateIsNotPast(data.serviceDate)
+  assertDepartureDateIsNotPast(data.departureDate)
 
   const res = await query(
     `
       INSERT INTO plans (
         id, client_id, origin, destination, origin_ward_id, destination_ward_id,
         origin_ward_key, destination_ward_key, origin_province_id,
-        destination_province_id, service_date, departure_block_start,
-        departure_block_end, passenger_count, publish_mode, notes, status,
+        destination_province_id, departure_date, window_start,
+        window_end, passenger_count, publish_mode, notes, status,
         created_at
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
@@ -131,9 +127,9 @@ export async function createPlan(
       data.destinationWardKey,
       data.originProvinceId,
       data.destinationProvinceId,
-      data.serviceDate,
-      normalizeUtc(data.departureBlockStart),
-      normalizeUtc(data.departureBlockEnd),
+      normalizeUtc(data.departureDate),
+      normalizeUtc(data.windowStart),
+      normalizeUtc(data.windowEnd),
       data.passengerCount,
       'grouped',
       data.notes || '',
@@ -176,7 +172,7 @@ export async function updatePlan(
   id: string,
   data: UpdatePlanPayload,
 ): Promise<Plan | null> {
-  assertServiceDateIsNotPast(data.serviceDate)
+  assertDepartureDateIsNotPast(data.departureDate)
   return dynamicUpdate<Plan>('plans', id, data as unknown as Record<string, unknown>, [
     'origin',
     'destination',

@@ -12,9 +12,6 @@ const DRIVER_002_CLIENT_ID = 'a1b2c3d4-1002-4000-8000-000000000002'
 const CLIENT_001_DRIVER_ID = 'a1b2c3d4-1003-4000-8000-000000000003'
 const CLIENT_002_DRIVER_ID = 'a1b2c3d4-1004-4000-8000-000000000004'
 
-const SERVICE_DATE_MAR20 = '2030-03-20'
-const SERVICE_DATE_MAR21 = '2030-03-21'
-
 const COORD_Q1 = { lat: 10.7769, lng: 106.7009, label: 'Quận 1' }
 const COORD_TD = { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' }
 const COORD_Q1_NEAR = { lat: 10.778, lng: 106.702, label: 'Quận 1' }
@@ -46,8 +43,7 @@ interface SeedRoute {
   destinationWardId: string
   destinationWardKey: string
   destinationProvinceId: string
-  serviceDate: string
-  departureTime: string
+  departureDate: string
   windowStart: string
   windowEnd: string
   tripPrice: number
@@ -84,9 +80,9 @@ interface SeedPlan {
   destinationWardId: string
   destinationWardKey: string
   destinationProvinceId: string
-  serviceDate: string
-  departureBlockStart: string
-  departureBlockEnd: string
+  departureDate: string
+  windowStart: string
+  windowEnd: string
   passengerCount: number
   notes: string
   status: string
@@ -125,8 +121,7 @@ function makeRoute(
       | 'id'
       | 'driverId'
       | 'carId'
-      | 'serviceDate'
-      | 'departureTime'
+      | 'departureDate'
       | 'windowStart'
       | 'windowEnd'
       | 'tripPrice'
@@ -162,9 +157,9 @@ function makePlan(
       SeedPlan,
       | 'id'
       | 'clientId'
-      | 'serviceDate'
-      | 'departureBlockStart'
-      | 'departureBlockEnd'
+      | 'departureDate'
+      | 'windowStart'
+      | 'windowEnd'
       | 'createdAt'
     >,
 ): SeedPlan {
@@ -334,8 +329,7 @@ const routes = [
     id: 'route-001',
     driverId: DRIVER_001_ID,
     carId: 'car-001',
-    serviceDate: SERVICE_DATE_MAR20,
-    departureTime: '2030-03-20T00:00:00.000Z', // 07:00 local
+    departureDate: '2030-03-19T23:45:00.000Z', // 06:45 local
     windowStart: '2030-03-19T23:45:00.000Z', // 06:45 local
     windowEnd: '2030-03-20T00:15:00.000Z', // 07:15 local
     tripPrice: 120000,
@@ -345,8 +339,7 @@ const routes = [
     id: 'route-002',
     driverId: DRIVER_002_ID,
     carId: 'car-002',
-    serviceDate: SERVICE_DATE_MAR20,
-    departureTime: '2030-03-20T00:30:00.000Z',
+    departureDate: '2030-03-20T00:15:00.000Z',
     windowStart: '2030-03-20T00:15:00.000Z',
     windowEnd: '2030-03-20T00:45:00.000Z',
     tripPrice: 100000,
@@ -358,9 +351,9 @@ const plans = [
   makePlan({
     id: 'plan-001',
     clientId: CLIENT_001_ID,
-    serviceDate: SERVICE_DATE_MAR20,
-    departureBlockStart: '2030-03-20T00:00:00.000Z',
-    departureBlockEnd: '2030-03-20T00:30:00.000Z',
+    departureDate: '2030-03-20T00:00:00.000Z',
+    windowStart: '2030-03-20T00:00:00.000Z',
+    windowEnd: '2030-03-20T00:30:00.000Z',
     createdAt: '2026-01-05T00:00:00.000Z',
   }),
   makePlan({
@@ -368,9 +361,9 @@ const plans = [
     clientId: CLIENT_002_ID,
     origin: COORD_Q1_NEAR,
     destination: COORD_TD_NEAR,
-    serviceDate: SERVICE_DATE_MAR20,
-    departureBlockStart: '2030-03-20T00:00:00.000Z',
-    departureBlockEnd: '2030-03-20T00:30:00.000Z',
+    departureDate: '2030-03-20T00:00:00.000Z',
+    windowStart: '2030-03-20T00:00:00.000Z',
+    windowEnd: '2030-03-20T00:30:00.000Z',
     passengerCount: 2,
     createdAt: '2026-01-05T01:00:00.000Z',
   }),
@@ -381,17 +374,17 @@ const plans = [
     destination: COORD_TD_TB,
     originWardId: 'ward-tb-p15',
     originWardKey: 'ward-tb-p15_79',
-    serviceDate: SERVICE_DATE_MAR20,
-    departureBlockStart: '2030-03-20T00:00:00.000Z',
-    departureBlockEnd: '2030-03-20T00:30:00.000Z',
+    departureDate: '2030-03-20T00:00:00.000Z',
+    windowStart: '2030-03-20T00:00:00.000Z',
+    windowEnd: '2030-03-20T00:30:00.000Z',
     createdAt: '2026-01-05T02:00:00.000Z',
   }),
   makePlan({
     id: 'plan-004',
     clientId: CLIENT_002_ID,
-    serviceDate: SERVICE_DATE_MAR21,
-    departureBlockStart: '2030-03-21T00:00:00.000Z',
-    departureBlockEnd: '2030-03-21T00:30:00.000Z',
+    departureDate: '2030-03-21T00:00:00.000Z',
+    windowStart: '2030-03-21T00:00:00.000Z',
+    windowEnd: '2030-03-21T00:30:00.000Z',
     notes: 'Tìm tài xế trực tiếp',
     createdAt: '2026-01-05T03:00:00.000Z',
   }),
@@ -482,14 +475,14 @@ export async function seed() {
           id, driver_id, car_id, origin, destination,
           origin_ward_id, origin_ward_key, origin_province_id,
           destination_ward_id, destination_ward_key, destination_province_id,
-          service_date, departure_time, window_start, window_end,
+          departure_date, window_start, window_end,
           trip_price, distance_meters, fee_rate_vnd_per_km, fee_required_vnd,
           wallet_fee_status, wallet_reserved_at, wallet_charged_at,
           wallet_released_at, wallet_refunded_at, notes, status, created_at
         )
         VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-          $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+          $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26
         )
       `,
         [
@@ -504,8 +497,7 @@ export async function seed() {
           r.destinationWardId,
           r.destinationWardKey,
           r.destinationProvinceId,
-          r.serviceDate,
-          r.departureTime,
+          r.departureDate,
           r.windowStart,
           r.windowEnd,
           r.tripPrice,
@@ -548,7 +540,7 @@ export async function seed() {
     for (const t of plans) {
       await client.query(
         `
-        INSERT INTO plans (id, client_id, origin, destination, origin_ward_id, destination_ward_id, origin_ward_key, destination_ward_key, origin_province_id, destination_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
+        INSERT INTO plans (id, client_id, origin, destination, origin_ward_id, destination_ward_id, origin_ward_key, destination_ward_key, origin_province_id, destination_province_id, departure_date, window_start, window_end, passenger_count, publish_mode, notes, status, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       `,
         [
@@ -562,9 +554,9 @@ export async function seed() {
           t.destinationWardKey,
           t.originProvinceId,
           t.destinationProvinceId,
-          t.serviceDate,
-          t.departureBlockStart,
-          t.departureBlockEnd,
+          t.departureDate,
+          t.windowStart,
+          t.windowEnd,
           t.passengerCount,
           'grouped',
           t.notes,

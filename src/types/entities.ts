@@ -83,8 +83,8 @@ export interface Route {
   destinationWardId: string
   destinationProvinceId: string
   waypoints?: Location[] | null
-  serviceDate: string
-  departureTime: string
+  // Product invariant: departureDate equals windowStart at write time.
+  departureDate: string
   windowStart: string
   windowEnd: string
   tripPrice: number
@@ -151,9 +151,10 @@ export interface Plan {
   destinationWardId: string
   destinationWardKey: string
   destinationProvinceId: string
-  serviceDate: string
-  departureBlockStart: string
-  departureBlockEnd: string
+  // Product invariant: departureDate equals windowStart at write time.
+  departureDate: string
+  windowStart: string
+  windowEnd: string
   passengerCount: number
   notes?: string | null
   status: string

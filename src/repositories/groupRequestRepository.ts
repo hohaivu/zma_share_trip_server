@@ -31,21 +31,11 @@ const ROUTE_ACCEPTED_SQL = `
   SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
 `
 
-function normalizeUtc(value?: string | Date | null): string | undefined {
-  if (!value) return undefined
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString()
-}
-
 function buildGroupKey(plan: Plan): string {
-  const serviceDate =
-    typeof plan.serviceDate === 'string' && plan.serviceDate.includes('T')
-      ? new Date(plan.serviceDate).toISOString().split('T')[0]
-      : plan.serviceDate
-  const departureBlockStart = normalizeUtc(plan.departureBlockStart)
-
+  const departureDate = plan.departureDate.slice(0, 10)
   const originKey = plan.originWardKey || plan.originWardId
   const destinationKey = plan.destinationWardKey || plan.destinationWardId
-  return `${serviceDate}|${originKey}|${destinationKey}|${departureBlockStart}`
+  return `${departureDate}|${originKey}|${destinationKey}|${plan.windowStart}`
 }
 
 async function checkRouteAvailability(
@@ -82,15 +72,15 @@ export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
     if (!grouped.has(key)) {
       grouped.set(key, {
         id: `dg-${key}`,
-        serviceDate: plan.serviceDate,
+        departureDate: plan.departureDate,
         originWardId: plan.originWardId,
         destinationWardId: plan.destinationWardId,
         originWardKey: plan.originWardKey,
         destinationWardKey: plan.destinationWardKey,
         originProvinceId: plan.originProvinceId,
         destinationProvinceId: plan.destinationProvinceId,
-        departureBlockStart: plan.departureBlockStart,
-        departureBlockEnd: plan.departureBlockEnd,
+        windowStart: plan.windowStart,
+        windowEnd: plan.windowEnd,
         memberCount: 0,
         totalPassengerCount: 0,
         memberPlanIds: [],

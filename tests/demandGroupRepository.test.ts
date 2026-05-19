@@ -56,14 +56,14 @@ after(async () => {
 
 
 describe('MVC demand group repository derivation', () => {
-  it('groups plans by serviceDate + ward pair + departure block', async () => {
+  it('groups plans by departureDate + ward pair + time window', async () => {
     const groups = await groupRequestRepository.deriveDemandGroups()
     // Seed has plan-001 and plan-002 sharing the same group key
     const q1TdGroup = groups.find(
       (g) =>
         g.originWardId === 'ward-q1-bennghe' &&
         g.destinationWardId === 'ward-td-binhtho' &&
-        g.serviceDate === '2030-03-20',
+        g.departureDate === '2030-03-20',
     )
     assert.ok(q1TdGroup, 'Should find Q1→TD group')
     assert.equal(q1TdGroup.memberCount, 2, 'Multi-member group')
@@ -77,9 +77,9 @@ describe('MVC demand group repository derivation', () => {
       destination: { lat: 11, lng: 106, label: 'B' },
       originWardId: 'ward-utc',
       destinationWardId: 'ward-utc-dest',
-      serviceDate: '2030-05-05',
-      departureBlockStart: '2030-05-05T14:00:00.000+07:00', // mapped to 07:00Z
-      departureBlockEnd: '2030-05-05T14:30:00.000+07:00',
+      departureDate: '2030-05-05',
+      windowStart: '2030-05-05T14:00:00.000+07:00', // mapped to 07:00Z
+      windowEnd: '2030-05-05T14:30:00.000+07:00',
       passengerCount: 1,
     })
     const planB = await planService.createPlan(CLIENT_002_ID, {
@@ -87,9 +87,9 @@ describe('MVC demand group repository derivation', () => {
       destination: { lat: 11, lng: 106, label: 'B' },
       originWardId: 'ward-utc',
       destinationWardId: 'ward-utc-dest',
-      serviceDate: '2030-05-05',
-      departureBlockStart: '2030-05-05T07:00:00.000Z',
-      departureBlockEnd: '2030-05-05T07:30:00.000Z',
+      departureDate: '2030-05-05',
+      windowStart: '2030-05-05T07:00:00.000Z',
+      windowEnd: '2030-05-05T07:30:00.000Z',
       passengerCount: 2,
     })
 
@@ -102,7 +102,7 @@ describe('MVC demand group repository derivation', () => {
       'Should group both plans into the same demand group despite different input strings',
     )
     assert.equal(
-      utcGroup.departureBlockStart.endsWith('Z'),
+      utcGroup.windowStart.endsWith('Z'),
       true,
       'Should use explicit canonical UTC Z-time on reads',
     )
@@ -124,7 +124,7 @@ describe('MVC demand group repository derivation', () => {
       (group) =>
         group.originWardId === 'ward-q1-bennghe' &&
         group.destinationWardId === 'ward-td-binhtho' &&
-        group.serviceDate === '2030-03-20',
+        group.departureDate === '2030-03-20',
     )
     assert.ok(target)
     assert.equal(target.memberCount, 2)
@@ -155,8 +155,9 @@ describe('MVC demand group repository derivation', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          serviceDate: '2030-03-21',
-          departureTime: '2030-03-21T07:00:00.000Z',
+          departureDate: '2030-03-21',
+          windowStart: '2030-03-21T07:00:00.000Z',
+          windowEnd: '2030-03-21T07:30:00.000Z',
           tripPrice: 120000,
           distanceMeters: 10000,
         })
@@ -168,8 +169,9 @@ describe('MVC demand group repository derivation', () => {
           carId: 'car-002',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          serviceDate: '2030-03-21',
-          departureTime: '2030-03-21T07:00:00.000Z',
+          departureDate: '2030-03-21',
+          windowStart: '2030-03-21T07:00:00.000Z',
+          windowEnd: '2030-03-21T07:30:00.000Z',
           tripPrice: 120000,
           distanceMeters: 10000,
         })
@@ -180,9 +182,9 @@ describe('MVC demand group repository derivation', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-exclusive',
       destinationWardId: 'ward-exclusive-dest',
-      serviceDate: '2030-03-21',
-      departureBlockStart: '2030-03-21T07:00:00.000Z',
-      departureBlockEnd: '2030-03-21T07:30:00.000Z',
+      departureDate: '2030-03-21',
+      windowStart: '2030-03-21T07:00:00.000Z',
+      windowEnd: '2030-03-21T07:30:00.000Z',
       passengerCount: 1,
     })
 
@@ -213,9 +215,9 @@ describe('MVC demand group repository derivation', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-persist',
       destinationWardId: 'ward-persist-dest',
-      serviceDate: '2030-05-06',
-      departureBlockStart: '2030-05-06T07:00:00.000Z',
-      departureBlockEnd: '2030-05-06T07:30:00.000Z',
+      departureDate: '2030-05-06',
+      windowStart: '2030-05-06T07:00:00.000Z',
+      windowEnd: '2030-05-06T07:30:00.000Z',
       passengerCount: 1,
     })
 
@@ -234,7 +236,7 @@ describe('MVC demand group repository derivation', () => {
       (group) =>
         group.originWardId === 'ward-q1-bennghe' &&
         group.destinationWardId === 'ward-td-binhtho' &&
-        group.serviceDate === '2030-03-20',
+        group.departureDate === '2030-03-20',
     )
     assert.ok(target)
     assert.equal(target.memberCount, 2)
@@ -245,8 +247,9 @@ describe('MVC demand group repository derivation', () => {
           carId: 'car-002',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          serviceDate: '2030-03-20',
-          departureTime: '2030-03-20T07:00:00.000Z',
+          departureDate: '2030-03-20',
+          windowStart: '2030-03-20T07:00:00.000Z',
+          windowEnd: '2030-03-20T07:30:00.000Z',
           tripPrice: 99000,
           distanceMeters: 10000,
         })

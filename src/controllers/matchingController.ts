@@ -12,9 +12,9 @@ export async function searchRoutes(
   requireParam(criteria.clientId, 'clientId is required')
   requireParam(criteria.origin, 'origin is required')
   requireParam(criteria.destination, 'destination is required')
-  requireParam(criteria.serviceDate, 'serviceDate is required')
-  requireParam(criteria.departureBlockStart, 'departureBlockStart is required')
-  requireParam(criteria.departureBlockEnd, 'departureBlockEnd is required')
+  requireParam(criteria.departureDate, 'departureDate is required')
+  requireParam(criteria.windowStart, 'windowStart is required')
+  requireParam(criteria.windowEnd, 'windowEnd is required')
 
   res.json(await matchingService.searchRoutes(criteria))
 }

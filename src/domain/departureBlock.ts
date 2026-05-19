@@ -1,8 +1,8 @@
-export function computeDepartureBlock(departureTime: string | Date): {
+export function computeDepartureBlock(departureDate: string | Date): {
   start: string
   end: string
 } {
-  const dt = new Date(departureTime)
+  const dt = new Date(departureDate)
   const minutes = dt.getMinutes()
   const blockStart = new Date(dt)
   blockStart.setMinutes(minutes < 30 ? 0 : 30, 0, 0)

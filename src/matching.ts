@@ -134,17 +134,16 @@ export function proximityScore(distKm: number, maxKm: number): number {
 }
 
 /**
- * Time overlap score: 1.0 when departure is at block center, 0.0 at edges.
- * route has a single departureTime; group/plan exposes departureBlockStart/End.
+ * Time overlap score: 1.0 when departure is at window center, 0.0 at edges.
  */
 export function timeOverlapScore(
-  departureTime: string,
-  blockStart: string,
-  blockEnd: string,
+  departureDate: string,
+  windowStart: string,
+  windowEnd: string,
 ): number {
-  const rTime = new Date(departureTime).getTime()
-  const dStart = new Date(blockStart).getTime()
-  const dEnd = new Date(blockEnd).getTime()
+  const rTime = new Date(departureDate).getTime()
+  const dStart = new Date(windowStart).getTime()
+  const dEnd = new Date(windowEnd).getTime()
   const blockDuration = dEnd - dStart
   if (blockDuration <= 0) return rTime === dStart ? 1 : 0
   const distToCenter = Math.abs(rTime - (dStart + blockDuration / 2))
@@ -164,19 +163,19 @@ export function estimateDetour(
 // ─── Block Overlap ────────────────────────────────────────────────────────────
 
 /**
- * Check whether a route's departure block overlaps with a plan's departure block.
+ * Check whether a route's departure window overlaps with a plan's window.
  *
- * Route span: from the 30-min block containing departureTime to routeWindowEnd (or
+ * Route span: from the 30-min block containing departureDate to route windowEnd (or
  * block end when absent), expanded ±30 min. Inclusive boundaries so touching
  * intervals match (e.g. plan starting exactly at route window end).
  */
 function blocksOverlap(
-  routeDepartureTime: string,
+  routeDepartureDate: string,
   routeWindowEnd: string | undefined,
-  blockStart: string,
-  blockEnd: string,
+  windowStart: string,
+  windowEnd: string,
 ): boolean {
-  const routeBlock = computeDepartureBlock(routeDepartureTime)
+  const routeBlock = computeDepartureBlock(routeDepartureDate)
   const routeSpanEndMs = routeWindowEnd
     ? new Date(routeWindowEnd).getTime()
     : new Date(routeBlock.end).getTime()
@@ -185,8 +184,8 @@ function blocksOverlap(
     MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES * MS_PER_MINUTE
   const routeEndMs =
     routeSpanEndMs + MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
-  const planStartMs = new Date(blockStart).getTime()
-  const planEndMs = new Date(blockEnd).getTime()
+  const planStartMs = new Date(windowStart).getTime()
+  const planEndMs = new Date(windowEnd).getTime()
   return routeStartMs <= planEndMs && planStartMs <= routeEndMs
 }
 
@@ -203,14 +202,14 @@ async function passesHardFiltersWithBearings(
   routeBearing: number,
   planBearing: number,
 ): Promise<boolean> {
-  if (route.serviceDate !== planLike.serviceDate) return false
+  if (route.departureDate.slice(0, 10) !== planLike.departureDate.slice(0, 10)) return false
 
   if (
     !blocksOverlap(
-      route.departureTime,
+      route.departureDate,
       route.windowEnd,
-      planLike.departureBlockStart,
-      planLike.departureBlockEnd,
+      planLike.windowStart,
+      planLike.windowEnd,
     )
   )
     return false
@@ -297,9 +296,9 @@ function computeMatchScoreWithBearings(
   planBearing: number,
 ): ScoreFields {
   const time = timeOverlapScore(
-    route.departureTime,
-    planLike.departureBlockStart,
-    planLike.departureBlockEnd,
+    route.departureDate,
+    planLike.windowStart,
+    planLike.windowEnd,
   )
 
   if (!hasUsableGeometry(route, planLike)) {
@@ -388,13 +387,13 @@ function classifyMatch(
   route: RouteLike,
   group: DemandGroupSummary,
 ): 'exact_3' | 'near_3' | null {
-  if (route.serviceDate !== group.serviceDate) return null
+  if (route.departureDate.slice(0, 10) !== group.departureDate.slice(0, 10)) return null
   if (
     !blocksOverlap(
-      route.departureTime,
+      route.departureDate,
       route.windowEnd,
-      group.departureBlockStart,
-      group.departureBlockEnd,
+      group.windowStart,
+      group.windowEnd,
     )
   )
     return null
@@ -486,7 +485,7 @@ export async function computeMatchedDemandGroups(
       matchTier,
       visibilityMode,
       tripPrice: route.tripPrice,
-      serviceDate: group.serviceDate,
+      departureDate: group.departureDate,
       originWardId: group.originWardId,
       destinationWardId: group.destinationWardId,
       originWardName: group.origin?.label || group.originWardId,
@@ -495,8 +494,8 @@ export async function computeMatchedDemandGroups(
       destinationWardKey: group.destinationWardKey,
       originProvinceId: group.originProvinceId,
       destinationProvinceId: group.destinationProvinceId,
-      departureBlockStart: group.departureBlockStart,
-      departureBlockEnd: group.departureBlockEnd,
+      windowStart: group.windowStart,
+      windowEnd: group.windowEnd,
       memberCount: group.memberCount,
       totalPassengerCount: group.totalPassengerCount,
       memberPlanIds: group.memberPlanIds,
@@ -551,8 +550,9 @@ export async function computeMatchingRoutesFromCriteria(
       routeId: route.id,
       matchTier,
       tripPrice: route.tripPrice,
-      serviceDate: route.serviceDate,
-      departureTime: route.departureTime,
+      departureDate: route.departureDate,
+      windowStart: route.windowStart,
+      windowEnd: route.windowEnd,
       origin: route.origin,
       destination: route.destination,
       driverSummary: driver

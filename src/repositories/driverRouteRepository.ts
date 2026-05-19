@@ -19,7 +19,7 @@ function toSnakeCase(key: string): string { return key.replace(/[A-Z]/g, (letter
 function isTerminalTripStatus(status?: string | null): boolean { return status === 'completed' || status === 'canceled' }
 function isActiveTripStatus(status?: string | null): boolean { return status === 'draft' || status === 'published' || status === 'matched' }
 function mapRoute(row: Record<string, unknown>): Route { const route = toCamelCase<Route>(row); if (!route) throw new Error('Cannot map null row to Route'); route.tripPrice = parseNumeric(route.tripPrice); route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd); return route }
-async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> { const keys = Object.keys(data).filter((k) => data[k] !== undefined); if (keys.length === 0) { const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id]); return toCamelCase<T>(existing.rows[0]) } const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`); const timeFields = ['departureTime','windowStart','windowEnd','departureBlockStart','departureBlockEnd']; const vals = keys.map((k) => { const val = data[k]; if (jsonFields.includes(k)) return JSON.stringify(val); if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString(); return val }); const result = await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`, [id, ...vals]); return toCamelCase<T>(result.rows[0]) }
+async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> { const keys = Object.keys(data).filter((k) => data[k] !== undefined); if (keys.length === 0) { const existing = await query(`SELECT * FROM ${table} WHERE id = $1`, [id]); return toCamelCase<T>(existing.rows[0]) } const setClauses = keys.map((key, idx) => `${toSnakeCase(key)} = $${idx + 2}`); const timeFields = ['departureDate','windowStart','windowEnd']; const vals = keys.map((k) => { const val = data[k]; if (jsonFields.includes(k)) return JSON.stringify(val); if (timeFields.includes(k) && val) return new Date(val as string | number | Date).toISOString(); return val }); const result = await query(`UPDATE ${table} SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`, [id, ...vals]); return toCamelCase<T>(result.rows[0]) }
 
 const ROUTE_ACCEPTED_SQL = `
   SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
@@ -64,8 +64,7 @@ export interface RouteWriteValues {
   destinationWardKey: string
   destinationWardId: string
   destinationProvinceId: string
-  serviceDate: string
-  departureTime: string
+  departureDate: string
   windowStart: string
   windowEnd: string
   tripPrice: number
@@ -89,7 +88,7 @@ export async function createRoute(
   const fields = data as unknown as Record<string, unknown>
   const origin = extractWardFields(fields, 'origin', data.origin)
   const dest = extractWardFields(fields, 'destination', data.destination)
-  const departureWindow = computeDepartureBlock(data.departureTime)
+  const departureWindow = computeDepartureBlock(data.departureDate)
 
   const res = await query(
     `
@@ -97,10 +96,10 @@ export async function createRoute(
       id, driver_id, car_id, origin, destination,
       origin_ward_key, origin_ward_id, origin_province_id,
       destination_ward_key, destination_ward_id, destination_province_id,
-      service_date, departure_time, window_start, window_end,
+      departure_date, window_start, window_end,
       trip_price, distance_meters, notes, status, created_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
     RETURNING *
   `,
     [
@@ -115,8 +114,7 @@ export async function createRoute(
       dest.wardKey,
       dest.wardId,
       dest.provinceId,
-      data.serviceDate,
-      normalizeUtc(data.departureTime),
+      normalizeUtc(data.departureDate),
       data.windowStart ? normalizeUtc(data.windowStart) : departureWindow.start,
       data.windowEnd ? normalizeUtc(data.windowEnd) : departureWindow.end,
       data.tripPrice,
@@ -201,13 +199,12 @@ export async function runPublishTransition(
           destination_ward_key = $8,
           destination_ward_id = $9,
           destination_province_id = $10,
-          service_date = $11,
-          departure_time = $12,
-          window_start = $13,
-          window_end = $14,
-          trip_price = $15,
-          distance_meters = $16,
-          notes = $17,
+          departure_date = $11,
+          window_start = $12,
+          window_end = $13,
+          trip_price = $14,
+          distance_meters = $15,
+          notes = $16,
           status = 'published'
       WHERE id = $1
       RETURNING *
@@ -223,8 +220,7 @@ export async function runPublishTransition(
         nextValues.destinationWardKey,
         nextValues.destinationWardId,
         nextValues.destinationProvinceId,
-        nextValues.serviceDate,
-        nextValues.departureTime,
+        nextValues.departureDate,
         nextValues.windowStart,
         nextValues.windowEnd,
         nextValues.tripPrice,

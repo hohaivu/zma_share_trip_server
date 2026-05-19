@@ -28,7 +28,7 @@
 
 | Method | Path                | Description                                                                                                |
 | ------ | ------------------- | ---------------------------------------------------------------------------------------------------------- |
-| POST   | `/routes`           | Create route. Body: `{ driverId, carId, origin, destination, serviceDate, departureTime, tripPrice, ... }` |
+| POST   | `/routes`           | Create route. Body: `{ driverId, carId, origin, destination, departureDate, windowStart, windowEnd, tripPrice, ... }` |
 | GET    | `/routes?driverId=` | List routes by driver                                                                                      |
 | GET    | `/routes/:id`       | Route detail                                                                                               |
 | PUT    | `/routes/:id`       | Update route                                                                                               |
@@ -44,7 +44,7 @@
 
 | Method | Path                    | Description                                                                                                                                                 |
 | ------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/trip-plans`           | Create client plan. Body: `{ clientId, pickup, dropoff, pickupWardId, dropoffWardId, serviceDate, departureBlockStart, departureBlockEnd, passengerCount }` |
+| POST   | `/trip-plans`           | Create client plan. Body: `{ clientId, pickup, dropoff, pickupWardId, dropoffWardId, departureDate, windowStart, windowEnd, passengerCount }` |
 | GET    | `/trip-plans?clientId=` | List client plans by client                                                                                                                                 |
 | GET    | `/trip-plans/:id`       | Client plan detail                                                                                                                                          |
 | PUT    | `/trip-plans/:id`       | Update client plan                                                                                                                                          |
@@ -78,11 +78,12 @@
 
 | Method | Path                         | Description                                                                 |
 | ------ | ---------------------------- | --------------------------------------------------------------------------- |
-| GET    | `/demand-groups/:id`         | Group summary (serviceDate, wards, block, memberCount, totalPassengerCount) |
+| GET    | `/demand-groups/:id`         | Group summary (departureDate, wards, window, memberCount, totalPassengerCount) |
 | GET    | `/demand-groups/:id/members` | Member trip plans (exact-3 visibility only)                                 |
 
 > Demand groups are computed on-read from published `grouped` client plans.
-> Group ID format: `dg-{serviceDate}|{pickupWardId}|{dropoffWardId}|{departureBlockStart}`
+> Demand group calendar day is based on canonical UTC `departureDate`.
+> Group ID format: `dg-{departureDate}|{pickupWardId}|{dropoffWardId}|{windowStart}`
 
 ## Group Requests (Driver → Group)
 

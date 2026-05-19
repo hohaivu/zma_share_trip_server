@@ -37,10 +37,9 @@ export interface CreateRoutePayload {
   destinationWardKey?: string
   destinationWardId?: string
   destinationProvinceId?: string
-  serviceDate: string
-  departureTime: string
-  windowStart?: string
-  windowEnd?: string
+  departureDate: string
+  windowStart: string
+  windowEnd: string
   tripPrice: number
   distanceMeters?: number
   notes?: string
@@ -61,8 +60,7 @@ export interface UpdateRoutePayload {
   destinationWardKey?: string
   destinationWardId?: string
   destinationProvinceId?: string
-  serviceDate?: string
-  departureTime?: string
+  departureDate?: string
   windowStart?: string
   windowEnd?: string
   tripPrice?: number
@@ -80,9 +78,9 @@ export interface CreatePlanPayload {
   destinationWardId?: string
   destinationWardKey?: string
   destinationProvinceId?: string
-  serviceDate: string
-  departureBlockStart: string
-  departureBlockEnd: string
+  departureDate: string
+  windowStart: string
+  windowEnd: string
   passengerCount: number
   notes?: string
   status?: string
@@ -101,9 +99,9 @@ export interface UpdatePlanPayload {
   destinationWardId?: string
   destinationWardKey?: string
   destinationProvinceId?: string
-  serviceDate?: string
-  departureBlockStart?: string
-  departureBlockEnd?: string
+  departureDate?: string
+  windowStart?: string
+  windowEnd?: string
   passengerCount?: number
   notes?: string
   status?: string
@@ -119,9 +117,9 @@ export interface SearchRoutesCriteriaPayload {
   destinationWardId?: string
   destinationWardKey?: string
   destinationProvinceId?: string
-  serviceDate: string
-  departureBlockStart: string
-  departureBlockEnd: string
+  departureDate: string
+  windowStart: string
+  windowEnd: string
   passengerCount?: number
   notes?: string
 }
@@ -129,9 +127,9 @@ export interface SearchRoutesCriteriaPayload {
 export interface RouteLike {
   origin: Location
   destination: Location
-  serviceDate: string
-  departureTime: string
-  windowEnd?: string
+  departureDate: string
+  windowStart: string
+  windowEnd: string
   originWardKey?: string
   destinationWardKey?: string
 }
@@ -139,9 +137,9 @@ export interface RouteLike {
 export interface PlanLike {
   origin: Location
   destination: Location
-  serviceDate: string
-  departureBlockStart: string
-  departureBlockEnd: string
+  departureDate: string
+  windowStart: string
+  windowEnd: string
   originWardKey?: string
   destinationWardKey?: string
 }
@@ -170,7 +168,7 @@ export interface DemandGroupResult extends ScoreFields {
   matchTier: string
   visibilityMode: string
   tripPrice: number
-  serviceDate: string
+  departureDate: string
   originWardId: string
   destinationWardId: string
   originWardName: string
@@ -179,8 +177,8 @@ export interface DemandGroupResult extends ScoreFields {
   destinationWardKey: string
   originProvinceId: string
   destinationProvinceId: string
-  departureBlockStart: string
-  departureBlockEnd: string
+  windowStart: string
+  windowEnd: string
   memberCount: number
   totalPassengerCount: number
   memberPlanIds?: string[]
@@ -190,8 +188,9 @@ export interface MatchingRouteResult extends ScoreFields {
   routeId: string
   matchTier: string
   tripPrice: number
-  serviceDate: string
-  departureTime: string
+  departureDate: string
+  windowStart: string
+  windowEnd: string
   origin: Location
   destination: Location
   driverSummary: DriverSummary | null
@@ -201,15 +200,15 @@ export interface MatchingRouteResult extends ScoreFields {
 
 export interface DemandGroupSummary {
   id: string
-  serviceDate: string
+  departureDate: string
   originWardId: string
   destinationWardId: string
   originWardKey: string
   destinationWardKey: string
   originProvinceId: string
   destinationProvinceId: string
-  departureBlockStart: string
-  departureBlockEnd: string
+  windowStart: string
+  windowEnd: string
   memberCount: number
   totalPassengerCount: number
   origin: Location

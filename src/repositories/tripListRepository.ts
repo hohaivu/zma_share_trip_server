@@ -177,7 +177,7 @@ export async function withReviewEligibility<T extends Route | Plan>(
 }
 
 async function isTripVisibleInWorkQueue(
-  trip: Pick<Route | Plan, 'id' | 'status' | 'serviceDate'>,
+  trip: Pick<Route | Plan, 'id' | 'status' | 'departureDate'>,
   reviewerId: string,
   getRoute: (id: string) => Promise<Route | null>,
   getPlan: (id: string) => Promise<Plan | null>,
@@ -196,7 +196,7 @@ function isTripVisibleInHistory(trip: Pick<Route | Plan, 'status'>): boolean {
 }
 
 export async function filterTripsByScope<
-  T extends Pick<Route | Plan, 'id' | 'status' | 'serviceDate'>,
+  T extends Pick<Route | Plan, 'id' | 'status' | 'departureDate'>,
 >(
   trips: T[],
   scope: TripListScope,
