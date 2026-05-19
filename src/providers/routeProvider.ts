@@ -4,6 +4,7 @@ import { Kernel, Provider } from '../kernel'
 import bootstrapRoute from '../routes/bootstrap'
 import carsRoute from '../routes/cars'
 import clientMatchesRoute from '../routes/clientMatches'
+import clientInboxRoute from '../routes/clientInbox'
 import clientPlansRoute from '../routes/clientPlans'
 import clientRouteRequestsRoute from '../routes/clientRouteRequests'
 import demandGroupsRoute from '../routes/demandGroups'
@@ -34,7 +35,7 @@ const routeGroups: Array<[string, express.Router[]]> = [
   ],
   [
     '/api/client',
-    [clientPlansRoute, groupOffersRoute, clientMatchesRoute, clientRouteRequestsRoute],
+    [clientInboxRoute, clientPlansRoute, groupOffersRoute, clientMatchesRoute, clientRouteRequestsRoute],
   ],
 ]
 

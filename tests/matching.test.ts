@@ -59,6 +59,13 @@ const BASE_PLAN = {
   clientId: CLIENT_001_ID,
 }
 
+function assertApproxEqual(actual: number, expected: number, epsilon = 0.000001): void {
+  assert.ok(
+    Math.abs(actual - expected) <= epsilon,
+    `Expected ${actual} to be within ${epsilon} of ${expected}`,
+  )
+}
+
 const NORMALIZED_ROUTE_WITHOUT_GEOMETRY = {
   ...BASE_ROUTE,
   origin: { lat: 0, lng: 0, label: 'Quận 1' },
@@ -363,6 +370,19 @@ describe('computeMatchScore', () => {
     assert.ok(timeFit >= 0 && timeFit <= 1, `timeFit out of range: ${timeFit}`)
   })
 
+  it('returns raw distance km inputs before proximity normalization', () => {
+    const result = matching.computeMatchScore(BASE_ROUTE, BASE_PLAN)
+
+    assertApproxEqual(
+      result.originDistanceKm,
+      matching.haversineDistance(BASE_ROUTE.origin, BASE_PLAN.origin),
+    )
+    assertApproxEqual(
+      result.destinationDistanceKm,
+      matching.haversineDistance(BASE_ROUTE.destination, BASE_PLAN.destination),
+    )
+  })
+
   it('detourEstimate is an integer', () => {
     const { detourEstimate } = matching.computeMatchScore(BASE_ROUTE, BASE_PLAN)
     assert.equal(detourEstimate, Math.round(detourEstimate))
@@ -377,6 +397,8 @@ describe('computeMatchScore', () => {
     assert.equal(result.matchScore, 100)
     assert.equal(result.originFit, 1)
     assert.equal(result.destinationFit, 1)
+    assert.equal(result.originDistanceKm, 0)
+    assert.equal(result.destinationDistanceKm, 0)
     assert.equal(result.timeFit, 1)
     assert.equal(result.detourEstimate, 0)
   })
@@ -393,9 +415,56 @@ describe('computeMatchedDemandGroups', () => {
       assert.ok('matchScore' in r, 'Missing matchScore')
       assert.ok('originFit' in r, 'Missing originFit')
       assert.ok('destinationFit' in r, 'Missing destinationFit')
+      assert.ok('originDistanceKm' in r, 'Missing originDistanceKm')
+      assert.ok('destinationDistanceKm' in r, 'Missing destinationDistanceKm')
       assert.ok('timeFit' in r, 'Missing timeFit')
       assert.ok('detourEstimate' in r, 'Missing detourEstimate')
     }
+  })
+
+  itDb('returns raw distance km fields for matched demand groups', async () => {
+    await setupTestDb()
+    const departureDay = '2030-05-06'
+    const routeOrigin = Q1_PICKUP
+    const routeDestination = TD_DROPOFF
+    const planOrigin = BASE_PLAN.origin
+    const planDestination = BASE_PLAN.destination
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: routeOrigin,
+          destination: routeDestination,
+          departureDate: `${departureDay}T07:15:00.000Z`,
+          windowStart: `${departureDay}T07:15:00.000Z`,
+          windowEnd: `${departureDay}T07:15:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const plan = await planService.createPlan(CLIENT_001_ID, {
+      origin: planOrigin,
+      destination: planDestination,
+      originWardId: 'ward-raw-distance-group',
+      destinationWardId: 'ward-raw-distance-group-dest',
+      departureDate: `${departureDay}T07:00:00.000Z`,
+      windowStart: `${departureDay}T07:00:00.000Z`,
+      windowEnd: `${departureDay}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+
+    const results = await matching.computeMatchedDemandGroups(route.id)
+    const result = results.find((group) => group.memberPlanIds?.includes(plan.id))
+    assert.ok(result, 'Expected demand group match for created plan')
+    assertApproxEqual(
+      result.originDistanceKm,
+      matching.haversineDistance(routeOrigin, planOrigin),
+    )
+    assertApproxEqual(
+      result.destinationDistanceKm,
+      matching.haversineDistance(routeDestination, planDestination),
+    )
   })
 
   itDb('within each tier, higher matchScore appears first', async () => {
@@ -658,6 +727,49 @@ describe('computeMatchingRoutesFromCriteria', () => {
     }
     const results = await matching.computeMatchingRoutesFromCriteria(criteria)
     assert.ok(Array.isArray(results))
+  })
+
+  itDb('returns raw distance km fields for matching routes', async () => {
+    await setupTestDb()
+    const departureDay = '2030-05-07'
+    const routeOrigin = Q1_PICKUP
+    const routeDestination = TD_DROPOFF
+    const criteriaOrigin = BASE_PLAN.origin
+    const criteriaDestination = BASE_PLAN.destination
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: routeOrigin,
+          destination: routeDestination,
+          departureDate: `${departureDay}T07:15:00.000Z`,
+          windowStart: `${departureDay}T07:15:00.000Z`,
+          windowEnd: `${departureDay}T07:15:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+
+    const results = await matching.computeMatchingRoutesFromCriteria({
+      ...BASE_PLAN,
+      origin: criteriaOrigin,
+      destination: criteriaDestination,
+      departureDate: `${departureDay}T07:00:00.000Z`,
+      windowStart: `${departureDay}T07:00:00.000Z`,
+      windowEnd: `${departureDay}T07:30:00.000Z`,
+      clientId: CLIENT_001_ID,
+    })
+    const result = results.find((candidate) => candidate.routeId === route.id)
+    assert.ok(result, 'Expected matching route for created criteria')
+    assertApproxEqual(
+      result.originDistanceKm,
+      matching.haversineDistance(routeOrigin, criteriaOrigin),
+    )
+    assertApproxEqual(
+      result.destinationDistanceKm,
+      matching.haversineDistance(routeDestination, criteriaDestination),
+    )
   })
 
   itDb('omits route with accepted group offer', async () => {

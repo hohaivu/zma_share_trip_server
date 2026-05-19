@@ -58,6 +58,8 @@ describe('MVC matching service demand-group classification', () => {
     const results = await matching.computeMatchedDemandGroups('route-001')
     for (const r of results) {
       assert.equal(r.tripPrice, 120000, 'Should carry route tripPrice')
+      assert.equal(typeof r.originDistanceKm, 'number')
+      assert.equal(typeof r.destinationDistanceKm, 'number')
     }
   })
 
@@ -93,4 +95,3 @@ describe('MVC matching visibility helper', () => {
 })
 
 // ─── 6.4 first-accept-wins ────────────────────────────────────────────────────
-

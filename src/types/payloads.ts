@@ -143,6 +143,8 @@ export interface ScoreFields {
   matchScore: number
   originFit: number
   destinationFit: number
+  originDistanceKm: number
+  destinationDistanceKm: number
   timeFit: number
   detourEstimate: number
 }
@@ -320,6 +322,24 @@ export interface RouteFeeSnapshot {
   walletChargedAt?: string | null
   walletReleasedAt?: string | null
   walletRefundedAt?: string | null
+}
+
+// -- Client Inbox --
+export type RequestDirection = 'incoming' | 'outgoing'
+
+export interface ClientRequestItem {
+  id: string
+  source: ClientRequestSource
+  direction: RequestDirection
+  clientId: string
+  routeId: string
+  driverId: string
+  planId: string
+  tripPrice: number
+  status: string
+  note?: string
+  createdAt: string
+  expiresAt?: string
 }
 
 // -- Conflicts --

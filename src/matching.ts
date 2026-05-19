@@ -314,6 +314,8 @@ function computeMatchScoreWithBearings(
       ),
       originFit: fallbackFit,
       destinationFit: fallbackFit,
+      originDistanceKm: 0,
+      destinationDistanceKm: 0,
       timeFit: time,
       detourEstimate: 0,
     }
@@ -330,6 +332,8 @@ function computeMatchScoreWithBearings(
     matchScore: weightedMatchScore(dir, pickup, dropoff, time),
     originFit: pickup,
     destinationFit: dropoff,
+    originDistanceKm: pickupDist,
+    destinationDistanceKm: dropoffDist,
     timeFit: time,
     detourEstimate: estimateDetour(pickupDist, dropoffDist),
   }
