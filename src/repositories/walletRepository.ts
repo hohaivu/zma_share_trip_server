@@ -307,6 +307,9 @@ export async function chargeRouteFeeTx(
   if (route.walletFeeStatus === 'charged') {
     return route
   }
+  if (!route.feeRequiredVnd || route.feeRequiredVnd <= 0) {
+    return route
+  }
   if (route.walletFeeStatus !== 'reserved') {
     throw new HttpError(
       409,

@@ -102,7 +102,9 @@ export async function createRoute(
   const dest = extractWardFields(fields, 'destination', data.destination)
   const departureWindow = computeDepartureBlock(data.departureDate)
   const windowStart = data.windowStart ? normalizeUtc(data.windowStart) : departureWindow.start
-  const windowEnd = data.windowEnd ? normalizeUtc(data.windowEnd) : departureWindow.end
+  const windowEnd = data.windowEnd
+    ? normalizeUtc(data.windowEnd)
+    : computeDepartureBlock(windowStart!).end
 
   const res = await query(
     `

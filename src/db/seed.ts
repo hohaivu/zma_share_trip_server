@@ -319,9 +319,9 @@ const routes = [
     id: 'route-001',
     driverId: DRIVER_001_ID,
     carId: 'car-001',
-    departureDate: '2030-03-19 23:45:00.000', // 06:45 local
-    windowStart: '2030-03-19 23:45:00.000', // 06:45 local
-    windowEnd: '2030-03-20 00:15:00.000', // 07:15 local
+    departureDate: '2030-03-20 00:00:00.000',
+    windowStart: '2030-03-20 00:00:00.000',
+    windowEnd: '2030-03-20 00:30:00.000',
     tripPrice: 120000,
     createdAt: '2026-01-05 00:00:00.000',
   }),
@@ -580,8 +580,8 @@ export async function seed() {
     await conn.query('COMMIT')
     console.log('Seed completed successfully.')
   } catch (err) {
-    await conn.query('ROLLBACK')
     console.error('Seed failed:', err)
+    try { await conn.query('ROLLBACK') } catch { /* ignore rollback failure */ }
     throw err
   } finally {
     conn.release()

@@ -73,6 +73,6 @@ export async function updateCar(id: string, data: UpdateCarPayload): Promise<(Ca
 }
 
 export async function deleteCar(id: string): Promise<boolean> {
-  const result = await query('DELETE FROM cars WHERE id = ? RETURNING id', [id])
+  const result = await query('DELETE FROM cars WHERE id = ?', [id])
   return result.rowCount !== null && result.rowCount > 0
 }

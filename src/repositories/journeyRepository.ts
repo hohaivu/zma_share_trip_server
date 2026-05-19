@@ -89,7 +89,7 @@ export async function listSavedLocations(): Promise<SavedLocation[]> {
 }
 
 export async function deleteSavedLocation(id: string): Promise<boolean> {
-  const result = await query('DELETE FROM saved_locations WHERE id = ? RETURNING id', [id])
+  const result = await query('DELETE FROM saved_locations WHERE id = ?', [id])
   return result.rowCount !== null && result.rowCount > 0
 }
 

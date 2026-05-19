@@ -2,6 +2,8 @@
 
 ## Phase 1: Postgres → MariaDB
 
+**Status:** Complete (2026-05-19)
+
 ### Why
 
 - MariaDB is the target production database.
