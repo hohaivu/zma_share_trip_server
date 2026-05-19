@@ -131,6 +131,7 @@ export interface RouteLike {
   destination: Location
   serviceDate: string
   departureTime: string
+  windowEnd?: string
   originWardKey?: string
   destinationWardKey?: string
 }

@@ -165,22 +165,29 @@ export function estimateDetour(
 
 /**
  * Check whether a route's departure block overlaps with a plan's departure block.
+ *
+ * Route span: from the 30-min block containing departureTime to routeWindowEnd (or
+ * block end when absent), expanded ±30 min. Inclusive boundaries so touching
+ * intervals match (e.g. plan starting exactly at route window end).
  */
 function blocksOverlap(
   routeDepartureTime: string,
+  routeWindowEnd: string | undefined,
   blockStart: string,
   blockEnd: string,
 ): boolean {
   const routeBlock = computeDepartureBlock(routeDepartureTime)
+  const routeSpanEndMs = routeWindowEnd
+    ? new Date(routeWindowEnd).getTime()
+    : new Date(routeBlock.end).getTime()
   const routeStartMs =
     new Date(routeBlock.start).getTime() -
     MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES * MS_PER_MINUTE
   const routeEndMs =
-    new Date(routeBlock.end).getTime() +
-    MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
+    routeSpanEndMs + MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
   const planStartMs = new Date(blockStart).getTime()
   const planEndMs = new Date(blockEnd).getTime()
-  return routeStartMs < planEndMs && planStartMs < routeEndMs
+  return routeStartMs <= planEndMs && planStartMs <= routeEndMs
 }
 
 // ─── Hard Filters ─────────────────────────────────────────────────────────────
@@ -201,6 +208,7 @@ async function passesHardFiltersWithBearings(
   if (
     !blocksOverlap(
       route.departureTime,
+      route.windowEnd,
       planLike.departureBlockStart,
       planLike.departureBlockEnd,
     )
@@ -384,6 +392,7 @@ function classifyMatch(
   if (
     !blocksOverlap(
       route.departureTime,
+      route.windowEnd,
       group.departureBlockStart,
       group.departureBlockEnd,
     )

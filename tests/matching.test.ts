@@ -187,6 +187,56 @@ describe('passesHardFilters', () => {
     )
   })
 
+  // Regression: driver 07:00-09:00 (+07) must see client plan 08:00-09:00 (+07)
+  it('matches when plan starts exactly at expanded route window end (touching boundary)', async () => {
+    // Route departs 07:00 +07 = 00:00Z, 30-min block end = 00:30Z, +30 min expansion = 01:00Z
+    // Plan 08:00-09:00 +07 = 01:00Z-02:00Z → planStart === routeEnd → must match
+    const route = {
+      ...BASE_ROUTE,
+      departureTime: '2030-03-20T00:00:00.000Z', // 07:00 +07
+    }
+    const plan = {
+      ...BASE_PLAN,
+      departureBlockStart: '2030-03-20T01:00:00.000Z', // 08:00 +07
+      departureBlockEnd: '2030-03-20T02:00:00.000Z',   // 09:00 +07
+    }
+    assert.ok(await matching.passesHardFilters(route, plan, null, []))
+  })
+
+  it('matches full-trip span: windowEnd covers client plan inside trip duration', async () => {
+    // Route 07:00-09:00 +07 (departureTime=00:00Z, windowEnd=02:00Z)
+    // Plan 08:00-09:00 +07 (01:00Z-02:00Z) — clearly within trip span
+    const route = {
+      ...BASE_ROUTE,
+      departureTime: '2030-03-20T00:00:00.000Z', // 07:00 +07
+      windowEnd: '2030-03-20T02:00:00.000Z',     // 09:00 +07
+    }
+    const plan = {
+      ...BASE_PLAN,
+      departureBlockStart: '2030-03-20T01:00:00.000Z', // 08:00 +07
+      departureBlockEnd: '2030-03-20T02:00:00.000Z',
+    }
+    assert.ok(await matching.passesHardFilters(route, plan, null, []))
+  })
+
+  it('rejects plan clearly outside full-trip span even with windowEnd set', async () => {
+    // Route 07:00-09:00 +07, plan 12:00-13:00 +07 — no overlap
+    const route = {
+      ...BASE_ROUTE,
+      departureTime: '2030-03-20T00:00:00.000Z', // 07:00 +07
+      windowEnd: '2030-03-20T02:00:00.000Z',     // 09:00 +07
+    }
+    const plan = {
+      ...BASE_PLAN,
+      departureBlockStart: '2030-03-20T05:00:00.000Z', // 12:00 +07
+      departureBlockEnd: '2030-03-20T06:00:00.000Z',
+    }
+    assert.equal(
+      await matching.passesHardFilters(route, plan, null, []),
+      false,
+    )
+  })
+
   it('rejects opposite direction (> 30° bearing difference)', async () => {
     // Heading south-west — opposite of our north-east route
     const plan = {
