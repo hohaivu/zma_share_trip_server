@@ -160,37 +160,64 @@ export async function cancelTripTx(tripId: string): Promise<Route | Plan> {
   })
 }
 
+function acceptedPlanId(accepted: AcceptedJourneyMatch): string | null {
+  if (!accepted) return null
+  return accepted.kind === 'route_request' ? accepted.request.planId : accepted.offer.planId
+}
+
+function acceptedRouteId(accepted: AcceptedJourneyMatch): string | null {
+  if (!accepted) return null
+  return accepted.kind === 'route_request' ? accepted.request.routeId : accepted.offer.routeId
+}
+
+async function markEntityCompletedTx(
+  executor: DbQueryExecutor,
+  table: 'routes' | 'plans',
+  id: string,
+  completedAt: Date,
+): Promise<void> {
+  await executor.query(
+    `UPDATE ${table} SET status = 'completed', completed_at = $2 WHERE id = $1`,
+    [id, completedAt],
+  )
+}
+
 export async function completeTripTx(tripId: string): Promise<Route | Plan> {
   return withTransaction(async (tx) => {
     const completedAt = new Date()
+
     const routeRes = await tx.query('SELECT * FROM routes WHERE id = $1 FOR UPDATE', [tripId])
-    const route = routeRes.rows[0] ? mapRoute(routeRes.rows[0]) : null
-    if (route) {
+    if (routeRes.rows[0]) {
+      const route = mapRoute(routeRes.rows[0])
       const accepted = await findAcceptedRouteMatchTx(tx, route.id)
-      const updatedRouteRes = await tx.query("UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *", [route.id, completedAt])
-      if (accepted?.kind === 'route_request' && accepted.request.planId) {
-        await tx.query("UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1", [accepted.request.planId, completedAt])
-      }
-      if (accepted?.kind === 'group_offer' && accepted.offer.planId) {
-        await tx.query("UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1", [accepted.offer.planId, completedAt])
+      const updatedRouteRes = await tx.query(
+        "UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *",
+        [route.id, completedAt],
+      )
+      const counterpartPlanId = acceptedPlanId(accepted)
+      if (counterpartPlanId) {
+        await markEntityCompletedTx(tx, 'plans', counterpartPlanId, completedAt)
       }
       return mapRoute(updatedRouteRes.rows[0])
     }
+
     const planRes = await tx.query('SELECT * FROM plans WHERE id = $1 FOR UPDATE', [tripId])
     const plan = planRes.rows[0] ? toCamelCase<Plan>(planRes.rows[0]) : null
     if (plan) {
       const accepted = await findAcceptedPlanMatchTx(tx, plan)
-      const updatedPlanRes = await tx.query("UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *", [plan.id, completedAt])
-      if (accepted?.kind === 'route_request') {
-        await tx.query("UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1", [accepted.request.routeId, completedAt])
-      }
-      if (accepted?.kind === 'group_offer') {
-        await tx.query("UPDATE routes SET status = 'completed', completed_at = $2 WHERE id = $1", [accepted.offer.routeId, completedAt])
+      const updatedPlanRes = await tx.query(
+        "UPDATE plans SET status = 'completed', completed_at = $2 WHERE id = $1 RETURNING *",
+        [plan.id, completedAt],
+      )
+      const counterpartRouteId = acceptedRouteId(accepted)
+      if (counterpartRouteId) {
+        await markEntityCompletedTx(tx, 'routes', counterpartRouteId, completedAt)
       }
       const updatedPlan = toCamelCase<Plan>(updatedPlanRes.rows[0])
       if (!updatedPlan) throw new Error('Failed to complete plan')
       return updatedPlan
     }
+
     throw new HttpError(404, 'Trip not found')
   })
 }

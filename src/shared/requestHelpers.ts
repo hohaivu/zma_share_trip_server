@@ -18,14 +18,7 @@ export function requireParam(value: unknown, message: string): asserts value {
 }
 
 export function requireBodyString(value: unknown, fieldName: string): string {
-  if (typeof value !== 'string') {
-    throw new HttpError(
-      400,
-      `Wallet validation error: ${fieldName} is required`,
-    )
-  }
-
-  const trimmed = value.trim()
+  const trimmed = typeof value === 'string' ? value.trim() : ''
   if (trimmed.length === 0) {
     throw new HttpError(
       400,

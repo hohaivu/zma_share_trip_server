@@ -8,7 +8,7 @@ function readTrimmedQueryParam(req: Request, name: string): string | undefined {
   const value = req.query[name]
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
-  return trimmed ? trimmed : undefined
+  return trimmed.length > 0 ? trimmed : undefined
 }
 
 function readRequiredQueryParam(req: Request, name: string): string {

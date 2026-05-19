@@ -12,6 +12,8 @@
  * See `API.md` → "Response Envelope" for the client-facing contract.
  */
 
+import { HttpError } from '../http-error'
+
 export interface ValidationIssue {
   path: Array<string | number>
   message: string
@@ -71,4 +73,33 @@ export function errorBody(
  */
 export function httpErrorCode(status: number): string {
   return `HTTP_${status}`
+}
+
+/**
+ * Translate an unknown thrown value into a `{ status, body }` envelope pair.
+ * Used by both the global error middleware and `asyncHandler` so the on-wire
+ * shape stays identical across error paths.
+ *
+ * Details from an `HttpError` payload are only exposed when explicitly opted
+ * into via `HttpError.withSafeDetails`, and never on 500s.
+ */
+export function buildErrorResponse(err: unknown): {
+  status: number
+  body: ErrorEnvelope
+} {
+  const status = err instanceof HttpError ? err.statusCode : 500
+  const message =
+    status === 500
+      ? 'Internal server error'
+      : err instanceof Error
+        ? err.message
+        : 'Internal server error'
+  const details =
+    err instanceof HttpError && err.exposeDetails && status !== 500
+      ? err.payload
+      : undefined
+  return {
+    status,
+    body: errorBody(httpErrorCode(status), message, { details }),
+  }
 }

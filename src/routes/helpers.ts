@@ -1,8 +1,7 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express'
 
-import { HttpError } from '../http-error'
 import { requireParam } from '../shared/requestHelpers'
-import { errorBody, httpErrorCode } from '../shared/responseEnvelope'
+import { buildErrorResponse } from '../shared/responseEnvelope'
 
 export { requireParam }
 
@@ -18,21 +17,9 @@ export function asyncHandler<
     new Promise<unknown>((resolve) => {
       resolve(fn(req as Req, res as Res, next))
     }).catch((err: unknown) => {
-      const status = err instanceof HttpError ? err.statusCode : 500
-      const message =
-        status === 500
-          ? 'Internal server error'
-          : err instanceof Error
-            ? err.message
-            : 'Internal server error'
-      const details =
-        err instanceof HttpError && err.exposeDetails && status !== 500
-          ? err.payload
-          : undefined
+      const { status, body } = buildErrorResponse(err)
       if (status === 500) console.error('[server error]', err)
-      res
-        .status(status)
-        .json(errorBody(httpErrorCode(status), message, { details }))
+      res.status(status).json(body)
     })
   }
 }
