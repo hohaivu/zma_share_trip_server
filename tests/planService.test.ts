@@ -60,10 +60,10 @@ describe('MVC plan service client cancellation', () => {
     if (!isDbAvailable()) return
 
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-client-cancel',
-      dropoffWardId: 'ward-client-cancel-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-client-cancel',
+      destinationWardId: 'ward-client-cancel-dest',
       serviceDate: '2030-05-07',
       departureBlockStart: '2030-05-07T07:00:00.000Z',
       departureBlockEnd: '2030-05-07T07:30:00.000Z',

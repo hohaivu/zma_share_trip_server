@@ -72,14 +72,14 @@ export interface UpdateRoutePayload {
 }
 
 export interface CreatePlanPayload {
-  pickup: Location
-  dropoff: Location
-  pickupWardId?: string
-  pickupWardKey?: string
-  pickupProvinceId?: string
-  dropoffWardId?: string
-  dropoffWardKey?: string
-  dropoffProvinceId?: string
+  origin: Location
+  destination: Location
+  originWardId?: string
+  originWardKey?: string
+  originProvinceId?: string
+  destinationWardId?: string
+  destinationWardKey?: string
+  destinationProvinceId?: string
   serviceDate: string
   departureBlockStart: string
   departureBlockEnd: string
@@ -93,14 +93,14 @@ export interface CreatePlanRequestBody extends CreatePlanPayload {
 }
 
 export interface UpdatePlanPayload {
-  pickup?: Location
-  dropoff?: Location
-  pickupWardId?: string
-  pickupWardKey?: string
-  pickupProvinceId?: string
-  dropoffWardId?: string
-  dropoffWardKey?: string
-  dropoffProvinceId?: string
+  origin?: Location
+  destination?: Location
+  originWardId?: string
+  originWardKey?: string
+  originProvinceId?: string
+  destinationWardId?: string
+  destinationWardKey?: string
+  destinationProvinceId?: string
   serviceDate?: string
   departureBlockStart?: string
   departureBlockEnd?: string
@@ -111,14 +111,14 @@ export interface UpdatePlanPayload {
 
 export interface SearchRoutesCriteriaPayload {
   clientId: string
-  pickup: Location
-  dropoff: Location
-  pickupWardId?: string
-  pickupWardKey?: string
-  pickupProvinceId?: string
-  dropoffWardId?: string
-  dropoffWardKey?: string
-  dropoffProvinceId?: string
+  origin: Location
+  destination: Location
+  originWardId?: string
+  originWardKey?: string
+  originProvinceId?: string
+  destinationWardId?: string
+  destinationWardKey?: string
+  destinationProvinceId?: string
   serviceDate: string
   departureBlockStart: string
   departureBlockEnd: string
@@ -136,20 +136,20 @@ export interface RouteLike {
 }
 
 export interface PlanLike {
-  pickup: Location
-  dropoff: Location
+  origin: Location
+  destination: Location
   serviceDate: string
   departureBlockStart: string
   departureBlockEnd: string
-  pickupWardKey?: string
-  dropoffWardKey?: string
+  originWardKey?: string
+  destinationWardKey?: string
 }
 
 // -- Matching Engine Results --
 export interface ScoreFields {
   matchScore: number
-  pickupFit: number
-  dropoffFit: number
+  originFit: number
+  destinationFit: number
   timeFit: number
   detourEstimate: number
 }
@@ -170,14 +170,14 @@ export interface DemandGroupResult extends ScoreFields {
   visibilityMode: string
   tripPrice: number
   serviceDate: string
-  pickupWardId: string
-  dropoffWardId: string
-  pickupWardName: string
-  dropoffWardName: string
-  pickupWardKey: string
-  dropoffWardKey: string
-  pickupProvinceId: string
-  dropoffProvinceId: string
+  originWardId: string
+  destinationWardId: string
+  originWardName: string
+  destinationWardName: string
+  originWardKey: string
+  destinationWardKey: string
+  originProvinceId: string
+  destinationProvinceId: string
   departureBlockStart: string
   departureBlockEnd: string
   memberCount: number
@@ -201,18 +201,18 @@ export interface MatchingRouteResult extends ScoreFields {
 export interface DemandGroupSummary {
   id: string
   serviceDate: string
-  pickupWardId: string
-  dropoffWardId: string
-  pickupWardKey: string
-  dropoffWardKey: string
-  pickupProvinceId: string
-  dropoffProvinceId: string
+  originWardId: string
+  destinationWardId: string
+  originWardKey: string
+  destinationWardKey: string
+  originProvinceId: string
+  destinationProvinceId: string
   departureBlockStart: string
   departureBlockEnd: string
   memberCount: number
   totalPassengerCount: number
-  pickup: Location
-  dropoff: Location
+  origin: Location
+  destination: Location
   memberPlanIds: string[]
   clientIds: string[]
 }

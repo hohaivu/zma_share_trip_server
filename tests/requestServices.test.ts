@@ -86,20 +86,20 @@ describe('MVC request services first-accept-wins behavior', () => {
       ).id,
     )
     const olderPlan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-order-old',
-      dropoffWardId: 'ward-order-old-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-order-old',
+      destinationWardId: 'ward-order-old-dest',
       serviceDate: '2030-06-01',
       departureBlockStart: '2030-06-01T07:00:00.000Z',
       departureBlockEnd: '2030-06-01T07:30:00.000Z',
       passengerCount: 1,
     })
     const newerPlan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-order-new',
-      dropoffWardId: 'ward-order-new-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-order-new',
+      destinationWardId: 'ward-order-new-dest',
       serviceDate: '2030-06-02',
       departureBlockStart: '2030-06-02T07:00:00.000Z',
       departureBlockEnd: '2030-06-02T07:30:00.000Z',

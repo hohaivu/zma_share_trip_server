@@ -111,9 +111,9 @@ export async function createPlan(
   const res = await query(
     `
       INSERT INTO plans (
-        id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id,
-        pickup_ward_key, dropoff_ward_key, pickup_province_id,
-        dropoff_province_id, service_date, departure_block_start,
+        id, client_id, origin, destination, origin_ward_id, destination_ward_id,
+        origin_ward_key, destination_ward_key, origin_province_id,
+        destination_province_id, service_date, departure_block_start,
         departure_block_end, passenger_count, publish_mode, notes, status,
         created_at
       )
@@ -123,14 +123,14 @@ export async function createPlan(
     [
       generateId('plan'),
       clientId,
-      JSON.stringify(data.pickup),
-      JSON.stringify(data.dropoff),
-      data.pickupWardId,
-      data.dropoffWardId,
-      data.pickupWardKey,
-      data.dropoffWardKey,
-      data.pickupProvinceId,
-      data.dropoffProvinceId,
+      JSON.stringify(data.origin),
+      JSON.stringify(data.destination),
+      data.originWardId,
+      data.destinationWardId,
+      data.originWardKey,
+      data.destinationWardKey,
+      data.originProvinceId,
+      data.destinationProvinceId,
       data.serviceDate,
       normalizeUtc(data.departureBlockStart),
       normalizeUtc(data.departureBlockEnd),
@@ -178,8 +178,8 @@ export async function updatePlan(
 ): Promise<Plan | null> {
   assertServiceDateIsNotPast(data.serviceDate)
   return dynamicUpdate<Plan>('plans', id, data as unknown as Record<string, unknown>, [
-    'pickup',
-    'dropoff',
+    'origin',
+    'destination',
   ])
 }
 

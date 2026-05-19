@@ -143,14 +143,14 @@ export interface WalletTransaction {
 export interface Plan {
   id: string
   clientId: string
-  pickup: Location
-  dropoff: Location
-  pickupWardId: string
-  pickupWardKey: string
-  pickupProvinceId: string
-  dropoffWardId: string
-  dropoffWardKey: string
-  dropoffProvinceId: string
+  origin: Location
+  destination: Location
+  originWardId: string
+  originWardKey: string
+  originProvinceId: string
+  destinationWardId: string
+  destinationWardKey: string
+  destinationProvinceId: string
   serviceDate: string
   departureBlockStart: string
   departureBlockEnd: string

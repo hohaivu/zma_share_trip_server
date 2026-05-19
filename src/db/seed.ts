@@ -76,14 +76,14 @@ interface SeedWallet {
 interface SeedPlan {
   id: string
   clientId: string
-  pickup: Location
-  dropoff: Location
-  pickupWardId: string
-  pickupWardKey: string
-  pickupProvinceId: string
-  dropoffWardId: string
-  dropoffWardKey: string
-  dropoffProvinceId: string
+  origin: Location
+  destination: Location
+  originWardId: string
+  originWardKey: string
+  originProvinceId: string
+  destinationWardId: string
+  destinationWardKey: string
+  destinationProvinceId: string
   serviceDate: string
   departureBlockStart: string
   departureBlockEnd: string
@@ -169,14 +169,14 @@ function makePlan(
     >,
 ): SeedPlan {
   return {
-    pickup: COORD_Q1,
-    dropoff: COORD_TD,
-    pickupWardId: WARD_Q1,
-    dropoffWardId: WARD_TD,
-    pickupWardKey: WARD_KEY_Q1,
-    dropoffWardKey: WARD_KEY_TD,
-    pickupProvinceId: PROVINCE_HCM,
-    dropoffProvinceId: PROVINCE_HCM,
+    origin: COORD_Q1,
+    destination: COORD_TD,
+    originWardId: WARD_Q1,
+    destinationWardId: WARD_TD,
+    originWardKey: WARD_KEY_Q1,
+    destinationWardKey: WARD_KEY_TD,
+    originProvinceId: PROVINCE_HCM,
+    destinationProvinceId: PROVINCE_HCM,
     passengerCount: 1,
     notes: '',
     status: 'published',
@@ -366,8 +366,8 @@ const plans = [
   makePlan({
     id: 'plan-002',
     clientId: CLIENT_002_ID,
-    pickup: COORD_Q1_NEAR,
-    dropoff: COORD_TD_NEAR,
+    origin: COORD_Q1_NEAR,
+    destination: COORD_TD_NEAR,
     serviceDate: SERVICE_DATE_MAR20,
     departureBlockStart: '2030-03-20T00:00:00.000Z',
     departureBlockEnd: '2030-03-20T00:30:00.000Z',
@@ -377,10 +377,10 @@ const plans = [
   makePlan({
     id: 'plan-003',
     clientId: CLIENT_001_ID,
-    pickup: COORD_TB,
-    dropoff: COORD_TD_TB,
-    pickupWardId: 'ward-tb-p15',
-    pickupWardKey: 'ward-tb-p15_79',
+    origin: COORD_TB,
+    destination: COORD_TD_TB,
+    originWardId: 'ward-tb-p15',
+    originWardKey: 'ward-tb-p15_79',
     serviceDate: SERVICE_DATE_MAR20,
     departureBlockStart: '2030-03-20T00:00:00.000Z',
     departureBlockEnd: '2030-03-20T00:30:00.000Z',
@@ -548,20 +548,20 @@ export async function seed() {
     for (const t of plans) {
       await client.query(
         `
-        INSERT INTO plans (id, client_id, pickup, dropoff, pickup_ward_id, dropoff_ward_id, pickup_ward_key, dropoff_ward_key, pickup_province_id, dropoff_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
+        INSERT INTO plans (id, client_id, origin, destination, origin_ward_id, destination_ward_id, origin_ward_key, destination_ward_key, origin_province_id, destination_province_id, service_date, departure_block_start, departure_block_end, passenger_count, publish_mode, notes, status, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       `,
         [
           t.id,
           t.clientId,
-          JSON.stringify(t.pickup),
-          JSON.stringify(t.dropoff),
-          t.pickupWardId,
-          t.dropoffWardId,
-          t.pickupWardKey,
-          t.dropoffWardKey,
-          t.pickupProvinceId,
-          t.dropoffProvinceId,
+          JSON.stringify(t.origin),
+          JSON.stringify(t.destination),
+          t.originWardId,
+          t.destinationWardId,
+          t.originWardKey,
+          t.destinationWardKey,
+          t.originProvinceId,
+          t.destinationProvinceId,
           t.serviceDate,
           t.departureBlockStart,
           t.departureBlockEnd,

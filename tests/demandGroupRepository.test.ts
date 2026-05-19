@@ -61,8 +61,8 @@ describe('MVC demand group repository derivation', () => {
     // Seed has plan-001 and plan-002 sharing the same group key
     const q1TdGroup = groups.find(
       (g) =>
-        g.pickupWardId === 'ward-q1-bennghe' &&
-        g.dropoffWardId === 'ward-td-binhtho' &&
+        g.originWardId === 'ward-q1-bennghe' &&
+        g.destinationWardId === 'ward-td-binhtho' &&
         g.serviceDate === '2030-03-20',
     )
     assert.ok(q1TdGroup, 'Should find Q1→TD group')
@@ -73,20 +73,20 @@ describe('MVC demand group repository derivation', () => {
   it('normalizes mixed timezone inputs into identical canonical UTC keys', async () => {
     // Both 14:00+07:00 and 07:00Z represent the same instant and must group together.
     const planA = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10, lng: 106, label: 'A' },
-      dropoff: { lat: 11, lng: 106, label: 'B' },
-      pickupWardId: 'ward-utc',
-      dropoffWardId: 'ward-utc-dest',
+      origin: { lat: 10, lng: 106, label: 'A' },
+      destination: { lat: 11, lng: 106, label: 'B' },
+      originWardId: 'ward-utc',
+      destinationWardId: 'ward-utc-dest',
       serviceDate: '2030-05-05',
       departureBlockStart: '2030-05-05T14:00:00.000+07:00', // mapped to 07:00Z
       departureBlockEnd: '2030-05-05T14:30:00.000+07:00',
       passengerCount: 1,
     })
     const planB = await planService.createPlan(CLIENT_002_ID, {
-      pickup: { lat: 10, lng: 106, label: 'A' },
-      dropoff: { lat: 11, lng: 106, label: 'B' },
-      pickupWardId: 'ward-utc',
-      dropoffWardId: 'ward-utc-dest',
+      origin: { lat: 10, lng: 106, label: 'A' },
+      destination: { lat: 11, lng: 106, label: 'B' },
+      originWardId: 'ward-utc',
+      destinationWardId: 'ward-utc-dest',
       serviceDate: '2030-05-05',
       departureBlockStart: '2030-05-05T07:00:00.000Z',
       departureBlockEnd: '2030-05-05T07:30:00.000Z',
@@ -94,7 +94,7 @@ describe('MVC demand group repository derivation', () => {
     })
 
     const groups = await groupRequestRepository.deriveDemandGroups()
-    const utcGroup = groups.find((g) => g.pickupWardId === 'ward-utc')
+    const utcGroup = groups.find((g) => g.originWardId === 'ward-utc')
     assert.ok(utcGroup)
     assert.equal(
       utcGroup.memberCount,
@@ -110,7 +110,7 @@ describe('MVC demand group repository derivation', () => {
 
   it('creates single-member group for unique ward pair', async () => {
     const groups = await groupRequestRepository.deriveDemandGroups()
-    const tbGroup = groups.find((g) => g.pickupWardId === 'ward-tb-p15')
+    const tbGroup = groups.find((g) => g.originWardId === 'ward-tb-p15')
     assert.ok(tbGroup, 'Should find Tan Binh group')
     assert.equal(tbGroup.memberCount, 1, 'Single-member group')
     assert.equal(tbGroup.totalPassengerCount, 1)
@@ -122,8 +122,8 @@ describe('MVC demand group repository derivation', () => {
     const before = await groupRequestRepository.deriveDemandGroups()
     const target = before.find(
       (group) =>
-        group.pickupWardId === 'ward-q1-bennghe' &&
-        group.dropoffWardId === 'ward-td-binhtho' &&
+        group.originWardId === 'ward-q1-bennghe' &&
+        group.destinationWardId === 'ward-td-binhtho' &&
         group.serviceDate === '2030-03-20',
     )
     assert.ok(target)
@@ -176,10 +176,10 @@ describe('MVC demand group repository derivation', () => {
       ).id,
     )
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-exclusive',
-      dropoffWardId: 'ward-exclusive-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-exclusive',
+      destinationWardId: 'ward-exclusive-dest',
       serviceDate: '2030-03-21',
       departureBlockStart: '2030-03-21T07:00:00.000Z',
       departureBlockEnd: '2030-03-21T07:30:00.000Z',
@@ -188,7 +188,7 @@ describe('MVC demand group repository derivation', () => {
 
     const before = await matching.computeMatchedDemandGroups(targetRoute.id)
     assert.equal(
-      before.some((group) => group.pickupWardId === 'ward-exclusive'),
+      before.some((group) => group.originWardId === 'ward-exclusive'),
       true,
     )
 
@@ -202,17 +202,17 @@ describe('MVC demand group repository derivation', () => {
 
     const after = await matching.computeMatchedDemandGroups(targetRoute.id)
     assert.equal(
-      after.some((group) => group.pickupWardId === 'ward-exclusive'),
+      after.some((group) => group.originWardId === 'ward-exclusive'),
       false,
     )
   })
 
   it('persists grouped publish mode for newly created plans', async () => {
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-persist',
-      dropoffWardId: 'ward-persist-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-persist',
+      destinationWardId: 'ward-persist-dest',
       serviceDate: '2030-05-06',
       departureBlockStart: '2030-05-06T07:00:00.000Z',
       departureBlockEnd: '2030-05-06T07:30:00.000Z',
@@ -232,8 +232,8 @@ describe('MVC demand group repository derivation', () => {
     const initial = await groupRequestRepository.deriveDemandGroups()
     const target = initial.find(
       (group) =>
-        group.pickupWardId === 'ward-q1-bennghe' &&
-        group.dropoffWardId === 'ward-td-binhtho' &&
+        group.originWardId === 'ward-q1-bennghe' &&
+        group.destinationWardId === 'ward-td-binhtho' &&
         group.serviceDate === '2030-03-20',
     )
     assert.ok(target)

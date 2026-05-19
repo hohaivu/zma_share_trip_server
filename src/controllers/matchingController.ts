@@ -10,8 +10,8 @@ export async function searchRoutes(
 ): Promise<void> {
   const criteria = req.body
   requireParam(criteria.clientId, 'clientId is required')
-  requireParam(criteria.pickup, 'pickup is required')
-  requireParam(criteria.dropoff, 'dropoff is required')
+  requireParam(criteria.origin, 'origin is required')
+  requireParam(criteria.destination, 'destination is required')
   requireParam(criteria.serviceDate, 'serviceDate is required')
   requireParam(criteria.departureBlockStart, 'departureBlockStart is required')
   requireParam(criteria.departureBlockEnd, 'departureBlockEnd is required')

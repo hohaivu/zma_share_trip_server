@@ -102,19 +102,19 @@ function hasUsableGeometry(routeLike: RouteLike, planLike: PlanLike): boolean {
   return (
     hasUsablePoint(routeLike?.origin) &&
     hasUsablePoint(routeLike?.destination) &&
-    hasUsablePoint(planLike?.pickup) &&
-    hasUsablePoint(planLike?.dropoff)
+    hasUsablePoint(planLike?.origin) &&
+    hasUsablePoint(planLike?.destination)
   )
 }
 
 function hasExactAdminMatch(route: RouteLike, planLike: PlanLike): boolean {
   return (
     !!route?.originWardKey &&
-    !!planLike?.pickupWardKey &&
-    route.originWardKey === planLike.pickupWardKey &&
+    !!planLike?.originWardKey &&
+    route.originWardKey === planLike.originWardKey &&
     !!route?.destinationWardKey &&
-    !!planLike?.dropoffWardKey &&
-    route.destinationWardKey === planLike.dropoffWardKey
+    !!planLike?.destinationWardKey &&
+    route.destinationWardKey === planLike.destinationWardKey
   )
 }
 
@@ -232,10 +232,10 @@ async function passesHardFiltersWithBearings(
   if (bearingDifference(routeBearing, planBearing) > MAX_BEARING_DIFF)
     return false
 
-  if (haversineDistance(route.origin, planLike.pickup) > MAX_PICKUP_KM)
+  if (haversineDistance(route.origin, planLike.origin) > MAX_PICKUP_KM)
     return false
 
-  if (haversineDistance(route.destination, planLike.dropoff) > MAX_DROPOFF_KM)
+  if (haversineDistance(route.destination, planLike.destination) > MAX_DROPOFF_KM)
     return false
 
   return true
@@ -251,7 +251,7 @@ export async function passesHardFilters(
   clientIds: string[],
 ): Promise<boolean> {
   const routeBearing = computeBearing(route.origin, route.destination)
-  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
+  const planBearing = computeBearing(planLike.origin, planLike.destination)
   return passesHardFiltersWithBearings(
     route,
     planLike,
@@ -303,15 +303,15 @@ function computeMatchScoreWithBearings(
         fallbackFit,
         time,
       ),
-      pickupFit: fallbackFit,
-      dropoffFit: fallbackFit,
+      originFit: fallbackFit,
+      destinationFit: fallbackFit,
       timeFit: time,
       detourEstimate: 0,
     }
   }
 
-  const pickupDist = haversineDistance(route.origin, planLike.pickup)
-  const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
+  const pickupDist = haversineDistance(route.origin, planLike.origin)
+  const dropoffDist = haversineDistance(route.destination, planLike.destination)
 
   const dir = directionScore(routeBearing, planBearing)
   const pickup = proximityScore(pickupDist, MAX_PICKUP_KM)
@@ -319,8 +319,8 @@ function computeMatchScoreWithBearings(
 
   return {
     matchScore: weightedMatchScore(dir, pickup, dropoff, time),
-    pickupFit: pickup,
-    dropoffFit: dropoff,
+    originFit: pickup,
+    destinationFit: dropoff,
     timeFit: time,
     detourEstimate: estimateDetour(pickupDist, dropoffDist),
   }
@@ -334,7 +334,7 @@ export function computeMatchScore(
   planLike: PlanLike,
 ): ScoreFields {
   const routeBearing = computeBearing(route.origin, route.destination)
-  const planBearing = computeBearing(planLike.pickup, planLike.dropoff)
+  const planBearing = computeBearing(planLike.origin, planLike.destination)
   return computeMatchScoreWithBearings(
     route,
     planLike,
@@ -357,8 +357,8 @@ function classifyByAdminAndDistance(
 
   if (!hasUsableGeometry(route, planLike)) return null
 
-  const pickupDist = haversineDistance(route.origin, planLike.pickup)
-  const dropoffDist = haversineDistance(route.destination, planLike.dropoff)
+  const pickupDist = haversineDistance(route.origin, planLike.origin)
+  const dropoffDist = haversineDistance(route.destination, planLike.destination)
 
   const hasDistanceExact = pickupDist < 1.0 && dropoffDist < 1.0
 
@@ -452,7 +452,7 @@ export async function computeMatchedDemandGroups(
     const matchTier = classifyMatch(route, group)
     if (!matchTier) continue
 
-    const planBearing = computeBearing(group.pickup, group.dropoff)
+    const planBearing = computeBearing(group.origin, group.destination)
 
     const passed = await passesHardFiltersWithBearings(
       route,
@@ -478,14 +478,14 @@ export async function computeMatchedDemandGroups(
       visibilityMode,
       tripPrice: route.tripPrice,
       serviceDate: group.serviceDate,
-      pickupWardId: group.pickupWardId,
-      dropoffWardId: group.dropoffWardId,
-      pickupWardName: group.pickup?.label || group.pickupWardId,
-      dropoffWardName: group.dropoff?.label || group.dropoffWardId,
-      pickupWardKey: group.pickupWardKey,
-      dropoffWardKey: group.dropoffWardKey,
-      pickupProvinceId: group.pickupProvinceId,
-      dropoffProvinceId: group.dropoffProvinceId,
+      originWardId: group.originWardId,
+      destinationWardId: group.destinationWardId,
+      originWardName: group.origin?.label || group.originWardId,
+      destinationWardName: group.destination?.label || group.destinationWardId,
+      originWardKey: group.originWardKey,
+      destinationWardKey: group.destinationWardKey,
+      originProvinceId: group.originProvinceId,
+      destinationProvinceId: group.destinationProvinceId,
       departureBlockStart: group.departureBlockStart,
       departureBlockEnd: group.departureBlockEnd,
       memberCount: group.memberCount,
@@ -510,7 +510,7 @@ export async function computeMatchingRoutesFromCriteria(
   const allRoutes = await driverRouteRepository.listAllRoutes()
   const results: MatchingRouteResult[] = []
 
-  const planBearing = computeBearing(criteria.pickup, criteria.dropoff)
+  const planBearing = computeBearing(criteria.origin, criteria.destination)
 
   for (const route of allRoutes) {
     if (route.status !== 'published') continue

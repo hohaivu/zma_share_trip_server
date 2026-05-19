@@ -419,10 +419,10 @@ describe('MVC wallet-gated accept and cancel transitions', () => {
     if (!isDbAvailable()) return
 
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-cancel-plan',
-      dropoffWardId: 'ward-cancel-plan-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-cancel-plan',
+      destinationWardId: 'ward-cancel-plan-dest',
       serviceDate: '2030-05-06',
       departureBlockStart: '2030-05-06T07:00:00.000Z',
       departureBlockEnd: '2030-05-06T07:30:00.000Z',

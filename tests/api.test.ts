@@ -162,10 +162,10 @@ async function createPendingGroupOfferForClient(serviceDate: string, label: stri
     ).id,
   )
   const plan = await planService.createPlan(CLIENT_001_ID, {
-    pickup: { lat: 10.77, lng: 106.7, label: `${label} pickup` },
-    dropoff: { lat: 10.85, lng: 106.75, label: `${label} dropoff` },
-    pickupWardId: `${label}-pickup-ward`,
-    dropoffWardId: `${label}-dropoff-ward`,
+    origin: { lat: 10.77, lng: 106.7, label: `${label} pickup` },
+    destination: { lat: 10.85, lng: 106.75, label: `${label} dropoff` },
+    originWardId: `${label}-pickup-ward`,
+    destinationWardId: `${label}-dropoff-ward`,
     serviceDate,
     departureBlockStart: `${serviceDate}T07:00:00.000Z`,
     departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -265,10 +265,10 @@ describe('POST /api/client/trip-plans', () => {
   it('creates a trip plan', async () => {
     const res = await request(server, 'POST', '/api/client/trip-plans', {
       clientId: CLIENT_001_ID,
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-test',
-      dropoffWardId: 'ward-test2',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-test',
+      destinationWardId: 'ward-test2',
       serviceDate: '2030-04-01',
       departureBlockStart: '2030-04-01T08:00:00.000Z',
       departureBlockEnd: '2030-04-01T08:30:00.000Z',
@@ -290,10 +290,10 @@ describe('POST /api/client/trip-plans', () => {
 
     const createRes = await request(server, 'POST', '/api/client/trip-plans', {
       clientId: CLIENT_001_ID,
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-plan-past-create',
-      dropoffWardId: 'ward-plan-past-create-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-plan-past-create',
+      destinationWardId: 'ward-plan-past-create-dest',
       serviceDate: pastDate,
       departureBlockStart: `${pastDate}T08:00:00.000Z`,
       departureBlockEnd: `${pastDate}T08:30:00.000Z`,
@@ -303,10 +303,10 @@ describe('POST /api/client/trip-plans', () => {
     assert.equal(createRes.body.error.message, 'serviceDate cannot be in the past')
 
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-plan-past-update',
-      dropoffWardId: 'ward-plan-past-update-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-plan-past-update',
+      destinationWardId: 'ward-plan-past-update-dest',
       serviceDate: futureDate,
       departureBlockStart: `${futureDate}T08:00:00.000Z`,
       departureBlockEnd: `${futureDate}T08:30:00.000Z`,
@@ -380,10 +380,10 @@ describe('DELETE /api/client/trip-plans/:id', () => {
     if (!isDbAvailable()) return
 
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-api-cancel',
-      dropoffWardId: 'ward-api-cancel-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-api-cancel',
+      destinationWardId: 'ward-api-cancel-dest',
       serviceDate: '2030-06-01',
       departureBlockStart: '2030-06-01T08:00:00.000Z',
       departureBlockEnd: '2030-06-01T08:30:00.000Z',
@@ -425,10 +425,10 @@ describe('DELETE /api/client/trip-plans/:id', () => {
 describe('POST /api/client/route-suggestions', () => {
   const routeSearchCriteria = {
     clientId: CLIENT_001_ID,
-    pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-    dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-    pickupWardId: 'ward-test',
-    dropoffWardId: 'ward-test2',
+    origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+    destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+    originWardId: 'ward-test',
+    destinationWardId: 'ward-test2',
     serviceDate: '2030-04-01',
     departureBlockStart: '2030-04-01T08:00:00.000Z',
     departureBlockEnd: '2030-04-01T08:30:00.000Z',
@@ -450,7 +450,7 @@ describe('POST /api/client/route-suggestions', () => {
   it('rejects without required criteria', async () => {
     const res = await request(server, 'POST', '/api/client/route-suggestions', {
       clientId: CLIENT_001_ID,
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
     })
     assert.equal(res.status, 400)
     assert.ok(res.body.error.message.includes('required'))
@@ -459,7 +459,7 @@ describe('POST /api/client/route-suggestions', () => {
   it('returns validation errors for route suggestions', async () => {
     const res = await request(server, 'POST', '/api/client/route-suggestions', {
       clientId: CLIENT_001_ID,
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
     })
 
     assert.equal(res.status, 400)
@@ -483,10 +483,10 @@ describe('POST /api/client/route-suggestions', () => {
         ).id,
       )
       const plan = await planService.createPlan(CLIENT_001_ID, {
-        pickup: { lat: 10.776, lng: 106.701, label: 'Quận 1' },
-        dropoff: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
-        pickupWardId: `ward-api-${suffix}`,
-        dropoffWardId: `ward-api-${suffix}-dest`,
+        origin: { lat: 10.776, lng: 106.701, label: 'Quận 1' },
+        destination: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
+        originWardId: `ward-api-${suffix}`,
+        destinationWardId: `ward-api-${suffix}-dest`,
         serviceDate,
         departureBlockStart: `${serviceDate}T07:00:00.000Z`,
         departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -520,10 +520,10 @@ describe('POST /api/client/route-suggestions', () => {
     for (const item of [groupOffer, routeRequest]) {
       const res = await request(server, 'POST', '/api/client/route-suggestions', {
         clientId: CLIENT_002_ID,
-        pickup: { lat: 10.776, lng: 106.701, label: 'Quận 1' },
-        dropoff: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
-        pickupWardId: 'ward-search-other-client',
-        dropoffWardId: 'ward-search-other-client-dest',
+        origin: { lat: 10.776, lng: 106.701, label: 'Quận 1' },
+        destination: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
+        originWardId: 'ward-search-other-client',
+        destinationWardId: 'ward-search-other-client-dest',
         serviceDate: item.route.serviceDate,
         departureBlockStart: `${item.route.serviceDate}T07:00:00.000Z`,
         departureBlockEnd: `${item.route.serviceDate}T07:30:00.000Z`,
@@ -765,10 +765,10 @@ describe('POST /api/trips/:id/cancel', () => {
       ).id,
     )
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-cancel-sync',
-      dropoffWardId: 'ward-cancel-sync-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-cancel-sync',
+      destinationWardId: 'ward-cancel-sync-dest',
       serviceDate: '2030-04-03',
       departureBlockStart: '2030-04-03T07:00:00.000Z',
       departureBlockEnd: '2030-04-03T07:30:00.000Z',
@@ -820,10 +820,10 @@ describe('POST /api/trips/:id/complete', () => {
       ).id,
     )
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-complete-sync',
-      dropoffWardId: 'ward-complete-sync-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-complete-sync',
+      destinationWardId: 'ward-complete-sync-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -921,10 +921,10 @@ describe('work queue visibility endpoints', () => {
       tripPrice: 100000,
     })
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-route-review',
-      dropoffWardId: 'ward-route-review-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-route-review',
+      destinationWardId: 'ward-route-review-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -979,10 +979,10 @@ describe('work queue visibility endpoints', () => {
       tripPrice: 100000,
     })
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-route-future-review',
-      dropoffWardId: 'ward-route-future-review-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-route-future-review',
+      destinationWardId: 'ward-route-future-review-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -1007,10 +1007,10 @@ describe('work queue visibility endpoints', () => {
 
     const serviceDate = formatLocalDateValue(new Date())
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-plan-review',
-      dropoffWardId: 'ward-plan-review-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-plan-review',
+      destinationWardId: 'ward-plan-review-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -1069,10 +1069,10 @@ describe('work queue visibility endpoints', () => {
 
     const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-plan-expired',
-      dropoffWardId: 'ward-plan-expired-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-plan-expired',
+      destinationWardId: 'ward-plan-expired-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -1133,20 +1133,20 @@ describe('work queue visibility endpoints', () => {
       tripPrice: 100000,
     })
     const reviewedPlan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Reviewed Pickup' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'Reviewed Dropoff' },
-      pickupWardId: 'ward-reviewed-route-plan',
-      dropoffWardId: 'ward-reviewed-route-plan-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Reviewed Pickup' },
+      destination: { lat: 10.85, lng: 106.75, label: 'Reviewed Dropoff' },
+      originWardId: 'ward-reviewed-route-plan',
+      destinationWardId: 'ward-reviewed-route-plan-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const unreviewedPlan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Unreviewed Pickup' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'Unreviewed Dropoff' },
-      pickupWardId: 'ward-unreviewed-route-plan',
-      dropoffWardId: 'ward-unreviewed-route-plan-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Unreviewed Pickup' },
+      destination: { lat: 10.85, lng: 106.75, label: 'Unreviewed Dropoff' },
+      originWardId: 'ward-unreviewed-route-plan',
+      destinationWardId: 'ward-unreviewed-route-plan-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T08:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T08:30:00.000Z`,
@@ -1186,10 +1186,10 @@ describe('work queue visibility endpoints', () => {
     const serviceDate = formatLocalDateValue(addDays(new Date(), 7))
     const makePlan = (suffix: string) =>
       planService.createPlan(CLIENT_001_ID, {
-        pickup: { lat: 10.77, lng: 106.7, label: `${suffix} Pickup` },
-        dropoff: { lat: 10.85, lng: 106.75, label: `${suffix} Dropoff` },
-        pickupWardId: `ward-${suffix}`,
-        dropoffWardId: `ward-${suffix}-dest`,
+        origin: { lat: 10.77, lng: 106.7, label: `${suffix} Pickup` },
+        destination: { lat: 10.85, lng: 106.75, label: `${suffix} Dropoff` },
+        originWardId: `ward-${suffix}`,
+        destinationWardId: `ward-${suffix}-dest`,
         serviceDate,
         departureBlockStart: `${serviceDate}T07:00:00.000Z`,
         departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -1261,10 +1261,10 @@ describe('inbox visibility endpoints', () => {
       ).id,
     )
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-goffer-hide',
-      dropoffWardId: 'ward-goffer-hide-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-goffer-hide',
+      destinationWardId: 'ward-goffer-hide-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -1373,10 +1373,10 @@ describe('inbox visibility endpoints', () => {
       ).id,
     )
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-client-search-hide',
-      dropoffWardId: 'ward-client-search-hide-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-client-search-hide',
+      destinationWardId: 'ward-client-search-hide-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -1431,10 +1431,10 @@ describe('inbox visibility endpoints', () => {
       ).id,
     )
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-driver-search-hide',
-      dropoffWardId: 'ward-driver-search-hide-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-driver-search-hide',
+      destinationWardId: 'ward-driver-search-hide-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -1514,10 +1514,10 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
 
     const planRes = await request(server, 'POST', '/api/client/trip-plans', {
       clientId: CLIENT_001_ID,
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-api-exclusive',
-      dropoffWardId: 'ward-api-exclusive-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-api-exclusive',
+      destinationWardId: 'ward-api-exclusive-dest',
       serviceDate: '2030-04-11',
       departureBlockStart: '2030-04-11T07:00:00.000Z',
       departureBlockEnd: '2030-04-11T07:30:00.000Z',
@@ -1552,8 +1552,8 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
     assert.equal(before.status, 200)
     assert.equal(
       before.body.some(
-        (group: { pickupWardId: string }) =>
-          group.pickupWardId === 'ward-api-exclusive',
+        (group: { originWardId: string }) =>
+          group.originWardId === 'ward-api-exclusive',
       ),
       true,
     )
@@ -1579,8 +1579,8 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
     assert.equal(suppressed.status, 200)
     assert.equal(
       suppressed.body.some(
-        (group: { pickupWardId: string }) =>
-          group.pickupWardId === 'ward-api-exclusive',
+        (group: { originWardId: string }) =>
+          group.originWardId === 'ward-api-exclusive',
       ),
       false,
     )
@@ -1608,8 +1608,8 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
     assert.equal(restored.status, 200)
     assert.equal(
       restored.body.some(
-        (group: { pickupWardId: string }) =>
-          group.pickupWardId === 'ward-api-exclusive',
+        (group: { originWardId: string }) =>
+          group.originWardId === 'ward-api-exclusive',
       ),
       true,
     )
@@ -1691,10 +1691,10 @@ describe('POST /api/client/route-requests', () => {
     // Create a persisted plan to link as context
     const tpRes = await request(server, 'POST', '/api/client/trip-plans', {
       clientId: CLIENT_001_ID,
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-test',
-      dropoffWardId: 'ward-test2',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-test',
+      destinationWardId: 'ward-test2',
       serviceDate: '2030-04-02',
       departureBlockStart: '2030-04-02T07:00:00.000Z',
       departureBlockEnd: '2030-04-02T07:30:00.000Z',
@@ -1722,10 +1722,10 @@ describe('POST /api/client/route-requests', () => {
     })
     const routeId = routeRes.body.id
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-dup-search',
-      dropoffWardId: 'ward-dup-search-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-dup-search',
+      destinationWardId: 'ward-dup-search-dest',
       serviceDate: '2030-04-10',
       departureBlockStart: '2030-04-10T07:00:00.000Z',
       departureBlockEnd: '2030-04-10T07:30:00.000Z',
@@ -1766,10 +1766,10 @@ describe('POST /api/client/route-requests', () => {
       })
       const routeId = routeRes.body.id
       const plan = await planService.createPlan(CLIENT_001_ID, {
-        pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-        dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-        pickupWardId: `ward-resend-${terminalStatus}`,
-        dropoffWardId: `ward-resend-${terminalStatus}-dest`,
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+        originWardId: `ward-resend-${terminalStatus}`,
+        destinationWardId: `ward-resend-${terminalStatus}-dest`,
         serviceDate: `2030-04-1${terminalStatus.length}`,
         departureBlockStart: `2030-04-1${terminalStatus.length}T07:00:00.000Z`,
         departureBlockEnd: `2030-04-1${terminalStatus.length}T07:30:00.000Z`,
@@ -2095,8 +2095,8 @@ describe('persona role validation', () => {
 
     const planRes = await request(server, 'POST', '/api/client/trip-plans', {
       clientId: driverPersonaId,
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       serviceDate,
       departureTime: `${serviceDate}T07:30:00.000Z`,
       seats: 1,
@@ -2160,10 +2160,10 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       tripPrice: 100000,
     })
     const plan = await planService.createPlan(reviewerClientId, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-review-route',
-      dropoffWardId: 'ward-review-route-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-review-route',
+      destinationWardId: 'ward-review-route-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -2225,10 +2225,10 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       tripPrice: 100000,
     })).id)
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: { lat: 10.77, lng: 106.7, label: 'Q1' },
-      dropoff: { lat: 10.85, lng: 106.75, label: 'TD' },
-      pickupWardId: 'ward-review-eligible',
-      dropoffWardId: 'ward-review-eligible-dest',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-review-eligible',
+      destinationWardId: 'ward-review-eligible-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,

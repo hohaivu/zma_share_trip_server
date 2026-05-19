@@ -43,9 +43,9 @@ function buildGroupKey(plan: Plan): string {
       : plan.serviceDate
   const departureBlockStart = normalizeUtc(plan.departureBlockStart)
 
-  const pickupKey = plan.pickupWardKey || plan.pickupWardId
-  const dropoffKey = plan.dropoffWardKey || plan.dropoffWardId
-  return `${serviceDate}|${pickupKey}|${dropoffKey}|${departureBlockStart}`
+  const originKey = plan.originWardKey || plan.originWardId
+  const destinationKey = plan.destinationWardKey || plan.destinationWardId
+  return `${serviceDate}|${originKey}|${destinationKey}|${departureBlockStart}`
 }
 
 async function checkRouteAvailability(
@@ -83,19 +83,19 @@ export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
       grouped.set(key, {
         id: `dg-${key}`,
         serviceDate: plan.serviceDate,
-        pickupWardId: plan.pickupWardId,
-        dropoffWardId: plan.dropoffWardId,
-        pickupWardKey: plan.pickupWardKey,
-        dropoffWardKey: plan.dropoffWardKey,
-        pickupProvinceId: plan.pickupProvinceId,
-        dropoffProvinceId: plan.dropoffProvinceId,
+        originWardId: plan.originWardId,
+        destinationWardId: plan.destinationWardId,
+        originWardKey: plan.originWardKey,
+        destinationWardKey: plan.destinationWardKey,
+        originProvinceId: plan.originProvinceId,
+        destinationProvinceId: plan.destinationProvinceId,
         departureBlockStart: plan.departureBlockStart,
         departureBlockEnd: plan.departureBlockEnd,
         memberCount: 0,
         totalPassengerCount: 0,
         memberPlanIds: [],
-        pickup: typeof plan.pickup === 'string' ? JSON.parse(plan.pickup) : plan.pickup,
-        dropoff: typeof plan.dropoff === 'string' ? JSON.parse(plan.dropoff) : plan.dropoff,
+        origin: typeof plan.origin === 'string' ? JSON.parse(plan.origin) : plan.origin,
+        destination: typeof plan.destination === 'string' ? JSON.parse(plan.destination) : plan.destination,
         clientIds: [],
       })
     }

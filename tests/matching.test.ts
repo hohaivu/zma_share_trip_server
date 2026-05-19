@@ -53,8 +53,8 @@ const BASE_PLAN = {
   serviceDate: '2030-03-20',
   departureBlockStart: '2030-03-20T07:00:00.000Z',
   departureBlockEnd: '2030-03-20T07:30:00.000Z',
-  pickup: { lat: 10.776, lng: 106.701, label: 'Quận 1' }, // ~130m from Q1
-  dropoff: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' }, // ~60m from TD
+  origin: { lat: 10.776, lng: 106.701, label: 'Quận 1' }, // ~130m from Q1
+  destination: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' }, // ~60m from TD
   clientId: CLIENT_001_ID,
 }
 
@@ -68,8 +68,8 @@ const NORMALIZED_ROUTE_WITHOUT_GEOMETRY = {
 
 const NORMALIZED_PLAN_WITH_GEOMETRY = {
   ...BASE_PLAN,
-  pickupWardKey: 'ward-q1_province-hcm',
-  dropoffWardKey: 'ward-td_province-hcm',
+  originWardKey: 'ward-q1_province-hcm',
+  destinationWardKey: 'ward-td_province-hcm',
 }
 
 // ─── 2.1 Geo helpers ──────────────────────────────────────────────────────────
@@ -191,8 +191,8 @@ describe('passesHardFilters', () => {
     // Heading south-west — opposite of our north-east route
     const plan = {
       ...BASE_PLAN,
-      pickup: TD_DROPOFF,
-      dropoff: Q1_PICKUP,
+      origin: TD_DROPOFF,
+      destination: Q1_PICKUP,
     }
     assert.equal(
       await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
@@ -201,7 +201,7 @@ describe('passesHardFilters', () => {
   })
 
   it('rejects pickup distance > 5km', async () => {
-    const plan = { ...BASE_PLAN, pickup: TB_PICKUP }
+    const plan = { ...BASE_PLAN, origin: TB_PICKUP }
     assert.equal(
       await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
       false,
@@ -210,7 +210,7 @@ describe('passesHardFilters', () => {
 
   it('rejects dropoff distance > 5km', async () => {
     const farDropoff = { lat: 10.95, lng: 106.85, label: 'Biên Hòa' }
-    const plan = { ...BASE_PLAN, dropoff: farDropoff }
+    const plan = { ...BASE_PLAN, destination: farDropoff }
     assert.equal(
       await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
       false,
@@ -268,24 +268,24 @@ describe('computeMatchScore', () => {
   it('returns matchScore < 50 for a marginal match (far pickup)', () => {
     const marginalPlan = {
       ...BASE_PLAN,
-      pickup: { lat: 10.81, lng: 106.68, label: 'Xa' }, // ~4.5km away
+      origin: { lat: 10.81, lng: 106.68, label: 'Xa' }, // ~4.5km away
     }
     const { matchScore } = matching.computeMatchScore(BASE_ROUTE, marginalPlan)
     assert.ok(matchScore < 75, `Expected < 75, got ${matchScore}`)
   })
 
   it('all fit metrics stay in the [0..1] range', () => {
-    const { pickupFit, dropoffFit, timeFit } = matching.computeMatchScore(
+    const { originFit, destinationFit, timeFit } = matching.computeMatchScore(
       BASE_ROUTE,
       BASE_PLAN,
     )
     assert.ok(
-      pickupFit >= 0 && pickupFit <= 1,
-      `pickupFit out of range: ${pickupFit}`,
+      originFit >= 0 && originFit <= 1,
+      `originFit out of range: ${originFit}`,
     )
     assert.ok(
-      dropoffFit >= 0 && dropoffFit <= 1,
-      `dropoffFit out of range: ${dropoffFit}`,
+      destinationFit >= 0 && destinationFit <= 1,
+      `destinationFit out of range: ${destinationFit}`,
     )
     assert.ok(timeFit >= 0 && timeFit <= 1, `timeFit out of range: ${timeFit}`)
   })
@@ -302,8 +302,8 @@ describe('computeMatchScore', () => {
     )
 
     assert.equal(result.matchScore, 100)
-    assert.equal(result.pickupFit, 1)
-    assert.equal(result.dropoffFit, 1)
+    assert.equal(result.originFit, 1)
+    assert.equal(result.destinationFit, 1)
     assert.equal(result.timeFit, 1)
     assert.equal(result.detourEstimate, 0)
   })
@@ -318,8 +318,8 @@ describe('computeMatchedDemandGroups', () => {
     assert.ok(results.length > 0, 'Should return at least one result')
     for (const r of results) {
       assert.ok('matchScore' in r, 'Missing matchScore')
-      assert.ok('pickupFit' in r, 'Missing pickupFit')
-      assert.ok('dropoffFit' in r, 'Missing dropoffFit')
+      assert.ok('originFit' in r, 'Missing originFit')
+      assert.ok('destinationFit' in r, 'Missing destinationFit')
       assert.ok('timeFit' in r, 'Missing timeFit')
       assert.ok('detourEstimate' in r, 'Missing detourEstimate')
     }
@@ -379,10 +379,10 @@ describe('computeMatchedDemandGroups', () => {
         ).id,
       )
       const plan = await planService.createPlan(CLIENT_001_ID, {
-        pickup: Q1_PICKUP,
-        dropoff: TD_DROPOFF,
-        pickupWardId: 'ward-pending-search',
-        dropoffWardId: 'ward-pending-search-dest',
+        origin: Q1_PICKUP,
+        destination: TD_DROPOFF,
+        originWardId: 'ward-pending-search',
+        destinationWardId: 'ward-pending-search-dest',
         serviceDate,
         departureBlockStart: `${serviceDate}T07:00:00.000Z`,
         departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -424,10 +424,10 @@ describe('computeMatchedDemandGroups', () => {
         ).id,
       )
       const plan = await planService.createPlan(CLIENT_001_ID, {
-        pickup: Q1_PICKUP,
-        dropoff: TD_DROPOFF,
-        pickupWardId: 'ward-pending-canceled-plan',
-        dropoffWardId: 'ward-pending-canceled-plan-dest',
+        origin: Q1_PICKUP,
+        destination: TD_DROPOFF,
+        originWardId: 'ward-pending-canceled-plan',
+        destinationWardId: 'ward-pending-canceled-plan-dest',
         serviceDate,
         departureBlockStart: `${serviceDate}T07:00:00.000Z`,
         departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -464,10 +464,10 @@ describe('computeMatchedDemandGroups', () => {
         ).id,
       )
       const plan = await planService.createPlan(CLIENT_001_ID, {
-        pickup: Q1_PICKUP,
-        dropoff: TD_DROPOFF,
-        pickupWardId: 'ward-adhoc-search',
-        dropoffWardId: 'ward-adhoc-search-dest',
+        origin: Q1_PICKUP,
+        destination: TD_DROPOFF,
+        originWardId: 'ward-adhoc-search',
+        destinationWardId: 'ward-adhoc-search-dest',
         serviceDate,
         departureBlockStart: `${serviceDate}T07:00:00.000Z`,
         departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -475,10 +475,10 @@ describe('computeMatchedDemandGroups', () => {
       })
 
       const otherPlan = await planService.createPlan(CLIENT_001_ID, {
-        pickup: Q1_PICKUP,
-        dropoff: TD_DROPOFF,
-        pickupWardId: 'ward-adhoc-search-other',
-        dropoffWardId: 'ward-adhoc-search-other-dest',
+        origin: Q1_PICKUP,
+        destination: TD_DROPOFF,
+        originWardId: 'ward-adhoc-search-other',
+        destinationWardId: 'ward-adhoc-search-other-dest',
         serviceDate,
         departureBlockStart: `${serviceDate}T07:00:00.000Z`,
         departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -510,10 +510,10 @@ describe('computeMatchedDemandGroups', () => {
       ).id,
     )
     await planService.createPlan(CLIENT_001_ID, {
-      pickup: Q1_PICKUP,
-      dropoff: TD_DROPOFF,
-      pickupWardId: 'ward-accepted-offer',
-      dropoffWardId: 'ward-accepted-offer-dest',
+      origin: Q1_PICKUP,
+      destination: TD_DROPOFF,
+      originWardId: 'ward-accepted-offer',
+      destinationWardId: 'ward-accepted-offer-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -549,10 +549,10 @@ describe('computeMatchedDemandGroups', () => {
       ).id,
     )
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: Q1_PICKUP,
-      dropoff: TD_DROPOFF,
-      pickupWardId: 'ward-accepted-route-request',
-      dropoffWardId: 'ward-accepted-route-request-dest',
+      origin: Q1_PICKUP,
+      destination: TD_DROPOFF,
+      originWardId: 'ward-accepted-route-request',
+      destinationWardId: 'ward-accepted-route-request-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -598,10 +598,10 @@ describe('computeMatchingRoutesFromCriteria', () => {
       ).id,
     )
     await planService.createPlan(CLIENT_001_ID, {
-      pickup: Q1_PICKUP,
-      dropoff: TD_DROPOFF,
-      pickupWardId: 'ward-search-accepted-offer',
-      dropoffWardId: 'ward-search-accepted-offer-dest',
+      origin: Q1_PICKUP,
+      destination: TD_DROPOFF,
+      originWardId: 'ward-search-accepted-offer',
+      destinationWardId: 'ward-search-accepted-offer-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,
@@ -642,10 +642,10 @@ describe('computeMatchingRoutesFromCriteria', () => {
       ).id,
     )
     const plan = await planService.createPlan(CLIENT_001_ID, {
-      pickup: Q1_PICKUP,
-      dropoff: TD_DROPOFF,
-      pickupWardId: 'ward-search-accepted-route-request',
-      dropoffWardId: 'ward-search-accepted-route-request-dest',
+      origin: Q1_PICKUP,
+      destination: TD_DROPOFF,
+      originWardId: 'ward-search-accepted-route-request',
+      destinationWardId: 'ward-search-accepted-route-request-dest',
       serviceDate,
       departureBlockStart: `${serviceDate}T07:00:00.000Z`,
       departureBlockEnd: `${serviceDate}T07:30:00.000Z`,

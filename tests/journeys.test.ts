@@ -35,14 +35,14 @@ const BASE_ROUTE: Route = {
 const BASE_PLAN: Plan = {
   id: 'plan-001',
   clientId: 'client-001',
-  pickup: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
-  dropoff: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
-  pickupWardId: 'ward-q1',
-  pickupWardKey: 'ward-q1_79',
-  pickupProvinceId: '79',
-  dropoffWardId: 'ward-td',
-  dropoffWardKey: 'ward-td_79',
-  dropoffProvinceId: '79',
+  origin: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
+  destination: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
+  originWardId: 'ward-q1',
+  originWardKey: 'ward-q1_79',
+  originProvinceId: '79',
+  destinationWardId: 'ward-td',
+  destinationWardKey: 'ward-td_79',
+  destinationProvinceId: '79',
   serviceDate: '2030-04-01',
   departureBlockStart: '2030-04-01T07:00:00.000Z',
   departureBlockEnd: '2030-04-01T07:30:00.000Z',
@@ -76,7 +76,7 @@ describe('buildJourneySummary', () => {
 
     assert.equal(summary.id, BASE_PLAN.id)
     assert.equal(summary.departureBlockStart, BASE_PLAN.departureBlockStart)
-    assert.equal(summary.pickup.label, BASE_PLAN.pickup.label)
+    assert.equal(summary.origin.label, BASE_PLAN.origin.label)
     assert.equal(summary.accepted, null)
   })
 
