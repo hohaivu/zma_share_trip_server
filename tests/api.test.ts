@@ -5,6 +5,7 @@ import { after, before, describe } from 'node:test'
 import { query } from '../src/db/connection'
 import app from '../src/index.js'
 import * as matching from '../src/matching'
+import * as demandGroupRepository from '../src/repositories/demandGroupRepository'
 import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
 import * as reviewRepository from '../src/repositories/reviewRepository'
 import { toCamelCase } from '../src/db/utils'
@@ -172,7 +173,7 @@ async function createPendingGroupOfferForClient(departureDate: string, label: st
     windowEnd: `${departureDate}T07:30:00.000Z`,
     passengerCount: 1,
   })
-  const groups = await groupRequestRepository.deriveDemandGroups()
+  const groups = await demandGroupRepository.deriveDemandGroups()
   const targetGroup = groups.find((group) => group.memberPlanIds.includes(plan.id))
   assert.ok(targetGroup)
   const groupRequest = await groupRequestService.createGroupRequest(
@@ -1272,7 +1273,7 @@ describe('inbox visibility endpoints', () => {
       windowEnd: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     const targetGroup = groups.find((group) =>
       group.memberPlanIds.includes(plan.id),
     )

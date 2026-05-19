@@ -7,6 +7,7 @@ import * as carService from '../src/services/carService'
 import * as driverRouteRepository from '../src/repositories/driverRouteRepository'
 import * as driverRouteService from '../src/services/driverRouteService'
 import * as groupOfferService from '../src/services/groupOfferService'
+import * as demandGroupRepository from '../src/repositories/demandGroupRepository'
 import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
 import * as groupRequestService from '../src/services/groupRequestService'
 import * as journeyRepository from '../src/repositories/journeyRepository'
@@ -57,7 +58,7 @@ after(async () => {
 
 describe('MVC demand group repository derivation', () => {
   it('groups plans by departureDate + ward pair + time window', async () => {
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     // Seed has plan-001 and plan-002 sharing the same group key
     const q1TdGroup = groups.find(
       (g) =>
@@ -93,7 +94,7 @@ describe('MVC demand group repository derivation', () => {
       passengerCount: 2,
     })
 
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     const utcGroup = groups.find((g) => g.originWardId === 'ward-utc')
     assert.ok(utcGroup)
     assert.equal(
@@ -109,7 +110,7 @@ describe('MVC demand group repository derivation', () => {
   })
 
   it('creates single-member group for unique ward pair', async () => {
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     const tbGroup = groups.find((g) => g.originWardId === 'ward-tb-p15')
     assert.ok(tbGroup, 'Should find Tan Binh group')
     assert.equal(tbGroup.memberCount, 1, 'Single-member group')
@@ -119,7 +120,7 @@ describe('MVC demand group repository derivation', () => {
   it('excludes accepted plans from other routes and recalculates group counts', async () => {
     await setupTestDb()
 
-    const before = await groupRequestRepository.deriveDemandGroups()
+    const before = await demandGroupRepository.deriveDemandGroups()
     const target = before.find(
       (group) =>
         group.originWardId === 'ward-q1-bennghe' &&
@@ -138,7 +139,7 @@ describe('MVC demand group repository derivation', () => {
     await markRouteFeeReserved('route-002')
     await routeRequestService.acceptRouteRequest(request.id)
 
-    const after = await groupRequestRepository.deriveDemandGroups()
+    const after = await demandGroupRepository.deriveDemandGroups()
     const recalculated = after.find((group) => group.id === target.id)
     assert.ok(recalculated)
     assert.equal(recalculated.memberCount, 1)
@@ -231,7 +232,7 @@ describe('MVC demand group repository derivation', () => {
   it('restores plan eligibility after accepted state ends by cancellation', async () => {
     await setupTestDb()
 
-    const initial = await groupRequestRepository.deriveDemandGroups()
+    const initial = await demandGroupRepository.deriveDemandGroups()
     const target = initial.find(
       (group) =>
         group.originWardId === 'ward-q1-bennghe' &&
@@ -264,14 +265,14 @@ describe('MVC demand group repository derivation', () => {
     await markRouteFeeReserved(route.id)
     await routeRequestService.acceptRouteRequest(request.id)
 
-    const suppressed = await groupRequestRepository.deriveDemandGroups()
+    const suppressed = await demandGroupRepository.deriveDemandGroups()
     const suppressedTarget = suppressed.find((group) => group.id === target.id)
     assert.ok(suppressedTarget)
     assert.equal(suppressedTarget.memberCount, 1)
 
     await journeyService.cancelTrip(route.id)
 
-    const restored = await groupRequestRepository.deriveDemandGroups()
+    const restored = await demandGroupRepository.deriveDemandGroups()
     const restoredTarget = restored.find((group) => group.id === target.id)
     assert.ok(restoredTarget)
     assert.equal(restoredTarget.memberCount, 1)

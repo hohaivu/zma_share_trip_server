@@ -11,12 +11,15 @@ export interface DemandGroupsController {
 export function createDemandGroupsController(): DemandGroupsController {
   return {
     async getDemandGroup(req, res) {
-      const group = await demandGroupService.getDemandGroup(req.params.id as string)
-      if (!group) {
+      const detail = await demandGroupService.getDemandGroupDetail(
+        req.params.id as string,
+        { includeMembers: req.query.include === 'members' },
+      )
+      if (!detail) {
         return notFound(res, 'Demand group not found')
       }
 
-      res.json(group)
+      res.json(detail)
     },
 
     async getDemandGroupMembers(req, res) {

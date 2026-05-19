@@ -8,6 +8,7 @@ import * as carService from '../src/services/carService'
 import * as driverRouteRepository from '../src/repositories/driverRouteRepository'
 import * as driverRouteService from '../src/services/driverRouteService'
 import * as groupOfferService from '../src/services/groupOfferService'
+import * as demandGroupRepository from '../src/repositories/demandGroupRepository'
 import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
 import * as groupRequestService from '../src/services/groupRequestService'
 import * as journeyRepository from '../src/repositories/journeyRepository'
@@ -201,7 +202,7 @@ describe('MVC wallet-gated accept and cancel transitions', () => {
         })
       ).id,
     )
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     const multiMemberGroup = groups.find((g) => g.memberCount > 1)
     assert.ok(multiMemberGroup)
     const request = await groupRequestService.createGroupRequest(
@@ -299,7 +300,7 @@ describe('MVC wallet-gated accept and cancel transitions', () => {
       ).id,
     )
 
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     const multiMemberGroup = groups.find((g) => g.memberCount > 1)
     assert.ok(
       multiMemberGroup,

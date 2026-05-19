@@ -1,20 +1,11 @@
 import { query, withTransaction } from '../db/connection'
-import { mapRows, parseNumeric, toCamelCase } from '../db/utils'
+import { mapRows, toCamelCase } from '../db/utils'
 import { HttpError } from '../http-error'
-import { GroupOffer, GroupRequest, Plan, Route } from '../types/entities'
-import { DbQueryExecutor } from './walletRepository'
-import { DemandGroupSummary } from '../types/payloads'
+import { GroupOffer, GroupRequest, Plan } from '../types/entities'
+import { checkRouteAvailability, mapRoute } from './routeAvailabilityRepository'
 
 function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}${Math.random().toString().slice(2, 6)}`
-}
-
-function mapRoute(row: Record<string, unknown>): Route {
-  const route = toCamelCase<Route>(row)
-  if (!route) throw new Error('Cannot map null row to Route')
-  route.tripPrice = parseNumeric(route.tripPrice)
-  route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd)
-  return route
 }
 
 export interface CreateGroupRequestTxInput {
@@ -23,84 +14,6 @@ export interface CreateGroupRequestTxInput {
   demandGroupId: string
   note?: string
   memberPlanIds: string[]
-}
-
-const ROUTE_ACCEPTED_SQL = `
-  SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
-  UNION ALL
-  SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
-`
-
-function buildGroupKey(plan: Plan): string {
-  const departureDate = plan.departureDate.slice(0, 10)
-  const origin = `${plan.originWardId}_${plan.originProvinceId}`
-  const destination = `${plan.destinationWardId}_${plan.destinationProvinceId}`
-  return `${departureDate}|${origin}|${destination}|${plan.windowStart}`
-}
-
-async function checkRouteAvailability(
-  executor: DbQueryExecutor,
-  routeId: string,
-): Promise<boolean> {
-  const result = await executor.query(ROUTE_ACCEPTED_SQL, [routeId])
-  return result.rowCount === 0
-}
-
-export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
-  const result = await query(
-    `
-      SELECT *
-      FROM plans p
-      WHERE p.status = $1
-        AND NOT EXISTS (
-          SELECT 1
-          FROM route_requests sr
-          WHERE sr.plan_id = p.id AND sr.status = 'accepted'
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM group_offers go
-          WHERE go.plan_id = p.id AND go.status = 'accepted'
-        )
-    `,
-    ['published'],
-  )
-
-  const grouped = new Map<string, DemandGroupSummary>()
-  for (const plan of mapRows<Plan>(result.rows)) {
-    const key = buildGroupKey(plan)
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        id: `dg-${key}`,
-        departureDate: plan.departureDate,
-        originWardId: plan.originWardId,
-        destinationWardId: plan.destinationWardId,
-        originProvinceId: plan.originProvinceId,
-        destinationProvinceId: plan.destinationProvinceId,
-        windowStart: plan.windowStart,
-        windowEnd: plan.windowEnd,
-        memberCount: 0,
-        totalPassengerCount: 0,
-        memberPlanIds: [],
-        origin: typeof plan.origin === 'string' ? JSON.parse(plan.origin) : plan.origin,
-        destination: typeof plan.destination === 'string' ? JSON.parse(plan.destination) : plan.destination,
-        clientIds: [],
-      })
-    }
-    const group = grouped.get(key)
-    if (!group) continue
-    group.memberCount += 1
-    group.totalPassengerCount += plan.passengerCount
-    group.memberPlanIds.push(plan.id)
-    group.clientIds.push(plan.clientId)
-  }
-
-  return [...grouped.values()]
-}
-
-export async function getDemandGroup(groupId: string): Promise<DemandGroupSummary | null> {
-  const groups = await deriveDemandGroups()
-  return groups.find((group) => group.id === groupId) || null
 }
 
 export interface CancelGroupRequestTxResult {

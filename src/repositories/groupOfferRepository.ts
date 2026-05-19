@@ -1,21 +1,8 @@
 import { query, withTransaction } from '../db/connection'
-import { mapRows, parseNumeric, toCamelCase } from '../db/utils'
-import { GroupOffer, Route } from '../types/entities'
+import { mapRows, toCamelCase } from '../db/utils'
+import { GroupOffer } from '../types/entities'
+import { mapRoute, ROUTE_ACCEPTED_SQL } from './routeAvailabilityRepository'
 import { chargeRouteFeeTx, loadRouteForWalletTx } from './walletRepository'
-
-function mapRoute(row: Record<string, unknown>): Route {
-  const route = toCamelCase<Route>(row)
-  if (!route) throw new Error('Cannot map null row to Route')
-  route.tripPrice = parseNumeric(route.tripPrice)
-  route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd)
-  return route
-}
-
-const ROUTE_ACCEPTED_SQL = `
-  SELECT 1 FROM group_offers WHERE route_id = $1 AND status = 'accepted'
-  UNION ALL
-  SELECT 1 FROM route_requests WHERE route_id = $1 AND status = 'accepted'
-`
 
 export async function getGroupOfferById(offerId: string): Promise<GroupOffer | null> {
   const result = await query('SELECT * FROM group_offers WHERE id = $1', [offerId])

@@ -7,6 +7,7 @@ import * as carService from '../src/services/carService'
 import * as driverRouteRepository from '../src/repositories/driverRouteRepository'
 import * as driverRouteService from '../src/services/driverRouteService'
 import * as groupOfferService from '../src/services/groupOfferService'
+import * as demandGroupRepository from '../src/repositories/demandGroupRepository'
 import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
 import * as groupRequestService from '../src/services/groupRequestService'
 import * as journeyRepository from '../src/repositories/journeyRepository'
@@ -70,7 +71,7 @@ describe('MVC plan service client cancellation', () => {
       passengerCount: 1,
     })
 
-    const before = await groupRequestRepository.deriveDemandGroups()
+    const before = await demandGroupRepository.deriveDemandGroups()
     assert.equal(
       before.some((group) => group.memberPlanIds.includes(plan.id)),
       true,
@@ -78,7 +79,7 @@ describe('MVC plan service client cancellation', () => {
 
     const canceled = await planService.cancelPlanByClient(plan.id, CLIENT_001_ID)
     const clientPlans = await planService.listPlansByClient(CLIENT_001_ID)
-    const after = await groupRequestRepository.deriveDemandGroups()
+    const after = await demandGroupRepository.deriveDemandGroups()
 
     assert.equal(canceled.status, 'canceled')
     assert.equal(
@@ -138,7 +139,7 @@ describe('MVC plan service client cancellation', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     const multiMemberGroup = groups.find((group) => group.memberCount > 1)
     assert.ok(multiMemberGroup)
     const result = await groupRequestService.createGroupRequest(

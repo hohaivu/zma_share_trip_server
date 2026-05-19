@@ -7,6 +7,7 @@ import * as carService from '../src/services/carService'
 import * as driverRouteRepository from '../src/repositories/driverRouteRepository'
 import * as driverRouteService from '../src/services/driverRouteService'
 import * as groupOfferService from '../src/services/groupOfferService'
+import * as demandGroupRepository from '../src/repositories/demandGroupRepository'
 import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
 import * as groupRequestService from '../src/services/groupRequestService'
 import * as journeyRepository from '../src/repositories/journeyRepository'
@@ -163,7 +164,7 @@ describe('MVC request services first-accept-wins behavior', () => {
     // Create a group request to get offers
     await setupTestDb() // Reset DB to ensure fresh state for this complex test
 
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     const multiMemberGroup = groups.find((g) => g.memberCount > 1)
     assert.ok(multiMemberGroup, 'Need a multi-member group for this test')
 
@@ -213,7 +214,7 @@ describe('MVC request services route exclusivity', () => {
     await setupTestDb()
     if (!isDbAvailable()) return
 
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     const multiMemberGroup = groups.find((g) => g.memberCount > 1)
     assert.ok(
       multiMemberGroup,
@@ -230,7 +231,7 @@ describe('MVC request services route exclusivity', () => {
   })
 
   it('rejects new group requests for a route with accepted offer', async () => {
-    const groups = await groupRequestRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups()
     const group = groups[0]
     assert.ok(group)
 

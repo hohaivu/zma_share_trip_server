@@ -205,6 +205,7 @@ export interface DemandGroupSummary {
   destination: Location
   memberPlanIds: string[]
   clientIds: string[]
+  visibilityMode?: string
 }
 
 // -- Shared Journey Summary --
