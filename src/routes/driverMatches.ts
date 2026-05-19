@@ -14,9 +14,9 @@ router.get(
   asyncHandler(listMatchedDemandGroups),
 )
 
-// GET /api/driver/routes/:id/inbound-route-requests
+// GET /api/driver/routes/:id/incoming-requests
 router.get(
-  '/routes/:id/inbound-route-requests',
+  '/routes/:id/incoming-requests',
   asyncHandler(listInboundRouteRequests),
 )
 

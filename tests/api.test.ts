@@ -1616,7 +1616,7 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
   })
 })
 
-describe('GET /api/driver/routes/:id/inbound-route-requests', () => {
+describe('GET /api/driver/routes/:id/incoming-requests', () => {
   it('returns only pending inbound search requests for driver detail reads', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return
@@ -1661,7 +1661,7 @@ describe('GET /api/driver/routes/:id/inbound-route-requests', () => {
     const res = await request(
       server,
       'GET',
-      `/api/driver/routes/${route.id}/inbound-route-requests`,
+      `/api/driver/routes/${route.id}/incoming-requests`,
     )
 
     assert.equal(res.status, 200)
