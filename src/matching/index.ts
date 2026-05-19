@@ -4,6 +4,7 @@ import * as userService from '../services/userService'
 import { User, Route } from '../types/entities'
 import {
   DemandGroupResult,
+  DemandGroupSummary,
   MatchingRouteResult,
   PlanLike,
   RouteLike,
@@ -193,81 +194,80 @@ export async function computeMatchingRoutesFromCriteria(
   return clientEngine.run(criteria)
 }
 
-// ─── Driver pipeline (FilterContext + inline loop) ───────────────────────────
+// ─── Driver pipeline ──────────────────────────────────────────────────────────
 
-export async function computeMatchedDemandGroups(
-  routeId: string,
-): Promise<DemandGroupResult[]> {
-  const route = await driverRouteRepository.getRoute(routeId)
-  if (!route) return []
-  if (route.status !== 'published') return []
-  if (!(await driverRouteRepository.isRouteAvailable(routeId))) return []
+interface DriverMatchQuery extends Route {
+  routeId: string
+  driver: User | null
+}
 
-  const driver = await userService.getUser(route.driverId)
-  const ctx: FilterContext = {
-    driver,
-    userCache: new Map([[route.driverId, driver]]),
-    blockedUserCache: new Map(),
-    routeAvailableCache: new Map([[routeId, true]]),
-    dateBlockCache: new Map(),
-    routeBearing: computeBearing(route.origin, route.destination),
-  }
-
-  const groups = await demandGroupsSource.list({ routeId }, ctx)
-  const results: DemandGroupResult[] = []
-
-  for (const group of groups) {
-    ctx.matchTier = undefined
-    ctx.adminExact = undefined
-    ctx.planBearing = undefined
-
-    const planBearing = computeBearing(group.origin, group.destination)
-    ctx.planBearing = planBearing
-
-    // sameDateFilter (route is the "query" in driver path, group is candidate)
-    if (route.departureDate.slice(0, 10) !== group.departureDate.slice(0, 10)) continue
-
-    // blockOverlapFilter — route side gets expanded, group provides plan window
-    const blockKey = `${route.departureDate}|${route.windowEnd}|${group.windowStart}|${group.windowEnd}`
-    let overlaps = ctx.dateBlockCache.get(blockKey)
-    if (overlaps === undefined) {
-      const routeBlock = computeDepartureBlock(route.departureDate)
-      const routeSpanEndMs = route.windowEnd
-        ? new Date(route.windowEnd).getTime()
-        : new Date(routeBlock.end).getTime()
-      const routeStartMs = new Date(routeBlock.start).getTime() - MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES * MS_PER_MINUTE
-      const routeEndMs = routeSpanEndMs + MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
-      const planStartMs = new Date(group.windowStart).getTime()
-      const planEndMs = new Date(group.windowEnd).getTime()
-      overlaps = routeStartMs <= planEndMs && planStartMs <= routeEndMs
-      ctx.dateBlockCache.set(blockKey, overlaps)
-    }
-    if (!overlaps) continue
-
-    // tierFilter (route as "route" side, group as "plan" side)
-    const matchTier = classifyByAdminAndDistance(route, group)
-    if (!matchTier) continue
-    ctx.matchTier = matchTier
-    ctx.adminExact = hasExactAdminMatch(route, group)
-
-    // mutualBlockFilter — ctx.driver is fixed, group provides clientIds
-    if (!(await mutualBlockFilter.passes(group, {} as never, ctx))) continue
-
-    // bearingFilter + proximityFilter (skipped when adminExact)
-    if (!ctx.adminExact) {
-      if (bearingDifference(ctx.routeBearing!, planBearing) > MAX_BEARING_DIFF) continue
-      if (haversineDistance(route.origin, group.origin) > MAX_PICKUP_KM) continue
-      if (haversineDistance(route.destination, group.destination) > MAX_DROPOFF_KM) continue
-    }
-
-    const visibilityMode = computeVisibilityMode(matchTier, group.memberCount)
-    const scores = computeMatchScoreWithBearings(route, group, ctx.routeBearing!, planBearing)
-
-    results.push({
+const driverEngine = new MatchEngine<DriverMatchQuery, DemandGroupSummary, DemandGroupResult>({
+  source: demandGroupsSource as unknown as CandidateSource<DriverMatchQuery, DemandGroupSummary>,
+  filters: [
+    {
+      name: 'sameDateFilter',
+      async passes(group, q, _ctx): Promise<boolean> {
+        return group.departureDate.slice(0, 10) === q.departureDate.slice(0, 10)
+      },
+    },
+    {
+      name: 'blockOverlapFilter',
+      async passes(group, q, ctx): Promise<boolean> {
+        const key = `${q.departureDate}|${q.windowEnd}|${group.windowStart}|${group.windowEnd}`
+        if (ctx.dateBlockCache.has(key)) return ctx.dateBlockCache.get(key)!
+        const routeBlock = computeDepartureBlock(q.departureDate)
+        const routeSpanEndMs = q.windowEnd
+          ? new Date(q.windowEnd).getTime()
+          : new Date(routeBlock.end).getTime()
+        const routeStartMs =
+          new Date(routeBlock.start).getTime() -
+          MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES * MS_PER_MINUTE
+        const routeEndMs = routeSpanEndMs + MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
+        const planStartMs = new Date(group.windowStart).getTime()
+        const planEndMs = new Date(group.windowEnd).getTime()
+        const result = routeStartMs <= planEndMs && planStartMs <= routeEndMs
+        ctx.dateBlockCache.set(key, result)
+        return result
+      },
+    },
+    {
+      name: 'tierFilter',
+      async passes(group, q, ctx): Promise<boolean> {
+        const tier = classifyByAdminAndDistance(q, group)
+        if (!tier) return false
+        ctx.matchTier = tier
+        ctx.adminExact = hasExactAdminMatch(q, group)
+        return true
+      },
+    },
+    mutualBlockFilter as unknown as HardFilter<DriverMatchQuery, DemandGroupSummary>,
+    {
+      name: 'bearingFilter',
+      async passes(group, _q, ctx): Promise<boolean> {
+        const planBearing = computeBearing(group.origin, group.destination)
+        ctx.planBearing = planBearing
+        if (ctx.adminExact) return true
+        return bearingDifference(ctx.routeBearing!, planBearing) <= MAX_BEARING_DIFF
+      },
+    },
+    {
+      name: 'proximityFilter',
+      async passes(group, q, ctx): Promise<boolean> {
+        if (ctx.adminExact) return true
+        if (haversineDistance(q.origin, group.origin) > MAX_PICKUP_KM) return false
+        if (haversineDistance(q.destination, group.destination) > MAX_DROPOFF_KM) return false
+        return true
+      },
+    },
+  ] as HardFilter<DriverMatchQuery, DemandGroupSummary>[],
+  score: (group, q, ctx) => {
+    const visibilityMode = computeVisibilityMode(ctx.matchTier!, group.memberCount)
+    const scores = computeMatchScoreWithBearings(q, group, ctx.routeBearing!, ctx.planBearing!)
+    return {
       demandGroupId: group.id,
-      matchTier,
+      matchTier: ctx.matchTier!,
       visibilityMode,
-      tripPrice: route.tripPrice,
+      tripPrice: q.tripPrice,
       departureDate: group.departureDate,
       originWardId: group.originWardId,
       destinationWardId: group.destinationWardId,
@@ -281,8 +281,24 @@ export async function computeMatchedDemandGroups(
       totalPassengerCount: group.totalPassengerCount,
       memberPlanIds: group.memberPlanIds,
       ...scores,
-    })
-  }
+    }
+  },
+  rank: sortByTierThenScore,
+  buildContext: (q) => ({
+    driver: q.driver,
+    userCache: new Map([[q.driverId, q.driver]]),
+    blockedUserCache: new Map(),
+    routeAvailableCache: new Map([[q.routeId, true]]),
+    dateBlockCache: new Map(),
+    routeBearing: computeBearing(q.origin, q.destination),
+  }),
+})
 
-  return sortByTierThenScore(results)
+export async function computeMatchedDemandGroups(routeId: string): Promise<DemandGroupResult[]> {
+  const route = await driverRouteRepository.getRoute(routeId)
+  if (!route) return []
+  if (route.status !== 'published') return []
+  if (!(await driverRouteRepository.isRouteAvailable(routeId))) return []
+  const driver = await userService.getUser(route.driverId)
+  return driverEngine.run({ ...route, routeId, driver })
 }
