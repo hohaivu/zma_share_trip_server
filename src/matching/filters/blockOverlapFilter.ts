@@ -16,7 +16,7 @@ interface QueryWindow {
   windowEnd: string
 }
 
-function blocksOverlap(
+export function blocksOverlap(
   routeDepartureDate: string,
   routeWindowEnd: string | undefined,
   windowStart: string,
@@ -36,11 +36,19 @@ function blocksOverlap(
   return routeStartMs <= planEndMs && planStartMs <= routeEndMs
 }
 
+function buildBlockKey(
+  candidate: WithWindow,
+  query: QueryWindow,
+): string {
+  return `${candidate.departureDate}|${candidate.windowEnd}|${query.windowStart}|${query.windowEnd}`
+}
+
 export const blockOverlapFilter: HardFilter<QueryWindow, WithWindow> = {
   name: 'blockOverlapFilter',
   async passes(candidate, query, ctx): Promise<boolean> {
-    const key = `${candidate.departureDate}|${candidate.windowEnd}|${query.windowStart}|${query.windowEnd}`
-    if (ctx.dateBlockCache.has(key)) return ctx.dateBlockCache.get(key)!
+    const key = buildBlockKey(candidate, query)
+    const cached = ctx.dateBlockCache.get(key)
+    if (cached !== undefined) return cached
     const result = blocksOverlap(
       candidate.departureDate,
       candidate.windowEnd,

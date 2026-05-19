@@ -3,11 +3,16 @@ import * as routeRequestRepository from '../../repositories/routeRequestReposito
 import { DemandGroupSummary } from '../../types/payloads'
 import { CandidateSource } from '../ports'
 
-export const demandGroupsSource: CandidateSource<{ routeId: string }, DemandGroupSummary> = {
-  async list(query, _ctx) {
+interface DemandGroupsQuery {
+  routeId: string
+}
+
+export const demandGroupsSource: CandidateSource<DemandGroupsQuery, DemandGroupSummary> = {
+  async list(query) {
     const groups = await demandGroupRepository.deriveDemandGroups()
+    const routeRequests = await routeRequestRepository.listRouteRequestsByRoute(query.routeId)
     const pendingInboundPlanIds = new Set(
-      (await routeRequestRepository.listRouteRequestsByRoute(query.routeId))
+      routeRequests
         .filter((r) => r.status === 'pending')
         .map((r) => r.planId)
         .filter((planId): planId is string => Boolean(planId)),

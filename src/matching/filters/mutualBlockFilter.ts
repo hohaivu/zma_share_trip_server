@@ -1,4 +1,4 @@
-import * as userService from '../../services/userService'
+import { getCachedBlockedUsers, getCachedUser } from '../cache'
 import { HardFilter } from '../ports'
 
 interface WithClientIds {
@@ -11,31 +11,14 @@ export const mutualBlockFilter: HardFilter<unknown, WithClientIds> = {
     if (!ctx.driver) return true
 
     const driverId = ctx.driver.id
-    let driverBlockedIds = ctx.blockedUserCache.get(driverId)
-    if (!driverBlockedIds) {
-      driverBlockedIds = await userService.getBlockedUsers(driverId)
-      ctx.blockedUserCache.set(driverId, driverBlockedIds)
-    }
+    const driverBlockedIds = await getCachedBlockedUsers(ctx, driverId)
 
-    const ids = Array.isArray(candidate.clientIds) ? candidate.clientIds : []
-    for (const clientId of ids) {
-      let client = ctx.userCache.get(clientId)
-      if (client === undefined) {
-        client = await userService.getUser(clientId)
-        ctx.userCache.set(clientId, client)
-      }
+    for (const clientId of candidate.clientIds) {
+      const client = await getCachedUser(ctx, clientId)
       if (!client) continue
 
-      let clientBlockedIds = ctx.blockedUserCache.get(clientId)
-      if (!clientBlockedIds) {
-        clientBlockedIds = await userService.getBlockedUsers(clientId)
-        ctx.blockedUserCache.set(clientId, clientBlockedIds)
-      }
-
-      if (
-        driverBlockedIds.includes(clientId) ||
-        clientBlockedIds.includes(driverId)
-      ) {
+      const clientBlockedIds = await getCachedBlockedUsers(ctx, clientId)
+      if (driverBlockedIds.includes(clientId) || clientBlockedIds.includes(driverId)) {
         return false
       }
     }

@@ -1,10 +1,12 @@
 import * as driverRouteRepository from '../../repositories/driverRouteRepository'
+import { Route } from '../../types/entities'
+import { SearchRoutesCriteriaPayload } from '../../types/payloads'
 import { CandidateSource } from '../ports'
 
-export const allRoutesSource: CandidateSource<unknown, Awaited<ReturnType<typeof driverRouteRepository.listAllRoutes>>[number]> = {
+export const allRoutesSource: CandidateSource<SearchRoutesCriteriaPayload, Route> = {
   async list(_query, ctx) {
     const routes = await driverRouteRepository.listAllRoutes()
-    const result = []
+    const result: Route[] = []
     for (const route of routes) {
       if (route.status !== 'published') continue
 

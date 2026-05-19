@@ -1,13 +1,15 @@
 export const EARTH_RADIUS_KM = 6371
 
+interface LatLng {
+  lat: number
+  lng: number
+}
+
 export function toRad(deg: number): number {
   return (deg * Math.PI) / 180
 }
 
-export function haversineDistance(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
+export function haversineDistance(a: LatLng, b: LatLng): number {
   const dLat = toRad(b.lat - a.lat)
   const dLng = toRad(b.lng - a.lng)
   const sinLat = Math.sin(dLat / 2)
@@ -18,10 +20,7 @@ export function haversineDistance(
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h))
 }
 
-export function computeBearing(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
+export function computeBearing(a: LatLng, b: LatLng): number {
   const dLng = toRad(b.lng - a.lng)
   const lat1 = toRad(a.lat)
   const lat2 = toRad(b.lat)
@@ -38,9 +37,7 @@ export function bearingDifference(a: number, b: number): number {
   return diff > 180 ? 360 - diff : diff
 }
 
-export function hasUsablePoint(
-  point: Pick<{ lat: number; lng: number }, 'lat' | 'lng'> | null | undefined,
-): boolean {
+export function hasUsablePoint(point: LatLng | null | undefined): boolean {
   if (!point) return false
   const lat = Number(point.lat)
   const lng = Number(point.lng)
@@ -48,14 +45,19 @@ export function hasUsablePoint(
   return !(lat === 0 && lng === 0)
 }
 
+interface RouteOrPlanGeometry {
+  origin: LatLng | null
+  destination: LatLng | null
+}
+
 export function hasUsableGeometry(
-  routeLike: { origin: { lat: number; lng: number } | null; destination: { lat: number; lng: number } | null },
-  planLike: { origin: { lat: number; lng: number } | null; destination: { lat: number; lng: number } | null },
+  routeLike: RouteOrPlanGeometry,
+  planLike: RouteOrPlanGeometry,
 ): boolean {
   return (
-    hasUsablePoint(routeLike?.origin) &&
-    hasUsablePoint(routeLike?.destination) &&
-    hasUsablePoint(planLike?.origin) &&
-    hasUsablePoint(planLike?.destination)
+    hasUsablePoint(routeLike.origin) &&
+    hasUsablePoint(routeLike.destination) &&
+    hasUsablePoint(planLike.origin) &&
+    hasUsablePoint(planLike.destination)
   )
 }

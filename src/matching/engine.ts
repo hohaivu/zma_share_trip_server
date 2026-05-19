@@ -12,23 +12,22 @@ export class MatchEngine<Q, C, R> {
   constructor(private readonly config: EngineConfig<Q, C, R>) {}
 
   async run(query: Q): Promise<R[]> {
-    const ctx = this.config.buildContext(query)
-    const candidates = await this.config.source.list(query, ctx)
+    const { source, filters, score, rank, buildContext } = this.config
+    const ctx = buildContext(query)
+    const candidates = await source.list(query, ctx)
     const results: R[] = []
 
     for (const candidate of candidates) {
       let passed = true
-      for (const filter of this.config.filters) {
+      for (const filter of filters) {
         if (!(await filter.passes(candidate, query, ctx))) {
           passed = false
           break
         }
       }
-      if (!passed) continue
-
-      results.push(this.config.score(candidate, query, ctx))
+      if (passed) results.push(score(candidate, query, ctx))
     }
 
-    return this.config.rank(results)
+    return rank(results)
   }
 }

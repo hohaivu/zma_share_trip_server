@@ -1,29 +1,19 @@
-import * as userService from '../../services/userService'
+import { getCachedBlockedUsers, getCachedUser } from '../cache'
 import { HardFilter } from '../ports'
 
 // Client path: candidate=Route (has driverId), query has clientId
 export const clientMutualBlockFilter: HardFilter<{ clientId: string }, { driverId: string }> = {
   name: 'clientMutualBlockFilter',
   async passes(candidate, query, ctx): Promise<boolean> {
-    const driverId = candidate.driverId
+    const { driverId } = candidate
+    const { clientId } = query
 
-    if (!ctx.userCache.has(driverId)) {
-      const driver = await userService.getUser(driverId)
-      ctx.userCache.set(driverId, driver)
-    }
+    await getCachedUser(ctx, driverId)
 
-    let driverBlockedIds = ctx.blockedUserCache.get(driverId)
-    if (!driverBlockedIds) {
-      driverBlockedIds = await userService.getBlockedUsers(driverId)
-      ctx.blockedUserCache.set(driverId, driverBlockedIds)
-    }
-    if (driverBlockedIds.includes(query.clientId)) return false
+    const driverBlockedIds = await getCachedBlockedUsers(ctx, driverId)
+    if (driverBlockedIds.includes(clientId)) return false
 
-    let clientBlockedIds = ctx.blockedUserCache.get(query.clientId)
-    if (!clientBlockedIds) {
-      clientBlockedIds = await userService.getBlockedUsers(query.clientId)
-      ctx.blockedUserCache.set(query.clientId, clientBlockedIds)
-    }
+    const clientBlockedIds = await getCachedBlockedUsers(ctx, clientId)
     if (clientBlockedIds.includes(driverId)) return false
 
     return true

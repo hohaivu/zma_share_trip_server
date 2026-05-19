@@ -8,12 +8,8 @@ export const bearingFilter: HardFilter<PlanLike, RouteLike> = {
   async passes(candidate, query, ctx): Promise<boolean> {
     if (ctx.adminExact) return true
     if (!hasUsableGeometry(candidate, query)) return true
-
-    const routeBearing = ctx.routeBearing ?? computeBearing(candidate.origin, candidate.destination)
-    const planBearing = ctx.planBearing ?? computeBearing(query.origin, query.destination)
-    ctx.routeBearing = routeBearing
-    ctx.planBearing = planBearing
-
-    return bearingDifference(routeBearing, planBearing) <= MAX_BEARING_DIFF
+    const candidateBearing = computeBearing(candidate.origin, candidate.destination)
+    const queryBearing = computeBearing(query.origin, query.destination)
+    return bearingDifference(candidateBearing, queryBearing) <= MAX_BEARING_DIFF
   },
 }
