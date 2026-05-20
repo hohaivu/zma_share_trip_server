@@ -3,7 +3,6 @@ import * as userService from '../services/userService'
 import { Route, User } from '../types/entities'
 import {
   DemandGroupResult,
-  DemandGroupSummary,
   MatchingRouteResult,
   PlanLike,
   RouteLike,
@@ -14,7 +13,6 @@ import { MatchEngine } from './engine'
 import { bearingFilter } from './filters/bearingFilter'
 import {
   clientBlockOverlapFilter,
-  driverBlockOverlapFilter,
   routePlanWindowsOverlap,
 } from './filters/blockOverlapFilter'
 import { clientMutualBlockFilter } from './filters/clientMutualBlockFilter'
@@ -41,7 +39,7 @@ import {
   timeOverlapScore,
 } from './score'
 import { allRoutesSource } from './sources/allRoutesSource'
-import { demandGroupsSource } from './sources/demandGroupsSource'
+import { demandGroupsSource, DemandGroupCandidate } from './sources/demandGroupsSource'
 import {
   MAX_BEARING_DIFF,
   MAX_DROPOFF_KM,
@@ -182,11 +180,9 @@ interface DriverMatchQuery extends Route {
   driver: User | null
 }
 
-const driverEngine = new MatchEngine<DriverMatchQuery, DemandGroupSummary, DemandGroupResult>({
+const driverEngine = new MatchEngine<DriverMatchQuery, DemandGroupCandidate, DemandGroupResult>({
   source: demandGroupsSource,
   filters: [
-    sameDateFilter,
-    driverBlockOverlapFilter,
     tierFilter,
     mutualBlockFilter,
     bearingFilter,
@@ -201,17 +197,16 @@ const driverEngine = new MatchEngine<DriverMatchQuery, DemandGroupSummary, Deman
       matchTier: ctx.matchTier!,
       visibilityMode: computeVisibilityMode(ctx.matchTier!, group.memberCount),
       tripPrice: q.tripPrice,
-      departureWindowStartDate: group.departureWindowStartDate,
       originWardId: group.originWardId,
       destinationWardId: group.destinationWardId,
       originWardName: group.origin?.label || group.originWardId,
       destinationWardName: group.destination?.label || group.destinationWardId,
       originProvinceId: group.originProvinceId,
       destinationProvinceId: group.destinationProvinceId,
-      departureWindowEndDate: group.departureWindowEndDate,
       memberCount: group.memberCount,
       totalPassengerCount: group.totalPassengerCount,
       memberPlanIds: group.memberPlanIds,
+      clientIds: group.clientIds,
       ...scores,
     }
   },

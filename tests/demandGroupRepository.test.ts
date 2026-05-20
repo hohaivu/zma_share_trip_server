@@ -24,7 +24,7 @@ import {
 } from '../src/test-db'
 import { Plan, Route } from '../src/types/entities'
 
-const it = createDbTest('Postgres unavailable for DB-backed MVC module tests')
+const it = createDbTest('MariaDB unavailable for DB-backed MVC module tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
@@ -57,22 +57,20 @@ after(async () => {
 
 
 describe('MVC demand group repository derivation', () => {
-  it('groups plans by departureDate + ward pair + time window', async () => {
+  it('groups plans by departureDate + ward pair', async () => {
     const groups = await demandGroupRepository.deriveDemandGroups()
     // Seed has plan-001 and plan-002 sharing the same group key
     const q1TdGroup = groups.find(
       (g) =>
         g.originWardId === 'ward-q1-bennghe' &&
-        g.destinationWardId === 'ward-td-binhtho' &&
-        g.departureWindowStartDate.startsWith('2030-03-20'),
+        g.destinationWardId === 'ward-td-binhtho',
     )
     assert.ok(q1TdGroup, 'Should find Q1→TD group')
     assert.equal(q1TdGroup.memberCount, 2, 'Multi-member group')
     assert.equal(q1TdGroup.totalPassengerCount, 3, '1 + 2 passengers')
   })
 
-  it('normalizes mixed timezone inputs into identical canonical UTC keys', async () => {
-    // Both 14:00+07:00 and 07:00Z represent the same instant and must group together.
+  it('omits group-level departure window fields', async () => {
     const planA = await planService.createPlan(CLIENT_001_ID, {
       origin: { lat: 10, lng: 106, label: 'A' },
       destination: { lat: 11, lng: 106, label: 'B' },
@@ -100,11 +98,61 @@ describe('MVC demand group repository derivation', () => {
       2,
       'Should group both plans into the same demand group despite different input strings',
     )
-    assert.equal(
-      utcGroup.departureWindowStartDate.endsWith('Z'),
-      true,
-      'Should use explicit canonical UTC Z-time on reads',
-    )
+    assert.equal('departureWindowStartDate' in utcGroup, false)
+    assert.equal('departureWindowEndDate' in utcGroup, false)
+  })
+
+  it('driver-scoped route window groups overlapping same-date plans by wards', async () => {
+    await setupTestDb()
+    const planA = await planService.createPlan(CLIENT_001_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-collapse',
+      originProvinceId: 'province-hcm',
+      destinationWardId: 'ward-collapse-dest',
+      destinationProvinceId: 'province-hcm',
+      departureWindowStartDate: '2030-06-01T07:30:00.000Z',
+      departureWindowEndDate: '2030-06-01T08:00:00.000Z',
+      passengerCount: 1,
+    })
+    const planB = await planService.createPlan(CLIENT_002_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-collapse',
+      originProvinceId: 'province-hcm',
+      destinationWardId: 'ward-collapse-dest',
+      destinationProvinceId: 'province-hcm',
+      departureWindowStartDate: '2030-06-01T08:30:00.000Z',
+      departureWindowEndDate: '2030-06-01T09:30:00.000Z',
+      passengerCount: 2,
+    })
+
+    const groups = await demandGroupRepository.deriveDemandGroups({
+      start: '2030-06-01T07:00:00.000Z',
+      end: '2030-06-01T09:00:00.000Z',
+    })
+    const group = groups.find((g) => g.originWardId === 'ward-collapse')
+    assert.ok(group)
+    assert.equal(group.memberCount, 2)
+    assert.deepEqual(new Set(group.memberPlanIds), new Set([planA.id, planB.id]))
+  })
+
+  it('driver-scoped route window excludes outside-window same-ward plans', async () => {
+    await setupTestDb()
+    await planService.createPlan(CLIENT_001_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-window-exclude',
+      destinationWardId: 'ward-window-exclude-dest',
+      departureWindowStartDate: '2030-06-02T23:00:00.000Z',
+      departureWindowEndDate: '2030-06-02T23:30:00.000Z',
+      passengerCount: 1,
+    })
+    const groups = await demandGroupRepository.deriveDemandGroups({
+      start: '2030-06-02T07:00:00.000Z',
+      end: '2030-06-02T09:00:00.000Z',
+    })
+    assert.equal(groups.some((g) => g.originWardId === 'ward-window-exclude'), false)
   })
 
   it('creates single-member group for unique ward pair', async () => {
@@ -122,8 +170,7 @@ describe('MVC demand group repository derivation', () => {
     const target = before.find(
       (group) =>
         group.originWardId === 'ward-q1-bennghe' &&
-        group.destinationWardId === 'ward-td-binhtho' &&
-        group.departureWindowStartDate.startsWith('2030-03-20'),
+        group.destinationWardId === 'ward-td-binhtho',
     )
     assert.ok(target)
     assert.equal(target.memberCount, 2)
@@ -230,8 +277,7 @@ describe('MVC demand group repository derivation', () => {
     const target = initial.find(
       (group) =>
         group.originWardId === 'ward-q1-bennghe' &&
-        group.destinationWardId === 'ward-td-binhtho' &&
-        group.departureWindowStartDate.startsWith('2030-03-20'),
+        group.destinationWardId === 'ward-td-binhtho',
     )
     assert.ok(target)
     assert.equal(target.memberCount, 2)

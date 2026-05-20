@@ -27,7 +27,7 @@ import {
 import type { Route, RouteRequest } from '../src/types/entities'
 import type { CreateReviewPayload, CreateRoutePayload, UpdatePlanPayload, UpdateRoutePayload } from '../src/types/payloads'
 
-const it = createDbTest('Postgres unavailable for DB-backed API tests')
+const it = createDbTest('MariaDB unavailable for DB-backed API tests')
 
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
@@ -178,6 +178,7 @@ async function createPendingGroupOfferForClient(departureDate: string, label: st
     DRIVER_001_ID,
     route.id,
     targetGroup!.id,
+    targetGroup!.memberPlanIds,
   )
   const offer = groupRequest.offers[0]
   assert.ok(offer)
@@ -491,6 +492,7 @@ describe('POST /api/client/route-suggestions', () => {
       DRIVER_001_ID,
       groupOffer.route.id,
       groupMatches[0].demandGroupId,
+      groupMatches[0].memberPlanIds || [],
     )
     await acceptGroupOffer(groupRequest.offers[0].id)
 
@@ -1240,6 +1242,7 @@ describe('inbox visibility endpoints', () => {
       DRIVER_001_ID,
       route.id,
       targetGroup!.id,
+      targetGroup!.memberPlanIds,
     )
 
     const before = await request(

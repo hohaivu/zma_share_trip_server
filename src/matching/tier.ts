@@ -1,8 +1,8 @@
 import { haversineDistance, hasUsableGeometry } from './geo'
 import { NEAR_3_MAX_WARD_DISTANCE_KM } from './thresholds'
-import { RouteLike, PlanLike } from '../types/payloads'
+import { GeoCandidate } from '../types/payloads'
 
-export function hasExactAdminMatch(route: RouteLike, planLike: PlanLike): boolean {
+export function hasExactAdminMatch(route: GeoCandidate, planLike: GeoCandidate): boolean {
   return (
     !!route?.originWardId &&
     !!planLike?.originWardId &&
@@ -16,8 +16,8 @@ export function hasExactAdminMatch(route: RouteLike, planLike: PlanLike): boolea
 }
 
 export function classifyByAdminAndDistance(
-  route: RouteLike,
-  planLike: PlanLike,
+  route: GeoCandidate,
+  planLike: GeoCandidate,
 ): 'exact_3' | 'near_3' | null {
   if (hasExactAdminMatch(route, planLike)) return 'exact_3'
 

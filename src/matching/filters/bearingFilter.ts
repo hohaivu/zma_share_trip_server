@@ -1,9 +1,9 @@
 import { computeBearing, bearingDifference, hasUsableGeometry } from '../geo'
 import { MAX_BEARING_DIFF } from '../thresholds'
-import { RouteLike, PlanLike } from '../../types/payloads'
+import { GeoCandidate } from '../../types/payloads'
 import { HardFilter } from '../ports'
 
-export const bearingFilter: HardFilter<PlanLike, RouteLike> = {
+export const bearingFilter: HardFilter<GeoCandidate, GeoCandidate> = {
   name: 'bearingFilter',
   async passes(candidate, query, ctx): Promise<boolean> {
     if (ctx.adminExact) return true

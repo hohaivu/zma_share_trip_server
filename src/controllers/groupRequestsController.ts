@@ -8,6 +8,12 @@ function requireBodyParam(value: unknown, message: string): asserts value {
   if (!value) throw new HttpError(400, message)
 }
 
+function requireStringArray(value: unknown, message: string): asserts value is string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== 'string')) {
+    throw new HttpError(400, message)
+  }
+}
+
 export interface GroupRequestsController {
   createGroupRequest(req: Request, res: Response): Promise<void>
   listGroupRequests(req: Request, res: Response): Promise<void>
@@ -17,15 +23,17 @@ export interface GroupRequestsController {
 export function createGroupRequestsController(): GroupRequestsController {
   return {
     async createGroupRequest(req, res) {
-      const { driverId, routeId, demandGroupId, note } = req.body || {}
+      const { driverId, routeId, demandGroupId, memberPlanIds, note } = req.body || {}
       requireBodyParam(driverId, 'driverId is required')
       requireBodyParam(routeId, 'routeId is required')
       requireBodyParam(demandGroupId, 'demandGroupId is required')
+      requireStringArray(memberPlanIds, 'memberPlanIds is required')
 
       const result = await groupRequestService.createGroupRequest(
         driverId,
         routeId,
         demandGroupId,
+        memberPlanIds,
         note,
       )
       res.status(201).json(result)

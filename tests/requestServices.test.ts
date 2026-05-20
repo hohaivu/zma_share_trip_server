@@ -23,7 +23,7 @@ import {
 } from '../src/test-db'
 import { Plan, Route } from '../src/types/entities'
 
-const it = createDbTest('Postgres unavailable for DB-backed MVC module tests')
+const it = createDbTest('MariaDB unavailable for DB-backed MVC module tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
@@ -168,6 +168,7 @@ describe('MVC request services first-accept-wins behavior', () => {
       DRIVER_001_ID,
       'route-001',
       multiMemberGroup.id,
+      multiMemberGroup.memberPlanIds,
     )
     assert.ok(result.offers.length >= 2, 'Should fan out multiple offers')
 
@@ -221,6 +222,7 @@ describe('MVC request services route exclusivity', () => {
       DRIVER_001_ID,
       'route-001',
       multiMemberGroup.id,
+      multiMemberGroup.memberPlanIds,
     )
     await markRouteFeeReserved('route-001')
     await groupOfferService.acceptGroupOffer(result.offers[0].id)
@@ -233,7 +235,7 @@ describe('MVC request services route exclusivity', () => {
 
     await assert.rejects(
       async () =>
-        await groupRequestService.createGroupRequest(DRIVER_002_ID, 'route-001', group.id),
+        await groupRequestService.createGroupRequest(DRIVER_002_ID, 'route-001', group.id, group.memberPlanIds),
       /not available/,
       'Should reject group request for unavailable route',
     )

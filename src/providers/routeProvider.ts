@@ -7,7 +7,6 @@ import clientMatchesRoute from '../routes/clientMatches'
 import clientInboxRoute from '../routes/clientInbox'
 import clientPlansRoute from '../routes/clientPlans'
 import clientRouteRequestsRoute from '../routes/clientRouteRequests'
-import demandGroupsRoute from '../routes/demandGroups'
 import driverMatchesRoute from '../routes/driverMatches'
 import driverRouteRequestsRoute from '../routes/driverRouteRequests'
 import driverRoutesRoute from '../routes/driverRoutes'
@@ -28,7 +27,6 @@ const routeGroups: Array<[string, express.Router[]]> = [
       driverRoutesRoute,
       driverWalletRoute,
       groupRequestsRoute,
-      demandGroupsRoute,
       driverMatchesRoute,
       driverRouteRequestsRoute,
     ],

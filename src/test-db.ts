@@ -62,7 +62,12 @@ function isUnavailableDatabaseError(error: unknown): boolean {
 async function truncateAll(conn: { query: (sql: string) => Promise<unknown> }) {
   await conn.query('SET FOREIGN_KEY_CHECKS=0')
   for (const table of TABLES_IN_ORDER) {
-    await conn.query(`TRUNCATE TABLE ${table}`)
+    try {
+      await conn.query(`TRUNCATE TABLE ${table}`)
+    } catch (error: unknown) {
+      const code = (error as Record<string, unknown>)?.code
+      if (code !== 'ER_NO_SUCH_TABLE') throw error
+    }
   }
   await conn.query('SET FOREIGN_KEY_CHECKS=1')
 }

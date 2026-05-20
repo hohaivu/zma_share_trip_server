@@ -1,9 +1,9 @@
 import { haversineDistance, hasUsableGeometry } from '../geo'
 import { MAX_PICKUP_KM, MAX_DROPOFF_KM } from '../thresholds'
-import { RouteLike, PlanLike } from '../../types/payloads'
+import { GeoCandidate } from '../../types/payloads'
 import { HardFilter } from '../ports'
 
-export const proximityFilter: HardFilter<PlanLike, RouteLike> = {
+export const proximityFilter: HardFilter<GeoCandidate, GeoCandidate> = {
   name: 'proximityFilter',
   async passes(candidate, query, ctx): Promise<boolean> {
     if (ctx.adminExact) return true

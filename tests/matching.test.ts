@@ -13,7 +13,7 @@ import { createDbTest, setupTestDb, teardownTestDb } from '../src/test-db'
 import { User } from '../src/types/entities'
 import { routePlanWindowsOverlap } from '../src/matching/filters/blockOverlapFilter'
 
-const itDb = createDbTest('Postgres unavailable for DB-backed matching tests')
+const itDb = createDbTest('MariaDB unavailable for DB-backed matching tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
 
@@ -496,6 +496,8 @@ describe('computeMatchedDemandGroups', () => {
       assert.ok('destinationDistanceKm' in r, 'Missing destinationDistanceKm')
       assert.ok('timeFit' in r, 'Missing timeFit')
       assert.ok('detourEstimate' in r, 'Missing detourEstimate')
+      assert.equal('departureWindowStartDate' in r, false)
+      assert.equal('departureWindowEndDate' in r, false)
     }
   })
 
@@ -532,6 +534,7 @@ describe('computeMatchedDemandGroups', () => {
     const results = await matching.computeMatchedDemandGroups(route.id)
     const result = results.find((group) => group.memberPlanIds?.includes(plan.id))
     assert.ok(result, 'Expected demand group match for created plan')
+    assert.equal(result.memberCount, 1, 'Single-client demand groups should surface')
     assertApproxEqual(
       result.originDistanceKm,
       matching.haversineDistance(routeOrigin, planOrigin),
@@ -738,6 +741,7 @@ describe('computeMatchedDemandGroups', () => {
       DRIVER_001_ID,
       route.id,
       beforeAccept[0].demandGroupId,
+      beforeAccept[0].memberPlanIds || [],
     )
     await markRouteFeeReserved(route.id)
     await groupOfferService.acceptGroupOffer(groupRequest.offers[0].id)
@@ -898,6 +902,7 @@ describe('computeMatchingRoutesFromCriteria', () => {
       DRIVER_001_ID,
       route.id,
       matches[0].demandGroupId,
+      matches[0].memberPlanIds || [],
     )
     await markRouteFeeReserved(route.id)
     await groupOfferService.acceptGroupOffer(groupRequest.offers[0].id)

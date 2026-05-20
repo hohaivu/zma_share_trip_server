@@ -22,7 +22,7 @@ import {
 } from '../src/test-db'
 import { Plan, Route } from '../src/types/entities'
 
-const it = createDbTest('Postgres unavailable for DB-backed MVC module tests')
+const it = createDbTest('MariaDB unavailable for DB-backed MVC module tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const DRIVER_002_ID = 'a1b2c3d4-0002-4000-8000-000000000002'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'

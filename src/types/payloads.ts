@@ -131,6 +131,15 @@ export interface PlanLike {
   destinationProvinceId?: string
 }
 
+export interface GeoCandidate {
+  origin: Location
+  destination: Location
+  originWardId?: string
+  originProvinceId?: string
+  destinationWardId?: string
+  destinationProvinceId?: string
+}
+
 // -- Matching Engine Results --
 export interface ScoreFields {
   matchScore: number
@@ -157,17 +166,16 @@ export interface DemandGroupResult extends ScoreFields {
   matchTier: string
   visibilityMode: string
   tripPrice: number
-  departureWindowStartDate: string
   originWardId: string
   destinationWardId: string
   originWardName: string
   destinationWardName: string
   originProvinceId: string
   destinationProvinceId: string
-  departureWindowEndDate: string
   memberCount: number
   totalPassengerCount: number
   memberPlanIds?: string[]
+  clientIds?: string[]
 }
 
 export interface MatchingRouteResult extends ScoreFields {
@@ -185,12 +193,10 @@ export interface MatchingRouteResult extends ScoreFields {
 
 export interface DemandGroupSummary {
   id: string
-  departureWindowStartDate: string
   originWardId: string
   destinationWardId: string
   originProvinceId: string
   destinationProvinceId: string
-  departureWindowEndDate: string
   memberCount: number
   totalPassengerCount: number
   origin: Location
