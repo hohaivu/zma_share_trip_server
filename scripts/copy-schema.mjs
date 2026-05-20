@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -11,5 +11,13 @@ const outputPath = path.join(outputDir, 'schema.sql')
 rmSync(outputPath, { force: true })
 mkdirSync(outputDir, { recursive: true })
 copyFileSync(sourcePath, outputPath)
+
+const migrationsSrcDir = path.join(projectRoot, 'src', 'db', 'migrations')
+const migrationsOutDir = path.join(outputDir, 'migrations')
+mkdirSync(migrationsOutDir, { recursive: true })
+for (const file of readdirSync(migrationsSrcDir)) {
+  if (!file.endsWith('.sql')) continue
+  copyFileSync(path.join(migrationsSrcDir, file), path.join(migrationsOutDir, file))
+}
 
 console.log('Copied SQL schema into dist/db/schema.sql')
