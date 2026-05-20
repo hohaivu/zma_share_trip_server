@@ -41,9 +41,8 @@ const TB_PICKUP = { lat: 10.8, lng: 106.65, label: 'Tân Bình' } // ~8km from Q
 const BASE_ROUTE = {
   id: 'r-test',
   driverId: DRIVER_001_ID,
-  departureDate: '2030-03-20T07:15:00.000Z',
-  windowStart: '2030-03-20T07:15:00.000Z',
-  windowEnd: '2030-03-20T07:15:00.000Z',
+  departureWindowStartDate: '2030-03-20T07:15:00.000Z',
+  departureWindowEndDate: '2030-03-20T07:15:00.000Z',
   origin: Q1_PICKUP,
   destination: TD_DROPOFF,
   status: 'published',
@@ -51,9 +50,8 @@ const BASE_ROUTE = {
 }
 
 const BASE_PLAN = {
-  departureDate: '2030-03-20T07:00:00.000Z',
-  windowStart: '2030-03-20T07:00:00.000Z',
-  windowEnd: '2030-03-20T07:30:00.000Z',
+  departureWindowStartDate: '2030-03-20T07:00:00.000Z',
+  departureWindowEndDate: '2030-03-20T07:30:00.000Z',
   origin: { lat: 10.776, lng: 106.701, label: 'Quận 1' }, // ~130m from Q1
   destination: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' }, // ~60m from TD
   clientId: CLIENT_001_ID,
@@ -141,14 +139,12 @@ describe('passesHardFilters', () => {
     // 14:15 +07:00 is 07:15 UTC
     const route = {
       ...BASE_ROUTE,
-      departureDate: '2030-03-20T14:15:00.000+07:00',
-      windowStart: '2030-03-20T14:15:00.000+07:00',
+      departureWindowStartDate: '2030-03-20T14:15:00.000+07:00',
     }
     const plan = {
       ...BASE_PLAN,
-      departureDate: '2030-03-20T14:00:00.000+07:00',
-      windowStart: '2030-03-20T14:00:00.000+07:00',
-      windowEnd: '2030-03-20T14:30:00.000+07:00',
+      departureWindowStartDate: '2030-03-20T14:00:00.000+07:00',
+      departureWindowEndDate: '2030-03-20T14:30:00.000+07:00',
     }
     assert.ok(await matching.passesHardFilters(route, plan, null, []))
   })
@@ -156,14 +152,12 @@ describe('passesHardFilters', () => {
   it('matches when route block expands 30 minutes after during matching', async () => {
     const route = {
       ...BASE_ROUTE,
-      departureDate: '2030-03-20T07:00:00.000Z',
-      windowStart: '2030-03-20T07:00:00.000Z',
+      departureWindowStartDate: '2030-03-20T07:00:00.000Z',
     }
     const plan = {
       ...BASE_PLAN,
-      departureDate: '2030-03-20T07:30:00.000Z',
-      windowStart: '2030-03-20T07:30:00.000Z',
-      windowEnd: '2030-03-20T08:30:00.000Z',
+      departureWindowStartDate: '2030-03-20T07:30:00.000Z',
+      departureWindowEndDate: '2030-03-20T08:30:00.000Z',
     }
 
     assert.ok(await matching.passesHardFilters(route, plan, null, []))
@@ -172,14 +166,12 @@ describe('passesHardFilters', () => {
   it('matches when route block expands 30 minutes before during matching', async () => {
     const route = {
       ...BASE_ROUTE,
-      departureDate: '2030-03-20T07:30:00.000Z',
-      windowStart: '2030-03-20T07:30:00.000Z',
+      departureWindowStartDate: '2030-03-20T07:30:00.000Z',
     }
     const plan = {
       ...BASE_PLAN,
-      departureDate: '2030-03-20T06:30:00.000Z',
-      windowStart: '2030-03-20T06:30:00.000Z',
-      windowEnd: '2030-03-20T07:30:00.000Z',
+      departureWindowStartDate: '2030-03-20T06:30:00.000Z',
+      departureWindowEndDate: '2030-03-20T07:30:00.000Z',
     }
 
     assert.ok(await matching.passesHardFilters(route, plan, null, []))
@@ -188,9 +180,8 @@ describe('passesHardFilters', () => {
   it('rejects different departureDate', async () => {
     const plan = {
       ...BASE_PLAN,
-      departureDate: '2030-03-21T07:00:00.000Z',
-      windowStart: '2030-03-21T07:00:00.000Z',
-      windowEnd: '2030-03-21T07:30:00.000Z',
+      departureWindowStartDate: '2030-03-21T07:00:00.000Z',
+      departureWindowEndDate: '2030-03-21T07:30:00.000Z',
     }
     assert.equal(
       await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
@@ -201,9 +192,8 @@ describe('passesHardFilters', () => {
   it('rejects non-overlapping departure block', async () => {
     const plan = {
       ...BASE_PLAN,
-      departureDate: '2030-03-20T08:00:00.000Z',
-      windowStart: '2030-03-20T08:00:00.000Z',
-      windowEnd: '2030-03-20T08:30:00.000Z',
+      departureWindowStartDate: '2030-03-20T08:00:00.000Z',
+      departureWindowEndDate: '2030-03-20T08:30:00.000Z',
     }
     assert.equal(
       await matching.passesHardFilters(BASE_ROUTE, plan, null, []),
@@ -217,14 +207,12 @@ describe('passesHardFilters', () => {
     // Plan 08:00-09:00 +07 = 01:00Z-02:00Z → planStart === routeEnd → must match
     const route = {
       ...BASE_ROUTE,
-      departureDate: '2030-03-20T00:00:00.000Z',
-      windowStart: '2030-03-20T00:00:00.000Z', // 07:00 +07
+      departureWindowStartDate: '2030-03-20T00:00:00.000Z', // 07:00 +07
     }
     const plan = {
       ...BASE_PLAN,
-      departureDate: '2030-03-20T01:00:00.000Z',
-      windowStart: '2030-03-20T01:00:00.000Z', // 08:00 +07
-      windowEnd: '2030-03-20T02:00:00.000Z',   // 09:00 +07
+      departureWindowStartDate: '2030-03-20T01:00:00.000Z', // 08:00 +07
+      departureWindowEndDate: '2030-03-20T02:00:00.000Z',   // 09:00 +07
     }
     assert.ok(await matching.passesHardFilters(route, plan, null, []))
   })
@@ -234,15 +222,13 @@ describe('passesHardFilters', () => {
     // Plan 08:00-09:00 +07 (01:00Z-02:00Z) — clearly within trip span
     const route = {
       ...BASE_ROUTE,
-      departureDate: '2030-03-20T00:00:00.000Z',
-      windowStart: '2030-03-20T00:00:00.000Z', // 07:00 +07
-      windowEnd: '2030-03-20T02:00:00.000Z',     // 09:00 +07
+      departureWindowStartDate: '2030-03-20T00:00:00.000Z', // 07:00 +07
+      departureWindowEndDate: '2030-03-20T02:00:00.000Z',     // 09:00 +07
     }
     const plan = {
       ...BASE_PLAN,
-      departureDate: '2030-03-20T01:00:00.000Z',
-      windowStart: '2030-03-20T01:00:00.000Z', // 08:00 +07
-      windowEnd: '2030-03-20T02:00:00.000Z',
+      departureWindowStartDate: '2030-03-20T01:00:00.000Z', // 08:00 +07
+      departureWindowEndDate: '2030-03-20T02:00:00.000Z',
     }
     assert.ok(await matching.passesHardFilters(route, plan, null, []))
   })
@@ -251,15 +237,13 @@ describe('passesHardFilters', () => {
     // Route 07:00-09:00 +07, plan 12:00-13:00 +07 — no overlap
     const route = {
       ...BASE_ROUTE,
-      departureDate: '2030-03-20T00:00:00.000Z',
-      windowStart: '2030-03-20T00:00:00.000Z', // 07:00 +07
-      windowEnd: '2030-03-20T02:00:00.000Z',     // 09:00 +07
+      departureWindowStartDate: '2030-03-20T00:00:00.000Z', // 07:00 +07
+      departureWindowEndDate: '2030-03-20T02:00:00.000Z',     // 09:00 +07
     }
     const plan = {
       ...BASE_PLAN,
-      departureDate: '2030-03-20T05:00:00.000Z',
-      windowStart: '2030-03-20T05:00:00.000Z', // 12:00 +07
-      windowEnd: '2030-03-20T06:00:00.000Z',
+      departureWindowStartDate: '2030-03-20T05:00:00.000Z', // 12:00 +07
+      departureWindowEndDate: '2030-03-20T06:00:00.000Z',
     }
     assert.equal(
       await matching.passesHardFilters(route, plan, null, []),
@@ -435,9 +419,8 @@ describe('computeMatchedDemandGroups', () => {
           carId: 'car-001',
           origin: routeOrigin,
           destination: routeDestination,
-          departureDate: `${departureDay}T07:15:00.000Z`,
-          windowStart: `${departureDay}T07:15:00.000Z`,
-          windowEnd: `${departureDay}T07:15:00.000Z`,
+          departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+          departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
           tripPrice: 100000,
           distanceMeters: 10000,
         })
@@ -448,9 +431,8 @@ describe('computeMatchedDemandGroups', () => {
       destination: planDestination,
       originWardId: 'ward-raw-distance-group',
       destinationWardId: 'ward-raw-distance-group-dest',
-      departureDate: `${departureDay}T07:00:00.000Z`,
-      windowStart: `${departureDay}T07:00:00.000Z`,
-      windowEnd: `${departureDay}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
       passengerCount: 1,
     })
 
@@ -513,9 +495,8 @@ describe('computeMatchedDemandGroups', () => {
             carId: 'car-001',
             origin: Q1_PICKUP,
             destination: TD_DROPOFF,
-            departureDate: `${departureDay}T07:15:00.000Z`,
-            windowStart: `${departureDay}T07:15:00.000Z`,
-            windowEnd: `${departureDay}T07:15:00.000Z`,
+            departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+            departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
             tripPrice: 100000,
             distanceMeters: 10000,
           })
@@ -526,9 +507,8 @@ describe('computeMatchedDemandGroups', () => {
         destination: TD_DROPOFF,
         originWardId: 'ward-pending-search',
         destinationWardId: 'ward-pending-search-dest',
-        departureDate: `${departureDay}T07:00:00.000Z`,
-        windowStart: `${departureDay}T07:00:00.000Z`,
-        windowEnd: `${departureDay}T07:30:00.000Z`,
+        departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
         passengerCount: 1,
       })
 
@@ -559,9 +539,8 @@ describe('computeMatchedDemandGroups', () => {
             carId: 'car-001',
             origin: Q1_PICKUP,
             destination: TD_DROPOFF,
-            departureDate: `${departureDay}T07:15:00.000Z`,
-            windowStart: `${departureDay}T07:15:00.000Z`,
-            windowEnd: `${departureDay}T07:15:00.000Z`,
+            departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+            departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
             tripPrice: 100000,
             distanceMeters: 10000,
           })
@@ -572,9 +551,8 @@ describe('computeMatchedDemandGroups', () => {
         destination: TD_DROPOFF,
         originWardId: 'ward-pending-canceled-plan',
         destinationWardId: 'ward-pending-canceled-plan-dest',
-        departureDate: `${departureDay}T07:00:00.000Z`,
-        windowStart: `${departureDay}T07:00:00.000Z`,
-        windowEnd: `${departureDay}T07:30:00.000Z`,
+        departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
         passengerCount: 1,
       })
 
@@ -600,9 +578,8 @@ describe('computeMatchedDemandGroups', () => {
             carId: 'car-001',
             origin: Q1_PICKUP,
             destination: TD_DROPOFF,
-            departureDate: `${departureDay}T07:15:00.000Z`,
-            windowStart: `${departureDay}T07:15:00.000Z`,
-            windowEnd: `${departureDay}T07:15:00.000Z`,
+            departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+            departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
             tripPrice: 100000,
             distanceMeters: 10000,
           })
@@ -613,9 +590,8 @@ describe('computeMatchedDemandGroups', () => {
         destination: TD_DROPOFF,
         originWardId: 'ward-adhoc-search',
         destinationWardId: 'ward-adhoc-search-dest',
-        departureDate: `${departureDay}T07:00:00.000Z`,
-        windowStart: `${departureDay}T07:00:00.000Z`,
-        windowEnd: `${departureDay}T07:30:00.000Z`,
+        departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
         passengerCount: 1,
       })
 
@@ -624,9 +600,8 @@ describe('computeMatchedDemandGroups', () => {
         destination: TD_DROPOFF,
         originWardId: 'ward-adhoc-search-other',
         destinationWardId: 'ward-adhoc-search-other-dest',
-        departureDate: `${departureDay}T07:00:00.000Z`,
-        windowStart: `${departureDay}T07:00:00.000Z`,
-        windowEnd: `${departureDay}T07:30:00.000Z`,
+        departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
         passengerCount: 1,
       })
       await routeRequestService.createRouteRequest(CLIENT_001_ID, otherPlan.id, route.id)
@@ -647,9 +622,8 @@ describe('computeMatchedDemandGroups', () => {
           carId: 'car-001',
           origin: Q1_PICKUP,
           destination: TD_DROPOFF,
-          departureDate: `${departureDay}T07:15:00.000Z`,
-          windowStart: `${departureDay}T07:15:00.000Z`,
-          windowEnd: `${departureDay}T07:15:00.000Z`,
+          departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+          departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
           tripPrice: 100000,
           distanceMeters: 10000,
         })
@@ -660,9 +634,8 @@ describe('computeMatchedDemandGroups', () => {
       destination: TD_DROPOFF,
       originWardId: 'ward-accepted-offer',
       destinationWardId: 'ward-accepted-offer-dest',
-      departureDate: `${departureDay}T07:00:00.000Z`,
-      windowStart: `${departureDay}T07:00:00.000Z`,
-      windowEnd: `${departureDay}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const beforeAccept = await matching.computeMatchedDemandGroups(route.id)
@@ -687,9 +660,8 @@ describe('computeMatchedDemandGroups', () => {
           carId: 'car-001',
           origin: Q1_PICKUP,
           destination: TD_DROPOFF,
-          departureDate: `${departureDay}T07:15:00.000Z`,
-          windowStart: `${departureDay}T07:15:00.000Z`,
-          windowEnd: `${departureDay}T07:15:00.000Z`,
+          departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+          departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
           tripPrice: 100000,
           distanceMeters: 10000,
         })
@@ -700,9 +672,8 @@ describe('computeMatchedDemandGroups', () => {
       destination: TD_DROPOFF,
       originWardId: 'ward-accepted-route-request',
       destinationWardId: 'ward-accepted-route-request-dest',
-      departureDate: `${departureDay}T07:00:00.000Z`,
-      windowStart: `${departureDay}T07:00:00.000Z`,
-      windowEnd: `${departureDay}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const routeRequest = await routeRequestService.createRouteRequest(
@@ -742,9 +713,8 @@ describe('computeMatchingRoutesFromCriteria', () => {
           carId: 'car-001',
           origin: routeOrigin,
           destination: routeDestination,
-          departureDate: `${departureDay}T07:15:00.000Z`,
-          windowStart: `${departureDay}T07:15:00.000Z`,
-          windowEnd: `${departureDay}T07:15:00.000Z`,
+          departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+          departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
           tripPrice: 100000,
           distanceMeters: 10000,
         })
@@ -755,9 +725,8 @@ describe('computeMatchingRoutesFromCriteria', () => {
       ...BASE_PLAN,
       origin: criteriaOrigin,
       destination: criteriaDestination,
-      departureDate: `${departureDay}T07:00:00.000Z`,
-      windowStart: `${departureDay}T07:00:00.000Z`,
-      windowEnd: `${departureDay}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
       clientId: CLIENT_001_ID,
     })
     const result = results.find((candidate) => candidate.routeId === route.id)
@@ -780,9 +749,8 @@ describe('computeMatchingRoutesFromCriteria', () => {
           carId: 'car-001',
           origin: Q1_PICKUP,
           destination: TD_DROPOFF,
-          departureDate: `${departureDay}T07:15:00.000Z`,
-          windowStart: `${departureDay}T07:15:00.000Z`,
-          windowEnd: `${departureDay}T07:15:00.000Z`,
+          departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+          departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
           tripPrice: 100000,
           distanceMeters: 10000,
         })
@@ -793,9 +761,8 @@ describe('computeMatchingRoutesFromCriteria', () => {
       destination: TD_DROPOFF,
       originWardId: 'ward-search-accepted-offer',
       destinationWardId: 'ward-search-accepted-offer-dest',
-      departureDate: `${departureDay}T07:00:00.000Z`,
-      windowStart: `${departureDay}T07:00:00.000Z`,
-      windowEnd: `${departureDay}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const matches = await matching.computeMatchedDemandGroups(route.id)
@@ -809,9 +776,8 @@ describe('computeMatchingRoutesFromCriteria', () => {
 
     const results = await matching.computeMatchingRoutesFromCriteria({
       ...BASE_PLAN,
-      departureDate: `${departureDay}T07:00:00.000Z`,
-      windowStart: `${departureDay}T07:00:00.000Z`,
-      windowEnd: `${departureDay}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
       clientId: CLIENT_001_ID,
     })
     assert.equal(results.some((result) => result.routeId === route.id), false)
@@ -825,9 +791,8 @@ describe('computeMatchingRoutesFromCriteria', () => {
           carId: 'car-001',
           origin: Q1_PICKUP,
           destination: TD_DROPOFF,
-          departureDate: `${departureDay}T07:15:00.000Z`,
-          windowStart: `${departureDay}T07:15:00.000Z`,
-          windowEnd: `${departureDay}T07:15:00.000Z`,
+          departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+          departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
           tripPrice: 100000,
           distanceMeters: 10000,
         })
@@ -838,9 +803,8 @@ describe('computeMatchingRoutesFromCriteria', () => {
       destination: TD_DROPOFF,
       originWardId: 'ward-search-accepted-route-request',
       destinationWardId: 'ward-search-accepted-route-request-dest',
-      departureDate: `${departureDay}T07:00:00.000Z`,
-      windowStart: `${departureDay}T07:00:00.000Z`,
-      windowEnd: `${departureDay}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const routeRequest = await routeRequestService.createRouteRequest(
@@ -853,9 +817,8 @@ describe('computeMatchingRoutesFromCriteria', () => {
 
     const results = await matching.computeMatchingRoutesFromCriteria({
       ...BASE_PLAN,
-      departureDate: `${departureDay}T07:00:00.000Z`,
-      windowStart: `${departureDay}T07:00:00.000Z`,
-      windowEnd: `${departureDay}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
       clientId: CLIENT_001_ID,
     })
     assert.equal(results.some((result) => result.routeId === route.id), false)

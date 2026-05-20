@@ -22,14 +22,14 @@ function formatLocalDateValue(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-function isPastDepartureDate(departureDate?: string | null): boolean {
-  if (!departureDate) return false
-  return departureDate.slice(0, 10) < formatLocalDateValue(new Date())
+function isPastDepartureWindow(departureWindowStartDate?: string | null): boolean {
+  if (!departureWindowStartDate) return false
+  return departureWindowStartDate.slice(0, 10) < formatLocalDateValue(new Date())
 }
 
-function assertDepartureDateIsNotPast(departureDate?: string | null): void {
-  if (isPastDepartureDate(departureDate)) {
-    throw new HttpError(400, 'departureDate cannot be in the past')
+function assertDepartureWindowIsNotPast(departureWindowStartDate?: string | null): void {
+  if (isPastDepartureWindow(departureWindowStartDate)) {
+    throw new HttpError(400, 'departureWindowStartDate cannot be in the past')
   }
 }
 
@@ -40,9 +40,8 @@ const IMMUTABLE_PUBLISHED_ROUTE_FIELDS: Array<keyof UpdateRoutePayload> = [
   'originProvinceId',
   'destinationWardId',
   'destinationProvinceId',
-  'departureDate',
-  'windowStart',
-  'windowEnd',
+  'departureWindowStartDate',
+  'departureWindowEndDate',
   'distanceMeters',
 ]
 
@@ -58,9 +57,6 @@ function buildRouteWriteValues(
   route: Route,
   data: UpdateRoutePayload,
 ): RouteWriteValues {
-  const departureDate = data.departureDate
-    ? normalizeUtc(data.departureDate)
-    : route.departureDate
   return {
     carId: data.carId ?? route.carId,
     origin: data.origin ?? route.origin,
@@ -70,13 +66,12 @@ function buildRouteWriteValues(
     destinationWardId: data.destinationWardId ?? route.destinationWardId,
     destinationProvinceId:
       data.destinationProvinceId ?? route.destinationProvinceId,
-    departureDate,
-    windowStart: data.windowStart
-      ? normalizeUtc(data.windowStart)
-      : departureDate,
-    windowEnd: data.windowEnd
-      ? normalizeUtc(data.windowEnd)
-      : departureDate,
+    departureWindowStartDate: data.departureWindowStartDate
+      ? normalizeUtc(data.departureWindowStartDate)
+      : route.departureWindowStartDate,
+    departureWindowEndDate: data.departureWindowEndDate
+      ? normalizeUtc(data.departureWindowEndDate)
+      : route.departureWindowEndDate,
     tripPrice: data.tripPrice ?? route.tripPrice,
     distanceMeters: data.distanceMeters ?? route.distanceMeters ?? null,
     notes: data.notes ?? route.notes ?? '',
@@ -88,7 +83,7 @@ export async function createRoute(
   data: CreateRoutePayload,
 ): Promise<Route> {
   await assertUserRole(driverId, 'driver')
-  assertDepartureDateIsNotPast(data.departureDate)
+  assertDepartureWindowIsNotPast(data.departureWindowStartDate)
   return driverRouteRepository.createRoute(driverId, data)
 }
 
@@ -111,7 +106,7 @@ export async function updateRoute(
   const existing = await driverRouteRepository.getRoute(id)
   if (!existing) return null
 
-  assertDepartureDateIsNotPast(data.departureDate)
+  assertDepartureWindowIsNotPast(data.departureWindowStartDate)
 
   if (
     existing.status === 'published' &&
@@ -132,7 +127,7 @@ export async function publishRoute(
   id: string,
   data: UpdateRoutePayload = {},
 ): Promise<Route> {
-  assertDepartureDateIsNotPast(data.departureDate)
+  assertDepartureWindowIsNotPast(data.departureWindowStartDate)
 
   return driverRouteRepository.runPublishTransition(id, (route) => {
     if (route.status === 'published') {

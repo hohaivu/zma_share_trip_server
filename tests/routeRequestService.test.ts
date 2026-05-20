@@ -131,9 +131,8 @@ describe('MVC route request service single active invariant', () => {
         carId: 'car-001',
         origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
         destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-        departureDate: `2030-04-2${terminalStatus.length}T07:00:00.000Z`,
-        windowStart: `2030-04-2${terminalStatus.length}T07:00:00.000Z`,
-        windowEnd: `2030-04-2${terminalStatus.length}T07:30:00.000Z`,
+        departureWindowStartDate: `2030-04-2${terminalStatus.length}T07:00:00.000Z`,
+        departureWindowEndDate: `2030-04-2${terminalStatus.length}T07:30:00.000Z`,
         tripPrice: 100000,
       })
       const initialRequest = await routeRequestService.createRouteRequest(

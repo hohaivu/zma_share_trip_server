@@ -84,9 +84,9 @@ export async function passesHardFilters(
   driver: User | null,
   clientIds: string[],
 ): Promise<boolean> {
-  if (route.departureDate.slice(0, 10) !== planLike.departureDate.slice(0, 10)) return false
+  if (route.departureWindowStartDate.slice(0, 10) !== planLike.departureWindowStartDate.slice(0, 10)) return false
 
-  if (!blocksOverlap(route.departureDate, route.windowEnd, planLike.windowStart, planLike.windowEnd)) {
+  if (!blocksOverlap(route.departureWindowStartDate, route.departureWindowEndDate, planLike.departureWindowStartDate, planLike.departureWindowEndDate)) {
     return false
   }
 
@@ -145,9 +145,8 @@ const clientEngine = new MatchEngine<SearchRoutesCriteriaPayload, Route, Matchin
       routeId: route.id,
       matchTier: ctx.matchTier!,
       tripPrice: route.tripPrice,
-      departureDate: route.departureDate,
-      windowStart: route.windowStart,
-      windowEnd: route.windowEnd,
+      departureWindowStartDate: route.departureWindowStartDate,
+      departureWindowEndDate: route.departureWindowEndDate,
       origin: route.origin,
       destination: route.destination,
       driverSummary: buildDriverSummary(ctx.userCache.get(route.driverId) ?? null),
@@ -193,15 +192,14 @@ const driverEngine = new MatchEngine<DriverMatchQuery, DemandGroupSummary, Deman
       matchTier: ctx.matchTier!,
       visibilityMode: computeVisibilityMode(ctx.matchTier!, group.memberCount),
       tripPrice: q.tripPrice,
-      departureDate: group.departureDate,
+      departureWindowStartDate: group.departureWindowStartDate,
       originWardId: group.originWardId,
       destinationWardId: group.destinationWardId,
       originWardName: group.origin?.label || group.originWardId,
       destinationWardName: group.destination?.label || group.destinationWardId,
       originProvinceId: group.originProvinceId,
       destinationProvinceId: group.destinationProvinceId,
-      windowStart: group.windowStart,
-      windowEnd: group.windowEnd,
+      departureWindowEndDate: group.departureWindowEndDate,
       memberCount: group.memberCount,
       totalPassengerCount: group.totalPassengerCount,
       memberPlanIds: group.memberPlanIds,

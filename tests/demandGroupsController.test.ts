@@ -15,13 +15,12 @@ afterEach(() => {
 function makeSummary(visibilityMode: string) {
   return {
     id: 'dg-001',
-    departureDate: '2026-06-01',
     originWardId: 'ow',
     destinationWardId: 'dw',
     originProvinceId: 'op',
     destinationProvinceId: 'dp',
-    windowStart: '2026-06-01T08:00:00.000Z',
-    windowEnd: '2026-06-01T09:00:00.000Z',
+    departureWindowStartDate: '2026-06-01T08:00:00.000Z',
+    departureWindowEndDate: '2026-06-01T09:00:00.000Z',
     memberCount: 2,
     totalPassengerCount: 3,
     origin: { lat: 10, lng: 106 },

@@ -18,13 +18,13 @@ export function proximityScore(distKm: number, maxKm: number): number {
 }
 
 export function timeOverlapScore(
-  departureDate: string,
-  windowStart: string,
-  windowEnd: string,
+  routeDepartureWindowStartDate: string,
+  planDepartureWindowStartDate: string,
+  planDepartureWindowEndDate: string,
 ): number {
-  const rTime = new Date(departureDate).getTime()
-  const dStart = new Date(windowStart).getTime()
-  const dEnd = new Date(windowEnd).getTime()
+  const rTime = new Date(routeDepartureWindowStartDate).getTime()
+  const dStart = new Date(planDepartureWindowStartDate).getTime()
+  const dEnd = new Date(planDepartureWindowEndDate).getTime()
   const blockDuration = dEnd - dStart
   if (blockDuration <= 0) return rTime === dStart ? 1 : 0
   const distToCenter = Math.abs(rTime - (dStart + blockDuration / 2))
@@ -57,9 +57,9 @@ function computeMatchScoreWithBearings(
   planBearing: number,
 ): ScoreFields {
   const time = timeOverlapScore(
-    route.departureDate,
-    planLike.windowStart,
-    planLike.windowEnd,
+    route.departureWindowStartDate,
+    planLike.departureWindowStartDate,
+    planLike.departureWindowEndDate,
   )
 
   if (!hasUsableGeometry(route, planLike)) {

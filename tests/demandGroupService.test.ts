@@ -8,13 +8,12 @@ import type { DemandGroupSummary } from '../src/types/payloads'
 function makeSummary(): DemandGroupSummary {
   return {
     id: 'dg-2026-06-01|ow_op|dw_dp|2026-06-01T08:00:00.000Z',
-    departureDate: '2026-06-01',
     originWardId: 'ow',
     destinationWardId: 'dw',
     originProvinceId: 'op',
     destinationProvinceId: 'dp',
-    windowStart: '2026-06-01T08:00:00.000Z',
-    windowEnd: '2026-06-01T09:00:00.000Z',
+    departureWindowStartDate: '2026-06-01T08:00:00.000Z',
+    departureWindowEndDate: '2026-06-01T09:00:00.000Z',
     memberCount: 2,
     totalPassengerCount: 3,
     origin: { lat: 10, lng: 106 },

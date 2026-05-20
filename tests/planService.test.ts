@@ -65,9 +65,8 @@ describe('MVC plan service client cancellation', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-client-cancel',
       destinationWardId: 'ward-client-cancel-dest',
-      departureDate: '2030-05-07T07:00:00.000Z',
-      windowStart: '2030-05-07T07:00:00.000Z',
-      windowEnd: '2030-05-07T07:30:00.000Z',
+      departureWindowStartDate: '2030-05-07T07:00:00.000Z',
+      departureWindowEndDate: '2030-05-07T07:30:00.000Z',
       passengerCount: 1,
     })
 

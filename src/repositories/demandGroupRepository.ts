@@ -4,10 +4,9 @@ import { Plan } from '../types/entities'
 import { DemandGroupSummary } from '../types/payloads'
 
 function buildGroupKey(plan: Plan): string {
-  const departureDate = plan.departureDate.slice(0, 10)
   const origin = `${plan.originWardId}_${plan.originProvinceId}`
   const destination = `${plan.destinationWardId}_${plan.destinationProvinceId}`
-  return `${departureDate}|${origin}|${destination}|${plan.windowStart}`
+  return `${plan.departureWindowStartDate.slice(0, 10)}|${origin}|${destination}|${plan.departureWindowStartDate}`
 }
 
 export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
@@ -36,13 +35,12 @@ export async function deriveDemandGroups(): Promise<DemandGroupSummary[]> {
     if (!grouped.has(key)) {
       grouped.set(key, {
         id: `dg-${key}`,
-        departureDate: plan.departureDate.slice(0, 10),
+        departureWindowStartDate: plan.departureWindowStartDate,
         originWardId: plan.originWardId,
         destinationWardId: plan.destinationWardId,
         originProvinceId: plan.originProvinceId,
         destinationProvinceId: plan.destinationProvinceId,
-        windowStart: plan.windowStart,
-        windowEnd: plan.windowEnd,
+        departureWindowEndDate: plan.departureWindowEndDate,
         memberCount: 0,
         totalPassengerCount: 0,
         memberPlanIds: [],
