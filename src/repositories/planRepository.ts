@@ -32,16 +32,16 @@ function formatLocalDateValue(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-function isPastDepartureDate(departureDate?: string | null): boolean {
-  if (!departureDate) return false
-  const date = new Date(departureDate)
+function isPastDepartureWindow(departureWindowStartDate?: string | null): boolean {
+  if (!departureWindowStartDate) return false
+  const date = new Date(departureWindowStartDate)
   if (Number.isNaN(date.getTime())) return false
   return formatLocalDateValue(date) < formatLocalDateValue(new Date())
 }
 
-function assertDepartureDateIsNotPast(departureDate?: string | null): void {
-  if (isPastDepartureDate(departureDate)) {
-    throw new HttpError(400, 'departureDate cannot be in the past')
+function assertDepartureWindowIsNotPast(departureWindowStartDate?: string | null): void {
+  if (isPastDepartureWindow(departureWindowStartDate)) {
+    throw new HttpError(400, 'departureWindowStartDate cannot be in the past')
   }
 }
 
@@ -75,7 +75,7 @@ async function dynamicUpdate<T>(
   }
 
   const setClauses = keys.map((key) => `${toSnakeCase(key)} = ?`)
-  const timeFields = ['departureDate', 'windowStart', 'windowEnd']
+  const timeFields = ['departureWindowStartDate', 'departureWindowEndDate']
   const vals = keys.map((key) => {
     const val = data[key]
     if (jsonFields.includes(key)) return JSON.stringify(val)
@@ -103,18 +103,18 @@ export async function createPlan(
   data: CreatePlanPayload,
 ): Promise<Plan> {
   await assertUserRole(clientId, 'client')
-  assertDepartureDateIsNotPast(data.departureDate)
+  assertDepartureWindowIsNotPast(data.departureWindowStartDate)
 
   const res = await query(
     `
       INSERT INTO plans (
         id, client_id, origin, destination, origin_ward_id, destination_ward_id,
         origin_province_id,
-        destination_province_id, departure_date, window_start,
-        window_end, passenger_count, publish_mode, notes, status,
+        destination_province_id, departure_window_start_date, departure_window_end_date,
+        passenger_count, publish_mode, notes, status,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       RETURNING *
     `,
     [
@@ -126,9 +126,8 @@ export async function createPlan(
       data.destinationWardId,
       data.originProvinceId,
       data.destinationProvinceId,
-      normalizeUtc(data.departureDate),
-      normalizeUtc(data.windowStart),
-      normalizeUtc(data.windowEnd),
+      normalizeUtc(data.departureWindowStartDate),
+      normalizeUtc(data.departureWindowEndDate),
       data.passengerCount,
       'grouped',
       data.notes || '',
@@ -171,7 +170,7 @@ export async function updatePlan(
   id: string,
   data: UpdatePlanPayload,
 ): Promise<Plan | null> {
-  assertDepartureDateIsNotPast(data.departureDate)
+  assertDepartureWindowIsNotPast(data.departureWindowStartDate)
   return dynamicUpdate<Plan>('plans', id, data as unknown as Record<string, unknown>, [
     'origin',
     'destination',

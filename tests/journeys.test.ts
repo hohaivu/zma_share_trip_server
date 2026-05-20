@@ -22,9 +22,8 @@ const BASE_ROUTE: Route = {
   originProvinceId: '79',
   destinationWardId: 'ward-td',
   destinationProvinceId: '79',
-  departureDate: '2030-04-01T06:45:00.000Z',
-  windowStart: '2030-04-01T06:45:00.000Z',
-  windowEnd: '2030-04-01T07:15:00.000Z',
+  departureWindowStartDate: '2030-04-01T06:45:00.000Z',
+  departureWindowEndDate: '2030-04-01T07:15:00.000Z',
   tripPrice: 150000,
   status: 'published',
 }
@@ -38,9 +37,8 @@ const BASE_PLAN: Plan = {
   originProvinceId: '79',
   destinationWardId: 'ward-td',
   destinationProvinceId: '79',
-  departureDate: '2030-04-01T07:00:00.000Z',
-  windowStart: '2030-04-01T07:00:00.000Z',
-  windowEnd: '2030-04-01T07:30:00.000Z',
+  departureWindowStartDate: '2030-04-01T07:00:00.000Z',
+  departureWindowEndDate: '2030-04-01T07:30:00.000Z',
   passengerCount: 1,
 
   status: 'published',
@@ -60,7 +58,7 @@ describe('buildJourneySummary', () => {
     const summary = buildJourneySummary(BASE_ROUTE, accepted)
 
     assert.equal(summary.id, BASE_ROUTE.id)
-    assert.equal(summary.windowStart, BASE_ROUTE.windowStart)
+    assert.equal(summary.departureWindowStartDate, BASE_ROUTE.departureWindowStartDate)
     assert.equal(summary.accepted?.type, 'route_request')
     assert.equal(summary.accepted?.requestId, 'sreq-001')
     assert.equal(summary.accepted?.plan?.id, BASE_PLAN.id)
@@ -70,7 +68,7 @@ describe('buildJourneySummary', () => {
     const summary = buildJourneySummary(BASE_PLAN, null)
 
     assert.equal(summary.id, BASE_PLAN.id)
-    assert.equal(summary.windowStart, BASE_PLAN.windowStart)
+    assert.equal(summary.departureWindowStartDate, BASE_PLAN.departureWindowStartDate)
     assert.equal(summary.origin.label, BASE_PLAN.origin.label)
     assert.equal(summary.accepted, null)
   })

@@ -26,7 +26,7 @@ async function dynamicUpdate<T>(table: string, id: string, data: Record<string, 
     return toCamelCase<T>(existing.rows[0])
   }
   const setClauses = keys.map((key) => `${toSnakeCase(key)} = ?`)
-  const timeFields = ['departureDate', 'windowStart', 'windowEnd']
+  const timeFields = ['departureWindowStartDate', 'departureWindowEndDate']
   const vals = keys.map((k) => {
     const val = data[k]
     if (jsonFields.includes(k)) return JSON.stringify(val)
@@ -76,9 +76,8 @@ export interface RouteWriteValues {
   originProvinceId: string
   destinationWardId: string
   destinationProvinceId: string
-  departureDate: string
-  windowStart: string
-  windowEnd: string
+  departureWindowStartDate: string
+  departureWindowEndDate: string
   tripPrice: number
   distanceMeters: number | null
   notes: string
@@ -100,11 +99,8 @@ export async function createRoute(
   const fields = data as unknown as Record<string, unknown>
   const origin = extractWardFields(fields, 'origin', data.origin)
   const dest = extractWardFields(fields, 'destination', data.destination)
-  const departureWindow = computeDepartureBlock(data.departureDate)
-  const windowStart = data.windowStart ? normalizeUtc(data.windowStart) : departureWindow.start
-  const windowEnd = data.windowEnd
-    ? normalizeUtc(data.windowEnd)
-    : computeDepartureBlock(windowStart!).end
+  const windowStart = normalizeUtc(data.departureWindowStartDate)
+  const windowEnd = normalizeUtc(data.departureWindowEndDate)
 
   const res = await query(
     `
@@ -112,10 +108,10 @@ export async function createRoute(
       id, driver_id, car_id, origin, destination,
       origin_ward_id, origin_province_id,
       destination_ward_id, destination_province_id,
-      departure_date, window_start, window_end,
+      departure_window_start_date, departure_window_end_date,
       trip_price, distance_meters, notes, status, created_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     RETURNING *
   `,
     [
@@ -128,7 +124,6 @@ export async function createRoute(
       origin.provinceId,
       dest.wardId,
       dest.provinceId,
-      windowStart,
       windowStart,
       windowEnd,
       data.tripPrice,
@@ -211,9 +206,8 @@ export async function runPublishTransition(
           origin_province_id = ?,
           destination_ward_id = ?,
           destination_province_id = ?,
-          departure_date = ?,
-          window_start = ?,
-          window_end = ?,
+          departure_window_start_date = ?,
+          departure_window_end_date = ?,
           trip_price = ?,
           distance_meters = ?,
           notes = ?,
@@ -228,9 +222,8 @@ export async function runPublishTransition(
         nextValues.originProvinceId,
         nextValues.destinationWardId,
         nextValues.destinationProvinceId,
-        nextValues.departureDate,
-        nextValues.windowStart,
-        nextValues.windowEnd,
+        nextValues.departureWindowStartDate,
+        nextValues.departureWindowEndDate,
         nextValues.tripPrice,
         nextValues.distanceMeters,
         nextValues.notes,

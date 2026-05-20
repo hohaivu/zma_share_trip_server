@@ -39,9 +39,8 @@ interface SeedRoute {
   originProvinceId: string
   destinationWardId: string
   destinationProvinceId: string
-  departureDate: string
-  windowStart: string
-  windowEnd: string
+  departureWindowStartDate: string
+  departureWindowEndDate: string
   tripPrice: number
   distanceMeters?: number | null
   feeRateVndPerKm?: number
@@ -74,9 +73,8 @@ interface SeedPlan {
   originProvinceId: string
   destinationWardId: string
   destinationProvinceId: string
-  departureDate: string
-  windowStart: string
-  windowEnd: string
+  departureWindowStartDate: string
+  departureWindowEndDate: string
   passengerCount: number
   notes: string
   status: string
@@ -115,9 +113,8 @@ function makeRoute(
       | 'id'
       | 'driverId'
       | 'carId'
-      | 'departureDate'
-      | 'windowStart'
-      | 'windowEnd'
+      | 'departureWindowStartDate'
+      | 'departureWindowEndDate'
       | 'tripPrice'
       | 'createdAt'
     >,
@@ -149,9 +146,8 @@ function makePlan(
       SeedPlan,
       | 'id'
       | 'clientId'
-      | 'departureDate'
-      | 'windowStart'
-      | 'windowEnd'
+      | 'departureWindowStartDate'
+      | 'departureWindowEndDate'
       | 'createdAt'
     >,
 ): SeedPlan {
@@ -319,9 +315,8 @@ const routes = [
     id: 'route-001',
     driverId: DRIVER_001_ID,
     carId: 'car-001',
-    departureDate: '2030-03-20 00:00:00.000',
-    windowStart: '2030-03-20 00:00:00.000',
-    windowEnd: '2030-03-20 00:30:00.000',
+    departureWindowStartDate: '2030-03-20 00:00:00.000',
+    departureWindowEndDate: '2030-03-20 00:30:00.000',
     tripPrice: 120000,
     createdAt: '2026-01-05 00:00:00.000',
   }),
@@ -329,9 +324,8 @@ const routes = [
     id: 'route-002',
     driverId: DRIVER_002_ID,
     carId: 'car-002',
-    departureDate: '2030-03-20 00:15:00.000',
-    windowStart: '2030-03-20 00:15:00.000',
-    windowEnd: '2030-03-20 00:45:00.000',
+    departureWindowStartDate: '2030-03-20 00:15:00.000',
+    departureWindowEndDate: '2030-03-20 00:45:00.000',
     tripPrice: 100000,
     createdAt: '2026-01-05 00:00:00.000',
   }),
@@ -341,9 +335,8 @@ const plans = [
   makePlan({
     id: 'plan-001',
     clientId: CLIENT_001_ID,
-    departureDate: '2030-03-20 00:00:00.000',
-    windowStart: '2030-03-20 00:00:00.000',
-    windowEnd: '2030-03-20 00:30:00.000',
+    departureWindowStartDate: '2030-03-20 00:00:00.000',
+    departureWindowEndDate: '2030-03-20 00:30:00.000',
     createdAt: '2026-01-05 00:00:00.000',
   }),
   makePlan({
@@ -351,9 +344,8 @@ const plans = [
     clientId: CLIENT_002_ID,
     origin: COORD_Q1_NEAR,
     destination: COORD_TD_NEAR,
-    departureDate: '2030-03-20 00:00:00.000',
-    windowStart: '2030-03-20 00:00:00.000',
-    windowEnd: '2030-03-20 00:30:00.000',
+    departureWindowStartDate: '2030-03-20 00:00:00.000',
+    departureWindowEndDate: '2030-03-20 00:30:00.000',
     passengerCount: 2,
     createdAt: '2026-01-05 01:00:00.000',
   }),
@@ -363,17 +355,15 @@ const plans = [
     origin: COORD_TB,
     destination: COORD_TD_TB,
     originWardId: 'ward-tb-p15',
-    departureDate: '2030-03-20 00:00:00.000',
-    windowStart: '2030-03-20 00:00:00.000',
-    windowEnd: '2030-03-20 00:30:00.000',
+    departureWindowStartDate: '2030-03-20 00:00:00.000',
+    departureWindowEndDate: '2030-03-20 00:30:00.000',
     createdAt: '2026-01-05 02:00:00.000',
   }),
   makePlan({
     id: 'plan-004',
     clientId: CLIENT_002_ID,
-    departureDate: '2030-03-21 00:00:00.000',
-    windowStart: '2030-03-21 00:00:00.000',
-    windowEnd: '2030-03-21 00:30:00.000',
+    departureWindowStartDate: '2030-03-21 00:00:00.000',
+    departureWindowEndDate: '2030-03-21 00:30:00.000',
     notes: 'Tìm tài xế trực tiếp',
     createdAt: '2026-01-05 03:00:00.000',
   }),
@@ -479,13 +469,13 @@ export async function seed() {
           id, driver_id, car_id, origin, destination,
           origin_ward_id, origin_province_id,
           destination_ward_id, destination_province_id,
-          departure_date, window_start, window_end,
+          departure_window_start_date, departure_window_end_date,
           trip_price, distance_meters, fee_rate_vnd_per_km, fee_required_vnd,
           wallet_fee_status, wallet_reserved_at, wallet_charged_at,
           wallet_released_at, wallet_refunded_at, notes, status, created_at
         )
         VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `,
@@ -499,9 +489,8 @@ export async function seed() {
           r.originProvinceId,
           r.destinationWardId,
           r.destinationProvinceId,
-          r.departureDate,
-          r.windowStart,
-          r.windowEnd,
+          r.departureWindowStartDate,
+          r.departureWindowEndDate,
           r.tripPrice,
           r.distanceMeters,
           r.feeRateVndPerKm,
@@ -542,8 +531,8 @@ export async function seed() {
     for (const t of plans) {
       await conn.query(
         `
-        INSERT INTO plans (id, client_id, origin, destination, origin_ward_id, destination_ward_id, origin_province_id, destination_province_id, departure_date, window_start, window_end, passenger_count, publish_mode, notes, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO plans (id, client_id, origin, destination, origin_ward_id, destination_ward_id, origin_province_id, destination_province_id, departure_window_start_date, departure_window_end_date, passenger_count, publish_mode, notes, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           t.id,
@@ -554,9 +543,8 @@ export async function seed() {
           t.destinationWardId,
           t.originProvinceId,
           t.destinationProvinceId,
-          t.departureDate,
-          t.windowStart,
-          t.windowEnd,
+          t.departureWindowStartDate,
+          t.departureWindowEndDate,
           t.passengerCount,
           'grouped',
           t.notes,

@@ -7,32 +7,32 @@ import {
 import { HardFilter } from '../ports'
 
 interface WithWindow {
-  departureDate: string
-  windowEnd: string
+  departureWindowStartDate: string
+  departureWindowEndDate: string
 }
 
 interface QueryWindow {
-  windowStart: string
-  windowEnd: string
+  departureWindowStartDate: string
+  departureWindowEndDate: string
 }
 
 export function blocksOverlap(
-  routeDepartureDate: string,
-  routeWindowEnd: string | undefined,
-  windowStart: string,
-  windowEnd: string,
+  routeDepartureWindowStartDate: string,
+  routeDepartureWindowEndDate: string | undefined,
+  departureWindowStartDate: string,
+  departureWindowEndDate: string,
 ): boolean {
-  const routeBlock = computeDepartureBlock(routeDepartureDate)
-  const routeSpanEndMs = routeWindowEnd
-    ? new Date(routeWindowEnd).getTime()
+  const routeBlock = computeDepartureBlock(routeDepartureWindowStartDate)
+  const routeSpanEndMs = routeDepartureWindowEndDate
+    ? new Date(routeDepartureWindowEndDate).getTime()
     : new Date(routeBlock.end).getTime()
   const routeStartMs =
     new Date(routeBlock.start).getTime() -
     MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES * MS_PER_MINUTE
   const routeEndMs =
     routeSpanEndMs + MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
-  const planStartMs = new Date(windowStart).getTime()
-  const planEndMs = new Date(windowEnd).getTime()
+  const planStartMs = new Date(departureWindowStartDate).getTime()
+  const planEndMs = new Date(departureWindowEndDate).getTime()
   return routeStartMs <= planEndMs && planStartMs <= routeEndMs
 }
 
@@ -40,7 +40,7 @@ function buildBlockKey(
   candidate: WithWindow,
   query: QueryWindow,
 ): string {
-  return `${candidate.departureDate}|${candidate.windowEnd}|${query.windowStart}|${query.windowEnd}`
+  return `${candidate.departureWindowStartDate}|${candidate.departureWindowEndDate}|${query.departureWindowStartDate}|${query.departureWindowEndDate}`
 }
 
 export const blockOverlapFilter: HardFilter<QueryWindow, WithWindow> = {
@@ -50,10 +50,10 @@ export const blockOverlapFilter: HardFilter<QueryWindow, WithWindow> = {
     const cached = ctx.dateBlockCache.get(key)
     if (cached !== undefined) return cached
     const result = blocksOverlap(
-      candidate.departureDate,
-      candidate.windowEnd,
-      query.windowStart,
-      query.windowEnd,
+      candidate.departureWindowStartDate,
+      candidate.departureWindowEndDate,
+      query.departureWindowStartDate,
+      query.departureWindowEndDate,
     )
     ctx.dateBlockCache.set(key, result)
     return result

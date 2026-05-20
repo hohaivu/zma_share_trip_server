@@ -49,11 +49,11 @@ function addDays(date: Date, days: number): Date {
 
 async function createRoute(
   driverId: string,
-  data: Omit<CreateRoutePayload, 'windowEnd'> & Partial<Pick<CreateRoutePayload, 'windowEnd'>>,
+  data: Omit<CreateRoutePayload, 'departureWindowEndDate'> & Partial<Pick<CreateRoutePayload, 'departureWindowEndDate'>>,
 ): Promise<Route> {
   return driverRouteService.createRoute(driverId, {
     distanceMeters: 10000,
-    windowEnd: data.windowEnd ?? data.windowStart,
+    departureWindowEndDate: data.departureWindowEndDate ?? data.departureWindowStartDate,
     ...data,
   })
 }
@@ -157,8 +157,7 @@ async function createPendingGroupOfferForClient(departureDate: string, label: st
         carId: 'car-001',
         origin: { lat: 10.77, lng: 106.7, label: `${label} origin` },
         destination: { lat: 10.85, lng: 106.75, label: `${label} dest` },
-        departureDate,
-        windowStart: `${departureDate}T07:00:00.000Z`,
+        departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
         tripPrice: 155000,
       })
     ).id,
@@ -168,9 +167,8 @@ async function createPendingGroupOfferForClient(departureDate: string, label: st
     destination: { lat: 10.85, lng: 106.75, label: `${label} dropoff` },
     originWardId: `${label}-pickup-ward`,
     destinationWardId: `${label}-dropoff-ward`,
-    departureDate,
-    windowStart: `${departureDate}T07:00:00.000Z`,
-    windowEnd: `${departureDate}T07:30:00.000Z`,
+    departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+    departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
     passengerCount: 1,
   })
   const groups = await demandGroupRepository.deriveDemandGroups()
@@ -271,9 +269,8 @@ describe('POST /api/client/trip-plans', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-test',
       destinationWardId: 'ward-test2',
-      departureDate: '2030-04-01',
-      windowStart: '2030-04-01T08:00:00.000Z',
-      windowEnd: '2030-04-01T08:30:00.000Z',
+      departureWindowStartDate: '2030-04-01T08:00:00.000Z',
+      departureWindowEndDate: '2030-04-01T08:30:00.000Z',
       passengerCount: 1,
     })
     assert.equal(res.status, 201)
@@ -296,22 +293,20 @@ describe('POST /api/client/trip-plans', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-plan-past-create',
       destinationWardId: 'ward-plan-past-create-dest',
-      departureDate: pastDate,
-      windowStart: `${pastDate}T08:00:00.000Z`,
-      windowEnd: `${pastDate}T08:30:00.000Z`,
+      departureWindowStartDate: `${pastDate}T08:00:00.000Z`,
+      departureWindowEndDate: `${pastDate}T08:30:00.000Z`,
       passengerCount: 1,
     })
     assert.equal(createRes.status, 400)
-    assert.equal(createRes.body.error.message, 'departureDate cannot be in the past')
+    assert.equal(createRes.body.error.message, 'departureWindowStartDate cannot be in the past')
 
     const plan = await planService.createPlan(CLIENT_001_ID, {
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-plan-past-update',
       destinationWardId: 'ward-plan-past-update-dest',
-      departureDate: futureDate,
-      windowStart: `${futureDate}T08:00:00.000Z`,
-      windowEnd: `${futureDate}T08:30:00.000Z`,
+      departureWindowStartDate: `${futureDate}T08:00:00.000Z`,
+      departureWindowEndDate: `${futureDate}T08:30:00.000Z`,
       passengerCount: 1,
     })
 
@@ -321,13 +316,12 @@ describe('POST /api/client/trip-plans', () => {
       `/api/client/trip-plans/${plan.id}`,
       {
         clientId: CLIENT_001_ID,
-        departureDate: pastDate,
-        windowStart: `${pastDate}T08:00:00.000Z`,
-        windowEnd: `${pastDate}T08:30:00.000Z`,
+        departureWindowStartDate: `${pastDate}T08:00:00.000Z`,
+        departureWindowEndDate: `${pastDate}T08:30:00.000Z`,
       },
     )
     assert.equal(updateRes.status, 400)
-    assert.equal(updateRes.body.error.message, 'departureDate cannot be in the past')
+    assert.equal(updateRes.body.error.message, 'departureWindowStartDate cannot be in the past')
   })
 })
 
@@ -341,38 +335,34 @@ describe('POST /api/driver/routes', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1', wardId: 'ward-api-exclusive' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD', wardId: 'ward-api-exclusive-dest' },
-      departureDate: pastDate,
-      windowStart: `${pastDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${pastDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
     assert.equal(createRes.status, 400)
-    assert.equal(createRes.body.error.message, 'departureDate cannot be in the past')
+    assert.equal(createRes.body.error.message, 'departureWindowStartDate cannot be in the past')
 
     const route = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1', wardId: 'ward-api-exclusive' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD', wardId: 'ward-api-exclusive-dest' },
-      departureDate: futureDate,
-      windowStart: `${futureDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${futureDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
 
     const updateRes = await request(server, 'PUT', `/api/driver/routes/${route.id}`, {
       driverId: DRIVER_001_ID,
-      departureDate: pastDate,
-      windowStart: `${pastDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${pastDate}T07:00:00.000Z`,
     })
     assert.equal(updateRes.status, 400)
-    assert.equal(updateRes.body.error.message, 'departureDate cannot be in the past')
+    assert.equal(updateRes.body.error.message, 'departureWindowStartDate cannot be in the past')
 
-    await query('UPDATE routes SET departure_date = $1 WHERE id = $2', [pastDate, route.id])
+    await query('UPDATE routes SET departure_window_start_date = $1 WHERE id = $2', [pastDate, route.id])
     const publishRes = await request(server, 'PUT', `/api/driver/routes/${route.id}`, {
       driverId: DRIVER_001_ID,
       status: 'published',
-      departureDate: pastDate,
     })
     assert.equal(publishRes.status, 400)
-    assert.equal(publishRes.body.error.message, 'departureDate cannot be in the past')
+    assert.equal(publishRes.body.error.message, 'departureWindowStartDate cannot be in the past')
   })
 })
 
@@ -386,9 +376,8 @@ describe('DELETE /api/client/trip-plans/:id', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-api-cancel',
       destinationWardId: 'ward-api-cancel-dest',
-      departureDate: '2030-06-01',
-      windowStart: '2030-06-01T08:00:00.000Z',
-      windowEnd: '2030-06-01T08:30:00.000Z',
+      departureWindowStartDate: '2030-06-01T08:00:00.000Z',
+      departureWindowEndDate: '2030-06-01T08:30:00.000Z',
       passengerCount: 1,
     })
 
@@ -431,9 +420,8 @@ describe('POST /api/client/route-suggestions', () => {
     destination: { lat: 10.85, lng: 106.75, label: 'TD' },
     originWardId: 'ward-test',
     destinationWardId: 'ward-test2',
-    departureDate: '2030-04-01',
-    windowStart: '2030-04-01T08:00:00.000Z',
-    windowEnd: '2030-04-01T08:30:00.000Z',
+    departureWindowStartDate: '2030-04-01T08:00:00.000Z',
+    departureWindowEndDate: '2030-04-01T08:30:00.000Z',
   }
 
   it('returns matched routes from submitted criteria', async () => {
@@ -478,8 +466,7 @@ describe('POST /api/client/route-suggestions', () => {
             carId: 'car-001',
             origin: { lat: 10.7769, lng: 106.7009, label: 'Quận 1' },
             destination: { lat: 10.8544, lng: 106.7539, label: 'Thủ Đức' },
-            departureDate,
-            windowStart: `${departureDate}T07:15:00.000Z`,
+            departureWindowStartDate: `${departureDate}T07:15:00.000Z`,
             tripPrice: 100000,
           })
         ).id,
@@ -489,9 +476,8 @@ describe('POST /api/client/route-suggestions', () => {
         destination: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
         originWardId: `ward-api-${suffix}`,
         destinationWardId: `ward-api-${suffix}-dest`,
-        departureDate,
-        windowStart: `${departureDate}T07:00:00.000Z`,
-        windowEnd: `${departureDate}T07:30:00.000Z`,
+        departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
         passengerCount: 1,
       })
       return { route, plan }
@@ -526,9 +512,8 @@ describe('POST /api/client/route-suggestions', () => {
         destination: { lat: 10.854, lng: 106.754, label: 'Thủ Đức' },
         originWardId: 'ward-search-other-client',
         destinationWardId: 'ward-search-other-client-dest',
-        departureDate: item.route.departureDate,
-        windowStart: `${item.route.departureDate}T07:00:00.000Z`,
-        windowEnd: `${item.route.departureDate}T07:30:00.000Z`,
+        departureWindowStartDate: item.route.departureWindowStartDate,
+        departureWindowEndDate: item.route.departureWindowEndDate,
       })
       assert.equal(res.status, 200)
       assert.equal(
@@ -546,14 +531,12 @@ describe('POST /api/driver/routes', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate: '2030-04-01',
-      windowStart: '2030-04-01T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-01T07:00:00.000Z',
       tripPrice: 150000,
     })
     assert.equal(res.status, 201)
     assert.ok(res.body.id)
     assert.equal(res.body.tripPrice, 150000)
-    assert.equal(res.body.departureDate, res.body.windowStart)
   })
 
   it('rejects create with unresolved 0/0 origin coordinates', async () => {
@@ -562,8 +545,7 @@ describe('POST /api/driver/routes', () => {
       carId: 'car-001',
       origin: { lat: 0, lng: 0, label: '0,0' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate: '2030-04-01',
-      windowStart: '2030-04-01T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-01T07:00:00.000Z',
       tripPrice: 150000,
     })
     assert.equal(res.status, 400)
@@ -575,8 +557,7 @@ describe('POST /api/driver/routes', () => {
       driverId: DRIVER_001_ID,
       carId: 'car-001',
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate: '2030-04-01',
-      windowStart: '2030-04-01T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-01T07:00:00.000Z',
       tripPrice: 150000,
     })
     assert.equal(res.status, 400)
@@ -760,8 +741,7 @@ describe('POST /api/trips/:id/cancel', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureDate: '2030-04-03',
-          windowStart: '2030-04-03T07:00:00.000Z',
+          departureWindowStartDate: '2030-04-03T07:00:00.000Z',
           tripPrice: 155000,
           distanceMeters: 10000,
         })
@@ -772,9 +752,8 @@ describe('POST /api/trips/:id/cancel', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-cancel-sync',
       destinationWardId: 'ward-cancel-sync-dest',
-      departureDate: '2030-04-03',
-      windowStart: '2030-04-03T07:00:00.000Z',
-      windowEnd: '2030-04-03T07:30:00.000Z',
+      departureWindowStartDate: '2030-04-03T07:00:00.000Z',
+      departureWindowEndDate: '2030-04-03T07:30:00.000Z',
       passengerCount: 1,
     })
     const routeRequest = await createRouteRequest(
@@ -815,8 +794,7 @@ describe('POST /api/trips/:id/complete', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureDate,
-          windowStart: `${departureDate}T07:00:00.000Z`,
+          departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
           tripPrice: 155000,
           distanceMeters: 10000,
         })
@@ -827,9 +805,8 @@ describe('POST /api/trips/:id/complete', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-complete-sync',
       destinationWardId: 'ward-complete-sync-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const routeRequest = await createRouteRequest(
@@ -872,8 +849,7 @@ describe('GET /api/journeys/:id/summary', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureDate: '2030-04-04',
-          windowStart: '2030-04-04T07:00:00.000Z',
+          departureWindowStartDate: '2030-04-04T07:00:00.000Z',
           tripPrice: 155000,
         })
       ).id,
@@ -919,8 +895,7 @@ describe('work queue visibility endpoints', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
     const plan = await planService.createPlan(CLIENT_001_ID, {
@@ -928,9 +903,8 @@ describe('work queue visibility endpoints', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-route-review',
       destinationWardId: 'ward-route-review-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const routeRequest = await createRouteRequest(CLIENT_001_ID, plan.id, route.id)
@@ -977,8 +951,7 @@ describe('work queue visibility endpoints', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
     const plan = await planService.createPlan(CLIENT_001_ID, {
@@ -986,9 +959,8 @@ describe('work queue visibility endpoints', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-route-future-review',
       destinationWardId: 'ward-route-future-review-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const routeRequest = await createRouteRequest(CLIENT_001_ID, plan.id, route.id)
@@ -1014,9 +986,8 @@ describe('work queue visibility endpoints', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-plan-review',
       destinationWardId: 'ward-plan-review-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const route = await publishRoute(
@@ -1025,8 +996,7 @@ describe('work queue visibility endpoints', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureDate,
-          windowStart: `${departureDate}T07:00:00.000Z`,
+          departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
           tripPrice: 100000,
         })
       ).id,
@@ -1076,9 +1046,8 @@ describe('work queue visibility endpoints', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-plan-expired',
       destinationWardId: 'ward-plan-expired-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const route = await publishRoute(
@@ -1087,8 +1056,7 @@ describe('work queue visibility endpoints', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureDate,
-          windowStart: `${departureDate}T07:00:00.000Z`,
+          departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
           tripPrice: 100000,
         })
       ).id,
@@ -1115,24 +1083,21 @@ describe('work queue visibility endpoints', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Reviewed Origin' },
       destination: { lat: 10.85, lng: 106.75, label: 'Reviewed Dest' },
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
     const unreviewed = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Unreviewed Origin' },
       destination: { lat: 10.85, lng: 106.75, label: 'Unreviewed Dest' },
-      departureDate,
-      windowStart: `${departureDate}T08:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T08:00:00.000Z`,
       tripPrice: 100000,
     })
     const canceled = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Canceled Origin' },
       destination: { lat: 10.85, lng: 106.75, label: 'Canceled Dest' },
-      departureDate,
-      windowStart: `${departureDate}T09:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T09:00:00.000Z`,
       tripPrice: 100000,
     })
     const reviewedPlan = await planService.createPlan(CLIENT_001_ID, {
@@ -1140,9 +1105,8 @@ describe('work queue visibility endpoints', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'Reviewed Dropoff' },
       originWardId: 'ward-reviewed-route-plan',
       destinationWardId: 'ward-reviewed-route-plan-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const unreviewedPlan = await planService.createPlan(CLIENT_001_ID, {
@@ -1150,9 +1114,8 @@ describe('work queue visibility endpoints', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'Unreviewed Dropoff' },
       originWardId: 'ward-unreviewed-route-plan',
       destinationWardId: 'ward-unreviewed-route-plan-dest',
-      departureDate,
-      windowStart: `${departureDate}T08:00:00.000Z`,
-      windowEnd: `${departureDate}T08:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T08:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T08:30:00.000Z`,
       passengerCount: 1,
     })
     await insertAcceptedRouteRequest(reviewed.id, reviewedPlan.id)
@@ -1193,9 +1156,8 @@ describe('work queue visibility endpoints', () => {
         destination: { lat: 10.85, lng: 106.75, label: `${suffix} Dropoff` },
         originWardId: `ward-${suffix}`,
         destinationWardId: `ward-${suffix}-dest`,
-        departureDate,
-        windowStart: `${departureDate}T07:00:00.000Z`,
-        windowEnd: `${departureDate}T07:30:00.000Z`,
+        departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
         passengerCount: 1,
       })
     const reviewed = await makePlan('reviewed')
@@ -1205,16 +1167,14 @@ describe('work queue visibility endpoints', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Reviewed Origin' },
       destination: { lat: 10.85, lng: 106.75, label: 'Reviewed Dest' },
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
     const unreviewedRoute = await createRoute(DRIVER_001_ID, {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Unreviewed Origin' },
       destination: { lat: 10.85, lng: 106.75, label: 'Unreviewed Dest' },
-      departureDate,
-      windowStart: `${departureDate}T08:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T08:00:00.000Z`,
       tripPrice: 100000,
     })
     await insertAcceptedRouteRequest(reviewedRoute.id, reviewed.id)
@@ -1257,8 +1217,7 @@ describe('inbox visibility endpoints', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureDate,
-          windowStart: `${departureDate}T07:00:00.000Z`,
+          departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
           tripPrice: 155000,
         })
       ).id,
@@ -1268,9 +1227,8 @@ describe('inbox visibility endpoints', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-goffer-hide',
       destinationWardId: 'ward-goffer-hide-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const groups = await demandGroupRepository.deriveDemandGroups()
@@ -1369,8 +1327,7 @@ describe('inbox visibility endpoints', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureDate,
-          windowStart: `${departureDate}T07:00:00.000Z`,
+          departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
           tripPrice: 155000,
         })
       ).id,
@@ -1380,9 +1337,8 @@ describe('inbox visibility endpoints', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-client-search-hide',
       destinationWardId: 'ward-client-search-hide-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const routeRequest = await createRouteRequest(
@@ -1427,8 +1383,7 @@ describe('inbox visibility endpoints', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureDate,
-          windowStart: `${departureDate}T07:00:00.000Z`,
+          departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
           tripPrice: 155000,
         })
       ).id,
@@ -1438,9 +1393,8 @@ describe('inbox visibility endpoints', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-driver-search-hide',
       destinationWardId: 'ward-driver-search-hide-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const routeRequest = await createRouteRequest(
@@ -1506,8 +1460,7 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-api-exclusive',
       destinationWardId: 'ward-api-exclusive-dest',
-      departureDate: '2030-04-11',
-      windowStart: '2030-04-11T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-11T07:00:00.000Z',
       tripPrice: 120000,
     })
     assert.equal(targetRouteRes.status, 201)
@@ -1521,9 +1474,8 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-api-exclusive',
       destinationWardId: 'ward-api-exclusive-dest',
-      departureDate: '2030-04-11',
-      windowStart: '2030-04-11T07:00:00.000Z',
-      windowEnd: '2030-04-11T07:30:00.000Z',
+      departureWindowStartDate: '2030-04-11T07:00:00.000Z',
+      departureWindowEndDate: '2030-04-11T07:30:00.000Z',
       passengerCount: 1,
     })
     assert.equal(planRes.status, 201)
@@ -1538,8 +1490,7 @@ describe('GET /api/driver/routes/:id/matched-demand-groups', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-api-exclusive',
       destinationWardId: 'ward-api-exclusive-dest',
-      departureDate: '2030-04-11',
-      windowStart: '2030-04-11T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-11T07:00:00.000Z',
       tripPrice: 130000,
     })
     assert.equal(otherRouteRes.status, 201)
@@ -1630,8 +1581,7 @@ describe('GET /api/driver/routes/:id/incoming-requests', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureDate: '2030-04-12',
-          windowStart: '2030-04-12T07:00:00.000Z',
+          departureWindowStartDate: '2030-04-12T07:00:00.000Z',
           tripPrice: 125000,
           distanceMeters: 10000,
         })
@@ -1686,8 +1636,7 @@ describe('POST /api/client/route-requests', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate: '2030-04-02',
-      windowStart: '2030-04-02T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-02T07:00:00.000Z',
       tripPrice: 100000,
     })
 
@@ -1698,9 +1647,8 @@ describe('POST /api/client/route-requests', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-test',
       destinationWardId: 'ward-test2',
-      departureDate: '2030-04-02',
-      windowStart: '2030-04-02T07:00:00.000Z',
-      windowEnd: '2030-04-02T07:30:00.000Z',
+      departureWindowStartDate: '2030-04-02T07:00:00.000Z',
+      departureWindowEndDate: '2030-04-02T07:30:00.000Z',
       passengerCount: 1,
     })
 
@@ -1719,8 +1667,7 @@ describe('POST /api/client/route-requests', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate: '2030-04-10',
-      windowStart: '2030-04-10T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-10T07:00:00.000Z',
       tripPrice: 100000,
     })
     const routeId = routeRes.body.id
@@ -1729,9 +1676,8 @@ describe('POST /api/client/route-requests', () => {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-dup-search',
       destinationWardId: 'ward-dup-search-dest',
-      departureDate: '2030-04-10',
-      windowStart: '2030-04-10T07:00:00.000Z',
-      windowEnd: '2030-04-10T07:30:00.000Z',
+      departureWindowStartDate: '2030-04-10T07:00:00.000Z',
+      departureWindowEndDate: '2030-04-10T07:30:00.000Z',
       passengerCount: 1,
     })
 
@@ -1763,8 +1709,7 @@ describe('POST /api/client/route-requests', () => {
         carId: 'car-001',
         origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
         destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-        departureDate: `2030-04-1${terminalStatus.length}`,
-        windowStart: `2030-04-1${terminalStatus.length}T07:00:00.000Z`,
+        departureWindowStartDate: `2030-04-1${terminalStatus.length}T07:00:00.000Z`,
         tripPrice: 100000,
       })
       const routeId = routeRes.body.id
@@ -1773,9 +1718,8 @@ describe('POST /api/client/route-requests', () => {
         destination: { lat: 10.85, lng: 106.75, label: 'TD' },
         originWardId: `ward-resend-${terminalStatus}`,
         destinationWardId: `ward-resend-${terminalStatus}-dest`,
-        departureDate: `2030-04-1${terminalStatus.length}`,
-        windowStart: `2030-04-1${terminalStatus.length}T07:00:00.000Z`,
-        windowEnd: `2030-04-1${terminalStatus.length}T07:30:00.000Z`,
+        departureWindowStartDate: `2030-04-1${terminalStatus.length}T07:00:00.000Z`,
+        departureWindowEndDate: `2030-04-1${terminalStatus.length}T07:30:00.000Z`,
         passengerCount: 1,
       })
 
@@ -1819,8 +1763,7 @@ describe('POST /api/client/route-requests', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate: '2030-04-03',
-      windowStart: '2030-04-03T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-03T07:00:00.000Z',
       tripPrice: 100000,
     })
 
@@ -1838,8 +1781,7 @@ describe('POST /api/client/route-requests', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate: '2030-04-04',
-      windowStart: '2030-04-04T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-04T07:00:00.000Z',
       tripPrice: 100000,
     })
 
@@ -1858,8 +1800,7 @@ describe('POST /api/client/route-requests', () => {
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate: '2030-04-05',
-      windowStart: '2030-04-05T07:00:00.000Z',
+      departureWindowStartDate: '2030-04-05T07:00:00.000Z',
       tripPrice: 100000,
     })
 
@@ -2090,8 +2031,7 @@ describe('persona role validation', () => {
       driverId: clientPersonaId,
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
     assert.equal(routeRes.status, 403)
@@ -2100,8 +2040,7 @@ describe('persona role validation', () => {
       clientId: driverPersonaId,
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate,
-      windowStart: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:30:00.000Z`,
       seats: 1,
     })
     assert.equal(planRes.status, 403)
@@ -2158,8 +2097,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })
     const plan = await planService.createPlan(reviewerClientId, {
@@ -2167,9 +2105,8 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-review-route',
       destinationWardId: 'ward-review-route-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const routeRequest = await createRouteRequest(reviewerClientId, plan.id, route.id)
@@ -2223,8 +2160,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
       tripPrice: 100000,
     })).id)
     const plan = await planService.createPlan(CLIENT_001_ID, {
@@ -2232,9 +2168,8 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
       originWardId: 'ward-review-eligible',
       destinationWardId: 'ward-review-eligible-dest',
-      departureDate,
-      windowStart: `${departureDate}T07:00:00.000Z`,
-      windowEnd: `${departureDate}T07:30:00.000Z`,
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
       passengerCount: 1,
     })
     const routeRequest = await createRouteRequest(CLIENT_001_ID, plan.id, route.id)
@@ -2265,8 +2200,7 @@ describe('user profile, review, report, blocklist, and notification routes', () 
       carId: 'car-001',
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-      departureDate,
-      windowStart: `${departureDate}T08:00:00.000Z`,
+      departureWindowStartDate: `${departureDate}T08:00:00.000Z`,
       tripPrice: 100000,
     })
     const incompleteRes = await request(server, 'POST', '/api/reviews', {
