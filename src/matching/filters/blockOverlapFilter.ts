@@ -1,4 +1,3 @@
-import { computeDepartureBlock } from '../../domain/departureBlock'
 import {
   MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES,
   MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES,
@@ -16,23 +15,19 @@ interface QueryWindow {
   departureWindowEndDate: string
 }
 
-export function blocksOverlap(
-  routeDepartureWindowStartDate: string,
-  routeDepartureWindowEndDate: string | undefined,
-  departureWindowStartDate: string,
-  departureWindowEndDate: string,
+export function routePlanWindowsOverlap(
+  routeStart: string,
+  routeEnd: string,
+  planStart: string,
+  planEnd: string,
 ): boolean {
-  const routeBlock = computeDepartureBlock(routeDepartureWindowStartDate)
-  const routeSpanEndMs = routeDepartureWindowEndDate
-    ? new Date(routeDepartureWindowEndDate).getTime()
-    : new Date(routeBlock.end).getTime()
   const routeStartMs =
-    new Date(routeBlock.start).getTime() -
+    new Date(routeStart).getTime() -
     MATCHING_ROUTE_BLOCK_EXPAND_BEFORE_MINUTES * MS_PER_MINUTE
   const routeEndMs =
-    routeSpanEndMs + MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
-  const planStartMs = new Date(departureWindowStartDate).getTime()
-  const planEndMs = new Date(departureWindowEndDate).getTime()
+    new Date(routeEnd).getTime() + MATCHING_ROUTE_BLOCK_EXPAND_AFTER_MINUTES * MS_PER_MINUTE
+  const planStartMs = new Date(planStart).getTime()
+  const planEndMs = new Date(planEnd).getTime()
   return routeStartMs <= planEndMs && planStartMs <= routeEndMs
 }
 
@@ -43,17 +38,34 @@ function buildBlockKey(
   return `${candidate.departureWindowStartDate}|${candidate.departureWindowEndDate}|${query.departureWindowStartDate}|${query.departureWindowEndDate}`
 }
 
-export const blockOverlapFilter: HardFilter<QueryWindow, WithWindow> = {
-  name: 'blockOverlapFilter',
+export const clientBlockOverlapFilter: HardFilter<QueryWindow, WithWindow> = {
+  name: 'clientBlockOverlapFilter',
   async passes(candidate, query, ctx): Promise<boolean> {
     const key = buildBlockKey(candidate, query)
     const cached = ctx.dateBlockCache.get(key)
     if (cached !== undefined) return cached
-    const result = blocksOverlap(
+    const result = routePlanWindowsOverlap(
       candidate.departureWindowStartDate,
       candidate.departureWindowEndDate,
       query.departureWindowStartDate,
       query.departureWindowEndDate,
+    )
+    ctx.dateBlockCache.set(key, result)
+    return result
+  },
+}
+
+export const driverBlockOverlapFilter: HardFilter<QueryWindow, WithWindow> = {
+  name: 'driverBlockOverlapFilter',
+  async passes(candidate, query, ctx): Promise<boolean> {
+    const key = buildBlockKey(candidate, query)
+    const cached = ctx.dateBlockCache.get(key)
+    if (cached !== undefined) return cached
+    const result = routePlanWindowsOverlap(
+      query.departureWindowStartDate,
+      query.departureWindowEndDate,
+      candidate.departureWindowStartDate,
+      candidate.departureWindowEndDate,
     )
     ctx.dateBlockCache.set(key, result)
     return result

@@ -11,6 +11,7 @@ import * as routeRequestService from '../src/services/routeRequestService'
 import * as userService from '../src/services/userService'
 import { createDbTest, setupTestDb, teardownTestDb } from '../src/test-db'
 import { User } from '../src/types/entities'
+import { routePlanWindowsOverlap } from '../src/matching/filters/blockOverlapFilter'
 
 const itDb = createDbTest('Postgres unavailable for DB-backed matching tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
@@ -251,6 +252,59 @@ describe('passesHardFilters', () => {
     )
   })
 
+  it('includes 07:00-08:00 route and 08:30-09:30 plan at padded boundary', async () => {
+    const route = {
+      ...BASE_ROUTE,
+      departureWindowStartDate: '2030-03-20T07:00:00.000Z',
+      departureWindowEndDate: '2030-03-20T08:00:00.000Z',
+    }
+    const plan = {
+      ...BASE_PLAN,
+      departureWindowStartDate: '2030-03-20T08:30:00.000Z',
+      departureWindowEndDate: '2030-03-20T09:30:00.000Z',
+    }
+
+    assert.equal(
+      routePlanWindowsOverlap(
+        route.departureWindowStartDate,
+        route.departureWindowEndDate,
+        plan.departureWindowStartDate,
+        plan.departureWindowEndDate,
+      ),
+      true,
+    )
+    assert.ok(await matching.passesHardFilters(route, plan, null, []))
+  })
+
+  it('excludes sub-second and one-minute drift after padded route end consistently', async () => {
+    const route = {
+      ...BASE_ROUTE,
+      departureWindowStartDate: '2030-03-20T07:00:00.000Z',
+      departureWindowEndDate: '2030-03-20T08:00:00.000Z',
+    }
+    const cases = ['2030-03-20T08:30:00.500Z', '2030-03-20T08:31:00.000Z']
+
+    for (const planStart of cases) {
+      const plan = {
+        ...BASE_PLAN,
+        departureWindowStartDate: planStart,
+        departureWindowEndDate: '2030-03-20T09:30:00.000Z',
+      }
+
+      assert.equal(
+        routePlanWindowsOverlap(
+          route.departureWindowStartDate,
+          route.departureWindowEndDate,
+          plan.departureWindowStartDate,
+          plan.departureWindowEndDate,
+        ),
+        false,
+        `${planStart} should be outside the padded route end`,
+      )
+      assert.equal(await matching.passesHardFilters(route, plan, null, []), false)
+    }
+  })
+
   it('rejects opposite direction (> 30° bearing difference)', async () => {
     // Heading south-west — opposite of our north-east route
     const plan = {
@@ -391,6 +445,45 @@ describe('computeMatchScore', () => {
 // ─── 2.4 computeMatchedDemandGroups ──────────────────────────────────────────
 
 describe('computeMatchedDemandGroups', () => {
+  for (const { name, planStart, expected } of [
+    { name: 'includes padded boundary planStart 08:30:00', planStart: '08:30:00.000', expected: true },
+    { name: 'excludes sub-second drift planStart 08:30:00.500', planStart: '08:30:00.500', expected: false },
+    { name: 'excludes one minute past padded route end planStart 08:31:00', planStart: '08:31:00.000', expected: false },
+  ]) {
+    itDb(`driver pipeline ${name}`, async () => {
+      await setupTestDb()
+      const departureDay = expected ? '2030-05-08' : planStart.includes('500') ? '2030-05-09' : '2030-05-10'
+      const route = await driverRouteService.publishRoute(
+        (
+          await driverRouteService.createRoute(DRIVER_001_ID, {
+            carId: 'car-001',
+            origin: Q1_PICKUP,
+            destination: TD_DROPOFF,
+            departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+            departureWindowEndDate: `${departureDay}T08:00:00.000Z`,
+            tripPrice: 100000,
+            distanceMeters: 10000,
+          })
+        ).id,
+      )
+      const plan = await planService.createPlan(CLIENT_001_ID, {
+        origin: BASE_PLAN.origin,
+        destination: BASE_PLAN.destination,
+        originWardId: `ward-driver-window-${planStart}`,
+        destinationWardId: `ward-driver-window-dest-${planStart}`,
+        departureWindowStartDate: `${departureDay}T${planStart}Z`,
+        departureWindowEndDate: `${departureDay}T09:30:00.000Z`,
+        passengerCount: 1,
+      })
+
+      const results = await matching.computeMatchedDemandGroups(route.id)
+      assert.equal(
+        results.some((group) => group.memberPlanIds?.includes(plan.id)),
+        expected,
+      )
+    })
+  }
+
   itDb('returns results enriched with scoring fields', async () => {
     await setupTestDb()
     const results = await matching.computeMatchedDemandGroups('route-001')
@@ -691,6 +784,41 @@ describe('computeMatchedDemandGroups', () => {
 // ─── 2.5 computeMatchingRoutesFromCriteria ────────────────────────────────────
 
 describe('computeMatchingRoutesFromCriteria', () => {
+  for (const { name, planStart, expected } of [
+    { name: 'includes padded boundary planStart 08:30:00', planStart: '08:30:00.000', expected: true },
+    { name: 'excludes sub-second drift planStart 08:30:00.500', planStart: '08:30:00.500', expected: false },
+    { name: 'excludes one minute past padded route end planStart 08:31:00', planStart: '08:31:00.000', expected: false },
+  ]) {
+    itDb(`client pipeline ${name}`, async () => {
+      await setupTestDb()
+      const departureDay = expected ? '2030-05-11' : planStart.includes('500') ? '2030-05-12' : '2030-05-13'
+      const route = await driverRouteService.publishRoute(
+        (
+          await driverRouteService.createRoute(DRIVER_001_ID, {
+            carId: 'car-001',
+            origin: Q1_PICKUP,
+            destination: TD_DROPOFF,
+            departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+            departureWindowEndDate: `${departureDay}T08:00:00.000Z`,
+            tripPrice: 100000,
+            distanceMeters: 10000,
+          })
+        ).id,
+      )
+
+      const results = await matching.computeMatchingRoutesFromCriteria({
+        ...BASE_PLAN,
+        departureWindowStartDate: `${departureDay}T${planStart}Z`,
+        departureWindowEndDate: `${departureDay}T09:30:00.000Z`,
+        clientId: CLIENT_001_ID,
+      })
+      assert.equal(
+        results.some((candidate) => candidate.routeId === route.id),
+        expected,
+      )
+    })
+  }
+
   itDb('treats criteria as a plan and returns matches', async () => {
     const criteria = {
       ...BASE_PLAN,

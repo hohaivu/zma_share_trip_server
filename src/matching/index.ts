@@ -12,7 +12,11 @@ import {
 import { getCachedBlockedUsers, getCachedUser } from './cache'
 import { MatchEngine } from './engine'
 import { bearingFilter } from './filters/bearingFilter'
-import { blockOverlapFilter, blocksOverlap } from './filters/blockOverlapFilter'
+import {
+  clientBlockOverlapFilter,
+  driverBlockOverlapFilter,
+  routePlanWindowsOverlap,
+} from './filters/blockOverlapFilter'
 import { clientMutualBlockFilter } from './filters/clientMutualBlockFilter'
 import { mutualBlockFilter } from './filters/mutualBlockFilter'
 import { proximityFilter } from './filters/proximityFilter'
@@ -86,7 +90,12 @@ export async function passesHardFilters(
 ): Promise<boolean> {
   if (route.departureWindowStartDate.slice(0, 10) !== planLike.departureWindowStartDate.slice(0, 10)) return false
 
-  if (!blocksOverlap(route.departureWindowStartDate, route.departureWindowEndDate, planLike.departureWindowStartDate, planLike.departureWindowEndDate)) {
+  if (!routePlanWindowsOverlap(
+    route.departureWindowStartDate,
+    route.departureWindowEndDate,
+    planLike.departureWindowStartDate,
+    planLike.departureWindowEndDate,
+  )) {
     return false
   }
 
@@ -131,7 +140,7 @@ const clientEngine = new MatchEngine<SearchRoutesCriteriaPayload, Route, Matchin
   source: allRoutesSource,
   filters: [
     sameDateFilter,
-    blockOverlapFilter,
+    clientBlockOverlapFilter,
     tierFilter,
     clientMutualBlockFilter,
     bearingFilter,
@@ -177,7 +186,7 @@ const driverEngine = new MatchEngine<DriverMatchQuery, DemandGroupSummary, Deman
   source: demandGroupsSource,
   filters: [
     sameDateFilter,
-    blockOverlapFilter,
+    driverBlockOverlapFilter,
     tierFilter,
     mutualBlockFilter,
     bearingFilter,
