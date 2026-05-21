@@ -1,4 +1,5 @@
 import * as driverRouteRepository from '../repositories/driverRouteRepository'
+import { query } from '../db/connection'
 import * as userService from '../services/userService'
 import { Route, User } from '../types/entities'
 import {
@@ -166,11 +167,34 @@ const clientEngine = new MatchEngine<SearchRoutesCriteriaPayload, Route, Matchin
   buildContext: () => emptyContext(),
 })
 
+async function getActiveClientRouteIds(planId: string): Promise<Set<string>> {
+  const result = await query(
+    `
+      SELECT route_id FROM route_requests
+      WHERE plan_id = ? AND status IN ('pending', 'accepted')
+      UNION
+      SELECT route_id FROM group_offers
+      WHERE plan_id = ? AND status IN ('pending', 'accepted')
+    `,
+    [planId, planId],
+  )
+  return new Set(
+    result.rows
+      .map((row) => row.route_id)
+      .filter((routeId): routeId is string => typeof routeId === 'string'),
+  )
+}
+
 export async function computeMatchingRoutesFromCriteria(
   criteria: SearchRoutesCriteriaPayload,
 ): Promise<MatchingRouteResult[]> {
   await userService.assertUserRole(criteria.clientId, 'client')
-  return clientEngine.run(criteria)
+  const results = await clientEngine.run(criteria)
+  const planId = (criteria as SearchRoutesCriteriaPayload & { planId?: string }).planId
+  if (!planId) return results
+
+  const activeRouteIds = await getActiveClientRouteIds(planId)
+  return results.filter((result) => !activeRouteIds.has(result.routeId))
 }
 
 // ─── Driver pipeline ──────────────────────────────────────────────────────────

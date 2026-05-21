@@ -16,6 +16,7 @@ import { routePlanWindowsOverlap } from '../src/matching/filters/blockOverlapFil
 const itDb = createDbTest('MariaDB unavailable for DB-backed matching tests')
 const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
+const CLIENT_002_ID = 'a1b2c3d4-0004-4000-8000-000000000004'
 
 async function markRouteFeeReserved(routeId: string): Promise<void> {
   await query(
@@ -625,6 +626,102 @@ describe('computeMatchedDemandGroups', () => {
   )
 
   itDb(
+    'trims only unavailable members from mixed demand groups and recomputes summaries',
+    async () => {
+      await setupTestDb()
+      const departureDay = '2030-04-28'
+      const route = await driverRouteService.publishRoute(
+        (
+          await driverRouteService.createRoute(DRIVER_001_ID, {
+            carId: 'car-001',
+            origin: Q1_PICKUP,
+            destination: TD_DROPOFF,
+            departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+            departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
+            tripPrice: 100000,
+            distanceMeters: 10000,
+          })
+        ).id,
+      )
+      const unavailablePlan = await planService.createPlan(CLIENT_001_ID, {
+        origin: Q1_PICKUP,
+        destination: TD_DROPOFF,
+        originWardId: 'ward-pending-mixed',
+        destinationWardId: 'ward-pending-mixed-dest',
+        departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
+        passengerCount: 1,
+      })
+      const survivingPlan = await planService.createPlan(CLIENT_002_ID, {
+        origin: Q1_PICKUP,
+        destination: TD_DROPOFF,
+        originWardId: 'ward-pending-mixed',
+        destinationWardId: 'ward-pending-mixed-dest',
+        departureWindowStartDate: `${departureDay}T07:05:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:35:00.000Z`,
+        passengerCount: 2,
+      })
+
+      await routeRequestService.createRouteRequest(CLIENT_001_ID, unavailablePlan.id, route.id)
+
+      const results = await matching.computeMatchedDemandGroups(route.id)
+      const group = results.find((result) => result.memberPlanIds?.includes(survivingPlan.id))
+      assert.ok(group, 'Expected mixed demand group to remain visible')
+      if (!group) throw new Error('Expected mixed demand group to remain visible')
+      assert.deepEqual(group.memberPlanIds, [survivingPlan.id])
+      assert.deepEqual(group.clientIds, [CLIENT_002_ID])
+      assert.equal(group.memberCount, 1)
+      assert.equal(group.totalPassengerCount, 2)
+      assert.equal(group.memberPlanIds?.includes(unavailablePlan.id), false)
+    },
+  )
+
+  itDb('omits demand groups when all members are unavailable for the route', async () => {
+    await setupTestDb()
+    const departureDay = '2030-04-27'
+    const route = await driverRouteService.publishRoute(
+      (
+        await driverRouteService.createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: Q1_PICKUP,
+          destination: TD_DROPOFF,
+          departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+          departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
+          tripPrice: 100000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const planA = await planService.createPlan(CLIENT_001_ID, {
+      origin: Q1_PICKUP,
+      destination: TD_DROPOFF,
+      originWardId: 'ward-pending-all',
+      destinationWardId: 'ward-pending-all-dest',
+      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const planB = await planService.createPlan(CLIENT_002_ID, {
+      origin: Q1_PICKUP,
+      destination: TD_DROPOFF,
+      originWardId: 'ward-pending-all',
+      destinationWardId: 'ward-pending-all-dest',
+      departureWindowStartDate: `${departureDay}T07:05:00.000Z`,
+      departureWindowEndDate: `${departureDay}T07:35:00.000Z`,
+      passengerCount: 2,
+    })
+
+    await routeRequestService.createRouteRequest(CLIENT_001_ID, planA.id, route.id)
+    await routeRequestService.createRouteRequest(CLIENT_002_ID, planB.id, route.id)
+
+    const results = await matching.computeMatchedDemandGroups(route.id)
+    assert.equal(
+      results.some((group) => group.memberPlanIds?.includes(planA.id) || group.memberPlanIds?.includes(planB.id)),
+      false,
+    )
+  })
+
+  itDb(
     'excludes pending inbound route requests even when linked plan is no longer active',
     async () => {
       await setupTestDb()
@@ -873,87 +970,101 @@ describe('computeMatchingRoutesFromCriteria', () => {
     )
   })
 
-  itDb('omits route with accepted group offer', async () => {
-    const departureDay = '2030-05-04'
-    const route = await driverRouteService.publishRoute(
-      (
-        await driverRouteService.createRoute(DRIVER_001_ID, {
-          carId: 'car-001',
-          origin: Q1_PICKUP,
-          destination: TD_DROPOFF,
-          departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
-          departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
-          tripPrice: 100000,
-          distanceMeters: 10000,
-        })
-      ).id,
-    )
-    await planService.createPlan(CLIENT_001_ID, {
-      origin: Q1_PICKUP,
-      destination: TD_DROPOFF,
-      originWardId: 'ward-search-accepted-offer',
-      destinationWardId: 'ward-search-accepted-offer-dest',
-      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
-      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
-      passengerCount: 1,
-    })
-    const matches = await matching.computeMatchedDemandGroups(route.id)
-    const groupRequest = await groupRequestService.createGroupRequest(
-      DRIVER_001_ID,
-      route.id,
-      matches[0].demandGroupId,
-      matches[0].memberPlanIds || [],
-    )
-    await markRouteFeeReserved(route.id)
-    await groupOfferService.acceptGroupOffer(groupRequest.offers[0].id)
+  for (const status of ['pending', 'accepted'] as const) {
+    itDb(`omits route with ${status} group offer for the same plan`, async () => {
+      await setupTestDb()
+      const departureDay = status === 'pending' ? '2030-05-04' : '2030-05-14'
+      const route = await driverRouteService.publishRoute(
+        (
+          await driverRouteService.createRoute(DRIVER_001_ID, {
+            carId: 'car-001',
+            origin: Q1_PICKUP,
+            destination: TD_DROPOFF,
+            departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+            departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
+            tripPrice: 100000,
+            distanceMeters: 10000,
+          })
+        ).id,
+      )
+      const plan = await planService.createPlan(CLIENT_001_ID, {
+        origin: Q1_PICKUP,
+        destination: TD_DROPOFF,
+        originWardId: `ward-search-${status}-offer`,
+        destinationWardId: `ward-search-${status}-offer-dest`,
+        departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
+        passengerCount: 1,
+      })
+      const matches = await matching.computeMatchedDemandGroups(route.id)
+      const groupRequest = await groupRequestService.createGroupRequest(
+        DRIVER_001_ID,
+        route.id,
+        matches[0].demandGroupId,
+        matches[0].memberPlanIds || [],
+      )
+      if (status === 'accepted') {
+        await markRouteFeeReserved(route.id)
+        await groupOfferService.acceptGroupOffer(groupRequest.offers[0].id)
+      }
 
-    const results = await matching.computeMatchingRoutesFromCriteria({
-      ...BASE_PLAN,
-      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
-      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
-      clientId: CLIENT_001_ID,
+      const criteria = {
+        ...BASE_PLAN,
+        planId: plan.id,
+        departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
+        clientId: CLIENT_001_ID,
+      }
+      const results = await matching.computeMatchingRoutesFromCriteria(criteria)
+      assert.equal(results.some((result) => result.routeId === route.id), false)
     })
-    assert.equal(results.some((result) => result.routeId === route.id), false)
-  })
+  }
 
-  itDb('omits route with accepted route request', async () => {
-    const departureDay = '2030-05-05'
-    const route = await driverRouteService.publishRoute(
-      (
-        await driverRouteService.createRoute(DRIVER_001_ID, {
-          carId: 'car-001',
-          origin: Q1_PICKUP,
-          destination: TD_DROPOFF,
-          departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
-          departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
-          tripPrice: 100000,
-          distanceMeters: 10000,
-        })
-      ).id,
-    )
-    const plan = await planService.createPlan(CLIENT_001_ID, {
-      origin: Q1_PICKUP,
-      destination: TD_DROPOFF,
-      originWardId: 'ward-search-accepted-route-request',
-      destinationWardId: 'ward-search-accepted-route-request-dest',
-      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
-      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
-      passengerCount: 1,
-    })
-    const routeRequest = await routeRequestService.createRouteRequest(
-      CLIENT_001_ID,
-      plan.id,
-      route.id,
-    )
-    await markRouteFeeReserved(route.id)
-    await routeRequestService.acceptRouteRequest(routeRequest.id)
+  for (const status of ['pending', 'accepted'] as const) {
+    itDb(`omits route with ${status} route request for the same plan`, async () => {
+      await setupTestDb()
+      const departureDay = status === 'pending' ? '2030-05-05' : '2030-05-15'
+      const route = await driverRouteService.publishRoute(
+        (
+          await driverRouteService.createRoute(DRIVER_001_ID, {
+            carId: 'car-001',
+            origin: Q1_PICKUP,
+            destination: TD_DROPOFF,
+            departureWindowStartDate: `${departureDay}T07:15:00.000Z`,
+            departureWindowEndDate: `${departureDay}T07:15:00.000Z`,
+            tripPrice: 100000,
+            distanceMeters: 10000,
+          })
+        ).id,
+      )
+      const plan = await planService.createPlan(CLIENT_001_ID, {
+        origin: Q1_PICKUP,
+        destination: TD_DROPOFF,
+        originWardId: `ward-search-${status}-route-request`,
+        destinationWardId: `ward-search-${status}-route-request-dest`,
+        departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
+        passengerCount: 1,
+      })
+      const routeRequest = await routeRequestService.createRouteRequest(
+        CLIENT_001_ID,
+        plan.id,
+        route.id,
+      )
+      if (status === 'accepted') {
+        await markRouteFeeReserved(route.id)
+        await routeRequestService.acceptRouteRequest(routeRequest.id)
+      }
 
-    const results = await matching.computeMatchingRoutesFromCriteria({
-      ...BASE_PLAN,
-      departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
-      departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
-      clientId: CLIENT_001_ID,
+      const criteria = {
+        ...BASE_PLAN,
+        planId: plan.id,
+        departureWindowStartDate: `${departureDay}T07:00:00.000Z`,
+        departureWindowEndDate: `${departureDay}T07:30:00.000Z`,
+        clientId: CLIENT_001_ID,
+      }
+      const results = await matching.computeMatchingRoutesFromCriteria(criteria)
+      assert.equal(results.some((result) => result.routeId === route.id), false)
     })
-    assert.equal(results.some((result) => result.routeId === route.id), false)
-  })
+  }
 })

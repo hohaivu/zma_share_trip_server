@@ -36,6 +36,8 @@ interface PlanValidationRow {
   departureWindowEndDate: string
   hasAcceptedRouteRequest: number | boolean
   hasAcceptedGroupOffer: number | boolean
+  hasPendingRouteRequestForRoute: number | boolean
+  hasActiveGroupOfferForRoute: number | boolean
 }
 
 async function validateMemberPlanIds(
@@ -63,11 +65,19 @@ async function validateMemberPlanIds(
         EXISTS (
           SELECT 1 FROM group_offers go
           WHERE go.plan_id = p.id AND go.status = 'accepted'
-        ) AS has_accepted_group_offer
+        ) AS has_accepted_group_offer,
+        EXISTS (
+          SELECT 1 FROM route_requests rr
+          WHERE rr.plan_id = p.id AND rr.route_id = ? AND rr.status = 'pending'
+        ) AS has_pending_route_request_for_route,
+        EXISTS (
+          SELECT 1 FROM group_offers go
+          WHERE go.plan_id = p.id AND go.route_id = ? AND go.status IN ('pending', 'accepted')
+        ) AS has_active_group_offer_for_route
       FROM plans p
       WHERE p.id IN (${placeholders})
     `,
-    memberPlanIds,
+    [routeId, routeId, ...memberPlanIds],
   )
   const plansById = new Map<string, PlanValidationRow>()
   for (const row of plansRes.rows) {
@@ -86,6 +96,8 @@ async function validateMemberPlanIds(
       plan.status !== 'published' ||
       Boolean(plan.hasAcceptedRouteRequest) ||
       Boolean(plan.hasAcceptedGroupOffer) ||
+      Boolean(plan.hasPendingRouteRequestForRoute) ||
+      Boolean(plan.hasActiveGroupOfferForRoute) ||
       demandGroupIdFor(plan) !== demandGroupId ||
       !routePlanWindowsOverlap(
         route.departureWindowStartDate,
@@ -103,6 +115,12 @@ async function validateMemberPlanIds(
 export const groupRequestService: GroupRequestService = {
   async createGroupRequest(driverId, routeId, demandGroupId, memberPlanIds, note) {
     await assertUserRole(driverId, 'driver')
+
+    if (memberPlanIds.length === 0) {
+      throw HttpError.withSafeDetails(409, 'Demand group members are stale', {
+        staleMemberPlanIds: [],
+      })
+    }
 
     const staleMemberPlanIds = await validateMemberPlanIds(
       routeId,

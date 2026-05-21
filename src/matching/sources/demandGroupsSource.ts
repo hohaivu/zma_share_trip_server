@@ -1,4 +1,5 @@
 import * as demandGroupRepository from '../../repositories/demandGroupRepository'
+import * as planRepository from '../../repositories/planRepository'
 import * as routeRequestRepository from '../../repositories/routeRequestRepository'
 import { DemandGroupSummary } from '../../types/payloads'
 import { CandidateSource } from '../ports'
@@ -14,6 +15,30 @@ export interface DemandGroupCandidate extends DemandGroupSummary {
   departureWindowEndDate: string
 }
 
+async function trimUnavailableMembers(
+  group: DemandGroupSummary,
+  unavailablePlanIds: Set<string>,
+): Promise<DemandGroupSummary | null> {
+  const survivorPlanIds = group.memberPlanIds.filter((planId) => !unavailablePlanIds.has(planId))
+  if (survivorPlanIds.length === 0) return null
+  if (survivorPlanIds.length === group.memberPlanIds.length) return group
+
+  const survivorPlans = []
+  for (const planId of survivorPlanIds) {
+    const plan = await planRepository.getPlan(planId)
+    if (plan) survivorPlans.push(plan)
+  }
+  if (survivorPlans.length === 0) return null
+
+  return {
+    ...group,
+    memberCount: survivorPlans.length,
+    totalPassengerCount: survivorPlans.reduce((sum, plan) => sum + plan.passengerCount, 0),
+    memberPlanIds: survivorPlans.map((plan) => plan.id),
+    clientIds: survivorPlans.map((plan) => plan.clientId),
+  }
+}
+
 export const demandGroupsSource: CandidateSource<DemandGroupsQuery, DemandGroupCandidate> = {
   async list(query) {
     const groups = await demandGroupRepository.deriveDemandGroups({
@@ -27,8 +52,12 @@ export const demandGroupsSource: CandidateSource<DemandGroupsQuery, DemandGroupC
         .map((r) => r.planId)
         .filter((planId): planId is string => Boolean(planId)),
     )
-    return groups
-      .filter((g) => !g.memberPlanIds.some((planId) => pendingInboundPlanIds.has(planId)))
+    const trimmedGroups = await Promise.all(
+      groups.map((group) => trimUnavailableMembers(group, pendingInboundPlanIds)),
+    )
+
+    return trimmedGroups
+      .filter((g): g is DemandGroupSummary => Boolean(g))
       .map((g) => ({
         ...g,
         departureWindowStartDate: query.departureWindowStartDate,
