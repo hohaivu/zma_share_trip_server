@@ -330,7 +330,7 @@ export interface ClientRequestItem {
   clientId: string
   routeId: string
   driverId: string
-  planId: string
+  planId: string | null
   tripPrice: number
   status: string
   note?: string

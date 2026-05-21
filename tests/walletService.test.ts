@@ -191,14 +191,17 @@ describe('MVC wallet-gated accept and cancel transitions', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureWindowStartDate: '2030-06-03T07:00:00.000Z',
-          departureWindowEndDate: '2030-06-03T07:00:00.000Z',
+          departureWindowStartDate: '2030-03-20T00:00:00.000Z',
+          departureWindowEndDate: '2030-03-20T00:30:00.000Z',
           tripPrice: 130000,
           distanceMeters: 10000,
         })
       ).id,
     )
-    const groups = await demandGroupRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups({
+      start: route.departureWindowStartDate,
+      end: route.departureWindowEndDate,
+    })
     const multiMemberGroup = groups.find((g) => g.memberCount > 1)
     assert.ok(multiMemberGroup)
     const request = await groupRequestService.createGroupRequest(
@@ -286,15 +289,18 @@ describe('MVC wallet-gated accept and cancel transitions', () => {
           carId: 'car-001',
           origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
           destination: { lat: 10.85, lng: 106.75, label: 'TD' },
-          departureWindowStartDate: '2030-05-03T07:00:00.000Z',
-          departureWindowEndDate: '2030-05-03T07:00:00.000Z',
+          departureWindowStartDate: '2030-03-20T00:00:00.000Z',
+          departureWindowEndDate: '2030-03-20T00:30:00.000Z',
           tripPrice: 140000,
           distanceMeters: 10000,
         })
       ).id,
     )
 
-    const groups = await demandGroupRepository.deriveDemandGroups()
+    const groups = await demandGroupRepository.deriveDemandGroups({
+      start: route.departureWindowStartDate,
+      end: route.departureWindowEndDate,
+    })
     const multiMemberGroup = groups.find((g) => g.memberCount > 1)
     assert.ok(
       multiMemberGroup,

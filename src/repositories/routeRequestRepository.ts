@@ -46,7 +46,7 @@ async function checkRouteAvailability(
 
 export async function createRouteRequest(
   clientId: string,
-  planId: string,
+  planId: string | null | undefined,
   routeId: string,
   note?: string,
 ): Promise<{ routeRequest: RouteRequest; route: Route }> {
@@ -64,13 +64,15 @@ export async function createRouteRequest(
       )
     }
 
-    const tpRes = await tx.query('SELECT * FROM plans WHERE id = ?', [planId])
-    const tp = toCamelCase<Plan>(tpRes.rows[0])
-    if (!tp) throw new HttpError(400, 'Plan not found')
+    if (planId) {
+      const tpRes = await tx.query('SELECT * FROM plans WHERE id = ?', [planId])
+      const tp = toCamelCase<Plan>(tpRes.rows[0])
+      if (!tp) throw new HttpError(400, 'Plan not found')
+    }
 
     const routeRes = await tx.query('SELECT * FROM routes WHERE id = ? FOR UPDATE', [routeId])
+    if (!routeRes.rows[0]) throw new HttpError(404, 'Route not found')
     const route = mapRoute(routeRes.rows[0])
-    if (!route) throw new HttpError(404, 'Route not found')
 
     if (!(await checkRouteAvailability(tx, routeId))) {
       throw new HttpError(409, 'Route is not available — already has an accepted client')

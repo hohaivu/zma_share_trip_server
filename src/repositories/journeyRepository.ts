@@ -164,7 +164,7 @@ export async function cancelTripTx(tripId: string): Promise<Route | Plan> {
 
 function acceptedPlanId(accepted: AcceptedJourneyMatch): string | null {
   if (!accepted) return null
-  return accepted.kind === 'route_request' ? accepted.request.planId : accepted.offer.planId
+  return accepted.kind === 'route_request' ? accepted.request.planId ?? null : accepted.offer.planId
 }
 
 function acceptedRouteId(accepted: AcceptedJourneyMatch): string | null {

@@ -5,7 +5,7 @@ import * as driverRoutes from '../src/routes/driverRoutes'
 
 describe('driver route location validation helpers', () => {
   it('accepts resolved coordinates for route creation', () => {
-    const error = driverRoutes.validateRouteLocations('POST', {
+    const error = driverRoutes.validateRouteLocations('create', {
       origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
     })
@@ -13,16 +13,22 @@ describe('driver route location validation helpers', () => {
     assert.equal(error, null)
   })
 
-  it('rejects POST requests without both origin and destination', () => {
-    const error = driverRoutes.validateRouteLocations('POST', {
+  it('rejects create mode without both origin and destination', () => {
+    const error = driverRoutes.validateRouteLocations('create', {
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
     })
 
     assert.equal(error, 'Validation Error: Origin and destination are required')
   })
 
+  it('accepts update mode without origin or destination', () => {
+    const error = driverRoutes.validateRouteLocations('update', {})
+
+    assert.equal(error, null)
+  })
+
   it('rejects non-finite coordinates', () => {
-    const error = driverRoutes.validateRouteLocations('POST', {
+    const error = driverRoutes.validateRouteLocations('create', {
       origin: { lat: Number.NaN, lng: 106.7, label: 'Q1' },
       destination: { lat: 10.85, lng: 106.75, label: 'TD' },
     })
@@ -34,7 +40,7 @@ describe('driver route location validation helpers', () => {
   })
 
   it('rejects the 0/0 unresolved sentinel on update', () => {
-    const error = driverRoutes.validateRouteLocations('PUT', {
+    const error = driverRoutes.validateRouteLocations('update', {
       destination: { lat: 0, lng: 0, label: 'TD' },
     })
 

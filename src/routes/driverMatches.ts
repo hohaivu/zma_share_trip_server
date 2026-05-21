@@ -1,6 +1,8 @@
 import { Router } from 'express'
 
 import {
+  getDemandGroup,
+  listDemandGroupMembers,
   listInboundRouteRequests,
   listMatchedDemandGroups,
 } from '../controllers/matchingController'
@@ -8,16 +10,22 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-// GET /api/driver/routes/:id/matched-demand-groups
-router.get(
-  '/routes/:id/matched-demand-groups',
+// POST /api/drivers/routes/matched-demand-groups/list
+router.post(
+  '/routes/matched-demand-groups/list',
   asyncHandler(listMatchedDemandGroups),
 )
 
-// GET /api/driver/routes/:id/incoming-requests
-router.get(
-  '/routes/:id/incoming-requests',
+// POST /api/drivers/routes/inbound-search-requests/list
+router.post(
+  '/routes/inbound-search-requests/list',
   asyncHandler(listInboundRouteRequests),
 )
+
+// POST /api/drivers/demand-groups/get
+router.post('/demand-groups/get', asyncHandler(getDemandGroup))
+
+// POST /api/drivers/demand-groups/members/list
+router.post('/demand-groups/members/list', asyncHandler(listDemandGroupMembers))
 
 export default router

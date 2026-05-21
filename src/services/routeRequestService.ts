@@ -26,7 +26,7 @@ async function filterVisibleForActiveTrip<T extends Pick<RouteRequest, 'routeId'
 
 export async function createRouteRequest(
   clientId: string,
-  planId: string,
+  planId: string | null | undefined,
   routeId: string,
   note?: string,
 ): Promise<RouteRequest> {

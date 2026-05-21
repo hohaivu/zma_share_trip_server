@@ -9,13 +9,13 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-// GET /api/driver/route-requests?driverId= — driver inbox
-router.get('/route-requests', asyncHandler(listRouteRequestsByDriver))
+// POST /api/drivers/search-requests/list — driver inbox
+router.post('/search-requests/list', asyncHandler(listRouteRequestsByDriver))
 
-// POST /api/driver/route-requests/:id/accept
-router.post('/route-requests/:id/accept', asyncHandler(acceptRouteRequest))
+// POST /api/drivers/search-requests/accept
+router.post('/search-requests/accept', asyncHandler(acceptRouteRequest))
 
-// POST /api/driver/route-requests/:id/decline
-router.post('/route-requests/:id/decline', asyncHandler(declineRouteRequest))
+// POST /api/drivers/search-requests/decline
+router.post('/search-requests/decline', asyncHandler(declineRouteRequest))
 
 export default router

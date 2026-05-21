@@ -11,15 +11,15 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-// GET /api/driver/wallet?driverId=
-router.get('/wallet', asyncHandler(getDriverWallet))
+// POST /api/drivers/wallet/get
+router.post('/wallet/get', asyncHandler(getDriverWallet))
 
-// GET /api/driver/wallet/transactions?driverId=&limit=
-router.get('/wallet/transactions', asyncHandler(listDriverWalletTransactions))
+// POST /api/drivers/wallet/transactions/list
+router.post('/wallet/transactions/list', asyncHandler(listDriverWalletTransactions))
 
-// POST /api/driver/wallet/topups
+// POST /api/drivers/wallet/topups/create
 router.post(
-  '/wallet/topups',
+  '/wallet/topups/create',
   validateSchema('body', manualTopUpBodySchema),
   asyncHandler(topUpDriverWallet),
 )

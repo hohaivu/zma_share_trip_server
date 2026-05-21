@@ -1,24 +1,23 @@
 import { Request, Response } from 'express'
 
 import { journeyService, JourneyService } from '../services/journeyService'
-import { notFound } from './helpers'
+import { notFound, requireParam } from './helpers'
 
 export interface JourneysController {
-  getJourneySummary(req: Request<{ id: string }>, res: Response): Promise<void | Response>
-  cancelTrip(req: Request<{ id: string }>, res: Response): Promise<void>
-  completeTrip(req: Request<{ id: string }>, res: Response): Promise<void>
+  getJourneySummary(req: Request, res: Response): Promise<void | Response>
+  cancelTrip(req: Request, res: Response): Promise<void>
+  completeTrip(req: Request, res: Response): Promise<void>
   listSavedLocations(req: Request, res: Response): Promise<void>
   createSavedLocation(req: Request, res: Response): Promise<void>
-  deleteSavedLocation(req: Request<{ id: string }>, res: Response): Promise<void | Response>
+  deleteSavedLocation(req: Request, res: Response): Promise<void | Response>
 }
 
 export function createJourneysController(service: JourneyService): JourneysController {
   return {
     async getJourneySummary(req, res) {
-      const summary = await service.getJourneySummary(
-        req.params.id,
-        req.query.viewerId as string | undefined,
-      )
+      const { id, viewerId } = req.body || {}
+      requireParam(id, 'id is required')
+      const summary = await service.getJourneySummary(id, viewerId)
       if (!summary) {
         return notFound(res, 'Trip not found')
       }
@@ -27,12 +26,16 @@ export function createJourneysController(service: JourneyService): JourneysContr
     },
 
     async cancelTrip(req, res) {
-      const canceled = await service.cancelTrip(req.params.id)
+      const { id } = req.body || {}
+      requireParam(id, 'id is required')
+      const canceled = await service.cancelTrip(id)
       res.json(canceled)
     },
 
     async completeTrip(req, res) {
-      const updated = await service.completeTrip(req.params.id)
+      const { id } = req.body || {}
+      requireParam(id, 'id is required')
+      const updated = await service.completeTrip(id)
       res.json(updated)
     },
 
@@ -46,7 +49,9 @@ export function createJourneysController(service: JourneyService): JourneysContr
     },
 
     async deleteSavedLocation(req, res) {
-      const deleted = await service.deleteSavedLocation(req.params.id)
+      const { id } = req.body || {}
+      requireParam(id, 'id is required')
+      const deleted = await service.deleteSavedLocation(id)
       if (!deleted) {
         return notFound(res, 'Saved location not found')
       }

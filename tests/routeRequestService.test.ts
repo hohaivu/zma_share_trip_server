@@ -78,16 +78,31 @@ describe('MVC route request service plan linkage', () => {
     )
   })
 
-  it('rejects search requests without plan linkage', async () => {
+  it('creates search requests without plan linkage', async () => {
+    await setupTestDb()
+    const sreq = await routeRequestService.createRouteRequest(
+      CLIENT_001_ID,
+      undefined,
+      'route-002',
+    )
+    assert.equal(sreq.status, 'pending')
+    assert.equal(sreq.planId, null)
+
+    const persistedRes = await query('SELECT plan_id FROM route_requests WHERE id = $1', [sreq.id])
+    assert.equal(persistedRes.rows[0]?.plan_id, null)
+  })
+
+  it('rejects unknown routes with 404 before mapping', async () => {
     await setupTestDb()
     await assert.rejects(
-      async () =>
-        await routeRequestService.createRouteRequest(
-          CLIENT_001_ID,
-          null as unknown as string,
-          'route-002',
-        ),
-      /Plan not found/,
+      async () => routeRequestService.createRouteRequest(CLIENT_001_ID, undefined, 'route-missing'),
+      (err: unknown) => {
+        assert.ok(err && typeof err === 'object')
+        const httpError = err as { statusCode?: number; message?: string }
+        assert.equal(httpError.statusCode, 404)
+        assert.equal(httpError.message, 'Route not found')
+        return true
+      },
     )
   })
 })

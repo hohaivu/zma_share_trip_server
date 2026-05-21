@@ -27,7 +27,7 @@ function mapRouteRequestToClientRequestItem(request: RouteRequest): ClientReques
     clientId: request.clientId,
     routeId: request.routeId,
     driverId: request.driverId,
-    planId: request.planId,
+    planId: request.planId ?? null,
     tripPrice: request.tripPrice ?? 0,
     status: request.status,
     note: request.note ?? undefined,

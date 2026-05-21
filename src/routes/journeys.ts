@@ -5,22 +5,22 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-// GET /api/journeys/:id/summary
-router.get('/journeys/:id/summary', asyncHandler(journeysController.getJourneySummary))
+// POST /api/journeys/get-summary
+router.post('/journeys/get-summary', asyncHandler(journeysController.getJourneySummary))
 
-// POST /api/trips/:id/cancel
-router.post('/trips/:id/cancel', asyncHandler(journeysController.cancelTrip))
+// POST /api/trips/cancel
+router.post('/trips/cancel', asyncHandler(journeysController.cancelTrip))
 
-// POST /api/trips/:id/complete
-router.post('/trips/:id/complete', asyncHandler(journeysController.completeTrip))
+// POST /api/trips/complete
+router.post('/trips/complete', asyncHandler(journeysController.completeTrip))
 
 // Deprecated: saved locations
-router.get('/trips/saved-locations', asyncHandler(journeysController.listSavedLocations))
+router.post('/trips/saved-locations/list', asyncHandler(journeysController.listSavedLocations))
 
-router.post('/trips/saved-locations', asyncHandler(journeysController.createSavedLocation))
+router.post('/trips/saved-locations/create', asyncHandler(journeysController.createSavedLocation))
 
-router.delete(
-  '/trips/saved-locations/:id',
+router.post(
+  '/trips/saved-locations/delete',
   asyncHandler(journeysController.deleteSavedLocation),
 )
 

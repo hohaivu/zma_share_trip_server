@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 /**
- * Body schema for `POST /api/driver/wallet/topups`.
+ * Body schema for `POST /api/drivers/wallet/topups/create`.
  *
  * Validation rules mirror the previous inline checks in
  * `src/routes/driverWallet.ts`:

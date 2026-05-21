@@ -14,14 +14,17 @@ export async function createCar(req: Request, res: Response) {
 }
 
 export async function listCars(req: Request, res: Response) {
-  const { ownerId } = req.query
-  requireParam(ownerId as string, 'ownerId query is required')
+  const { ownerId } = req.body || {}
+  requireParam(ownerId, 'ownerId is required')
 
-  res.json(await carService.listCarsByOwner(ownerId as string))
+  res.json(await carService.listCarsByOwner(ownerId))
 }
 
 export async function getCar(req: Request, res: Response) {
-  const car = await carService.getCarById(req.params.id as string)
+  const { id } = req.body || {}
+  requireParam(id, 'id is required')
+
+  const car = await carService.getCarById(id)
   if (!car) {
     return notFound(res, 'Car not found')
   }
@@ -30,7 +33,10 @@ export async function getCar(req: Request, res: Response) {
 }
 
 export async function updateCar(req: Request, res: Response) {
-  const car = await carService.updateCar(req.params.id as string, req.body || {})
+  const { id, ...patch } = req.body || {}
+  requireParam(id, 'id is required')
+
+  const car = await carService.updateCar(id, patch)
   if (!car) {
     return notFound(res, 'Car not found')
   }
@@ -39,7 +45,10 @@ export async function updateCar(req: Request, res: Response) {
 }
 
 export async function deleteCar(req: Request, res: Response) {
-  const deleted = await carService.deleteCar(req.params.id as string)
+  const { id } = req.body || {}
+  requireParam(id, 'id is required')
+
+  const deleted = await carService.deleteCar(id)
   if (!deleted) {
     return notFound(res, 'Car not found')
   }

@@ -5,14 +5,14 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-router.post('/cars', asyncHandler(carsController.createCar))
+router.post('/cars/list', asyncHandler(carsController.listCars))
 
-router.get('/cars', asyncHandler(carsController.listCars))
+router.post('/cars/get', asyncHandler(carsController.getCar))
 
-router.get('/cars/:id', asyncHandler(carsController.getCar))
+router.post('/cars/create', asyncHandler(carsController.createCar))
 
-router.put('/cars/:id', asyncHandler(carsController.updateCar))
+router.post('/cars/update', asyncHandler(carsController.updateCar))
 
-router.delete('/cars/:id', asyncHandler(carsController.deleteCar))
+router.post('/cars/delete', asyncHandler(carsController.deleteCar))
 
 export default router

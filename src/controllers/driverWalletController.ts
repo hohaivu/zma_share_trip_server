@@ -5,22 +5,20 @@ import {
   normalizeWalletError,
   parsePositiveInteger,
   requireBodyString,
-  singleQueryValue,
 } from '../shared/requestHelpers'
 import { created, ok } from '../shared/responseEnvelope'
 import * as walletService from '../services/walletService'
 import { ManualTopUpPayload } from '../types/payloads'
-import { requireParam } from '../routes/helpers'
 
 interface ManualTopUpRequestBody extends ManualTopUpPayload {
   driverId: string
 }
 
 export async function getDriverWallet(req: Request, res: Response) {
-  const driverId = singleQueryValue(req.query.driverId)
-  requireParam(driverId, 'Wallet validation error: driverId query is required')
+  const { driverId } = req.body || {}
+  const driverIdValue = requireBodyString(driverId, 'driverId')
 
-  const summary = await walletService.getDriverWalletSummary(driverId)
+  const summary = await walletService.getDriverWalletSummary(driverIdValue)
   res.json(ok(summary))
 }
 
@@ -28,12 +26,15 @@ export async function listDriverWalletTransactions(
   req: Request,
   res: Response,
 ) {
-  const driverId = singleQueryValue(req.query.driverId)
-  requireParam(driverId, 'Wallet validation error: driverId query is required')
+  const { driverId, limit: limitInput } = req.body || {}
+  const driverIdValue = requireBodyString(driverId, 'driverId')
 
-  const limit = parsePositiveInteger(singleQueryValue(req.query.limit), 'limit')
+  const limit = parsePositiveInteger(
+    limitInput === undefined ? undefined : String(limitInput),
+    'limit',
+  )
 
-  const items = await walletService.listDriverWalletTransactions(driverId, limit)
+  const items = await walletService.listDriverWalletTransactions(driverIdValue, limit)
   res.json(ok(items, { count: items.length }))
 }
 

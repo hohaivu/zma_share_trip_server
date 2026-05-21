@@ -2,7 +2,6 @@ import { Request, Response } from 'express'
 
 import { HttpError } from '../http-error'
 import { groupRequestService } from '../services/groupRequestService'
-import { requireQueryString } from './helpers'
 
 function requireBodyParam(value: unknown, message: string): asserts value {
   if (!value) throw new HttpError(400, message)
@@ -40,16 +39,16 @@ export function createGroupRequestsController(): GroupRequestsController {
     },
 
     async listGroupRequests(req, res) {
-      const driverId = requireQueryString(
-        req.query.driverId,
-        'driverId query is required',
-      )
+      const { driverId } = req.body || {}
+      requireBodyParam(driverId, 'driverId is required')
       res.json(await groupRequestService.listGroupRequestsByDriver(driverId))
     },
 
     async cancelGroupRequest(req, res) {
+      const { id } = req.body || {}
+      requireBodyParam(id, 'id is required')
       const result = await groupRequestService.cancelGroupRequest(
-        req.params.id as string,
+        id,
       )
       res.json(result)
     },

@@ -13,8 +13,8 @@ afterEach(() => {
   clientInboxService.listClientInbox = originalListClientInbox
 })
 
-function makeReq(clientId?: string): Request {
-  return { query: clientId ? { clientId } : {} } as unknown as Request
+function makeReq(body?: { clientId?: string }): Request {
+  return { body: body ?? {} } as unknown as Request
 }
 
 function makeRes(): Response & { body?: unknown } {
@@ -79,12 +79,12 @@ describe('ClientInboxController.listClientInbox', () => {
     clientInboxService.listClientInbox = async () => items
 
     const res = makeRes()
-    await createClientInboxController().listClientInbox(makeReq('client-001'), res)
+    await createClientInboxController().listClientInbox(makeReq({ clientId: 'client-001' }), res)
 
     assert.deepEqual((res.body as { data: ClientRequestItem[] }).data, items)
   })
 
-  it('throws when clientId query param is missing', async () => {
+  it('throws when clientId body field is missing', async () => {
     const res = makeRes()
     await assert.rejects(
       () => createClientInboxController().listClientInbox(makeReq(), res),

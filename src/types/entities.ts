@@ -181,7 +181,7 @@ export interface GroupOffer {
 export interface RouteRequest {
   id: string
   clientId: string
-  planId: string
+  planId?: string | null
   routeId: string
   driverId: string
   tripPrice?: number

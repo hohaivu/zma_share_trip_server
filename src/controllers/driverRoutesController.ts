@@ -1,13 +1,13 @@
-import { NextFunction, Request, Response } from 'express'
+import { NextFunction, Request, RequestHandler, Response } from 'express'
 
 import { hasUsablePoint } from '../matching'
 import * as routeService from '../services/driverRouteService'
 import { errorBody, httpErrorCode } from '../shared/responseEnvelope'
 import { CreateRouteRequestBody, UpdateRoutePayload } from '../types/payloads'
-import { notFound, requireBodyOrQueryString, requireQueryString } from './helpers'
+import { notFound, requireParam } from './helpers'
 
 export interface DriverRoutesController {
-  rejectUnresolvedCoordinates(req: Request, res: Response, next: NextFunction): void | Response
+  rejectUnresolvedCoordinates(mode: RouteLocationValidationMode): RequestHandler
   createRoute(
     req: Request<Record<string, never>, unknown, CreateRouteRequestBody>,
     res: Response,
@@ -15,18 +15,20 @@ export interface DriverRoutesController {
   listRoutes(req: Request, res: Response): Promise<void>
   getRoute(req: Request, res: Response): Promise<void | Response>
   updateRoute(
-    req: Request<{ id: string }, unknown, UpdateRoutePayload>,
+    req: Request<Record<string, never>, unknown, UpdateRoutePayload & { id: string }>,
     res: Response,
   ): Promise<void | Response>
 }
 
+export type RouteLocationValidationMode = 'create' | 'update'
+
 export function validateRouteLocations(
-  method: string,
+  mode: RouteLocationValidationMode,
   body: Pick<UpdateRoutePayload, 'origin' | 'destination'> | undefined,
 ): string | null {
   const { origin, destination } = body || {}
 
-  if (method === 'POST' && (!origin || !destination)) {
+  if (mode === 'create' && (!origin || !destination)) {
     return 'Validation Error: Origin and destination are required'
   }
 
@@ -39,42 +41,43 @@ export function validateRouteLocations(
 
 export function createDriverRoutesController(): DriverRoutesController {
   return {
-    rejectUnresolvedCoordinates(req, res, next) {
-      const validationError = validateRouteLocations(req.method, req.body)
-      if (validationError) {
-        return res
-          .status(400)
-          .json(errorBody(httpErrorCode(400), validationError))
+    rejectUnresolvedCoordinates(mode) {
+      return (req: Request, res: Response, next: NextFunction) => {
+        const validationError = validateRouteLocations(mode, req.body)
+        if (validationError) {
+          return res
+            .status(400)
+            .json(errorBody(httpErrorCode(400), validationError))
+        }
+        next()
       }
-      next()
     },
 
     async createRoute(req, res) {
-      const { driverId, ...data } = req.body
-      const driverIdValue = requireBodyOrQueryString(
-        driverId,
-        undefined,
-        'driverId is required',
-      )
+      const { driverId, ...data } = req.body || {}
+      requireParam(driverId, 'driverId is required')
 
-      const route = await routeService.createRoute(driverIdValue, data)
+      const route = await routeService.createRoute(driverId, data)
       res.status(201).json(route)
     },
 
     async listRoutes(req, res) {
-      const { driverId, scope } = req.query
-      const driverIdValue = requireQueryString(driverId, 'driverId query is required')
+      const { driverId, scope } = req.body || {}
+      requireParam(driverId, 'driverId is required')
 
       res.json(
         await routeService.listRoutesByDriver(
-          driverIdValue,
+          driverId,
           scope === 'history' ? 'history' : 'active',
         ),
       )
     },
 
     async getRoute(req, res) {
-      const route = await routeService.getRoute(req.params.id as string)
+      const { id } = req.body || {}
+      requireParam(id, 'id is required')
+
+      const route = await routeService.getRoute(id)
       if (!route) {
         return notFound(res, 'Route not found')
       }
@@ -83,10 +86,13 @@ export function createDriverRoutesController(): DriverRoutesController {
     },
 
     async updateRoute(req, res) {
+      const { id, ...data } = req.body || {}
+      requireParam(id, 'id is required')
+
       const route =
-        req.body.status === 'published'
-          ? await routeService.publishRoute(req.params.id, req.body)
-          : await routeService.updateRoute(req.params.id, req.body)
+        data.status === 'published'
+          ? await routeService.publishRoute(id, data)
+          : await routeService.updateRoute(id, data)
       if (!route) {
         return notFound(res, 'Route not found')
       }

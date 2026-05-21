@@ -5,40 +5,38 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-router.get(
-  '/users/:id',
+router.post(
+  '/users/get',
   asyncHandler(usersController.getUser),
 )
 
-router.patch(
-  '/users/:id',
+router.post(
+  '/users/update',
   asyncHandler(usersController.updateUser),
 )
 
-// POST /api/users/:id/mode — save preferred mode
 router.post(
-  '/identities/:id/mode',
+  '/identities/mode/update',
   asyncHandler(usersController.setIdentityMode),
 )
 
-// GET /api/users/:id/mode — read preferred mode
-router.get(
-  '/identities/:id/mode',
+router.post(
+  '/identities/mode/get',
   asyncHandler(usersController.getIdentityMode),
 )
 
 router.post(
-  '/users/:id/mode',
+  '/users/mode/update',
   asyncHandler(usersController.setUserMode),
 )
 
-router.get(
-  '/users/:id/mode',
+router.post(
+  '/users/mode/get',
   asyncHandler(usersController.getUserMode),
 )
 
-router.get(
-  '/users/:id/reviews',
+router.post(
+  '/users/reviews/list',
   asyncHandler(usersController.listReviewsByReviewer),
 )
 
@@ -52,43 +50,43 @@ router.post(
   asyncHandler(usersController.createReport),
 )
 
-router.get(
-  '/users/:id/reports',
+router.post(
+  '/users/reports/list',
   asyncHandler(usersController.listReportsByReporter),
 )
 
-router.get(
-  '/users/:id/blocked-users',
+router.post(
+  '/users/blocked-users/list',
   asyncHandler(usersController.getBlockedUsers),
 )
 
 router.post(
-  '/users/:id/blocked-users',
+  '/users/blocked-users/create',
   asyncHandler(usersController.blockUser),
 )
 
-router.delete(
-  '/users/:id/blocked-users/:blockedId',
+router.post(
+  '/users/blocked-users/delete',
   asyncHandler(usersController.unblockUser),
 )
 
-router.get(
-  '/users/:id/notifications',
+router.post(
+  '/users/notifications/list',
   asyncHandler(usersController.listNotifications),
 )
 
 router.post(
-  '/users/:id/notifications',
+  '/users/notifications/create',
   asyncHandler(usersController.createNotification),
 )
 
 router.post(
-  '/users/:id/notifications/:notificationId/read',
+  '/users/notifications/read',
   asyncHandler(usersController.markNotificationRead),
 )
 
 router.post(
-  '/users/:id/notifications/read-all',
+  '/users/notifications/read-all',
   asyncHandler(usersController.markAllNotificationsRead),
 )
 

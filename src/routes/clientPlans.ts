@@ -5,19 +5,19 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-// POST /api/client/trip-plans — create a plan
-router.post('/trip-plans', asyncHandler(clientPlansController.createPlan))
+// POST /api/clients/trip-plans/create — create a plan
+router.post('/trip-plans/create', asyncHandler(clientPlansController.createPlan))
 
-// GET /api/client/trip-plans?clientId= — list by client
-router.get('/trip-plans', asyncHandler(clientPlansController.listPlans))
+// POST /api/clients/trip-plans/list — list by client
+router.post('/trip-plans/list', asyncHandler(clientPlansController.listPlans))
 
-// GET /api/client/trip-plans/:id — detail
-router.get('/trip-plans/:id', asyncHandler(clientPlansController.getPlan))
+// POST /api/clients/trip-plans/get — detail
+router.post('/trip-plans/get', asyncHandler(clientPlansController.getPlan))
 
-// PUT /api/client/trip-plans/:id — update
-router.put('/trip-plans/:id', asyncHandler(clientPlansController.updatePlan))
+// POST /api/clients/trip-plans/update — update
+router.post('/trip-plans/update', asyncHandler(clientPlansController.updatePlan))
 
-// DELETE /api/client/trip-plans/:id — cancel own plan
-router.delete('/trip-plans/:id', asyncHandler(clientPlansController.cancelPlan))
+// POST /api/clients/trip-plans/cancel — cancel own plan
+router.post('/trip-plans/cancel', asyncHandler(clientPlansController.cancelPlan))
 
 export default router

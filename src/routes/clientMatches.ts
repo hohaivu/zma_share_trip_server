@@ -5,7 +5,7 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-// POST /api/client/route-suggestions
-router.post('/route-suggestions', asyncHandler(searchRoutes))
+// POST /api/clients/search-routes/list
+router.post('/search-routes/list', asyncHandler(searchRoutes))
 
 export default router

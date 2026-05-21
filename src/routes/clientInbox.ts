@@ -5,7 +5,7 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-// GET /api/client/inbox?clientId=
-router.get('/inbox', asyncHandler(clientInboxController.listClientInbox))
+// POST /api/clients/inbox/list
+router.post('/inbox/list', asyncHandler(clientInboxController.listClientInbox))
 
 export default router

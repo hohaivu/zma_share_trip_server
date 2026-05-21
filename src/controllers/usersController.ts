@@ -22,26 +22,32 @@ export interface UsersController {
     req: Request<Record<string, never>, unknown, BootstrapPayload>,
     res: Response,
   ): Promise<void>
-  getUser(req: Request<{ id: string }>, res: Response): Promise<void | Response>
+  getUser(req: Request<Record<string, never>, unknown, { id: string }>, res: Response): Promise<void | Response>
   updateUser(
-    req: Request<{ id: string }, unknown, UpdateUserPayload>,
+    req: Request<Record<string, never>, unknown, UpdateUserPayload & { id: string }>,
     res: Response,
   ): Promise<void | Response>
-  setIdentityMode(req: Request<{ id: string }>, res: Response): Promise<void | Response>
-  getIdentityMode(req: Request<{ id: string }>, res: Response): Promise<void | Response>
-  setUserMode(req: Request<{ id: string }>, res: Response): Promise<void | Response>
-  getUserMode(req: Request<{ id: string }>, res: Response): Promise<void | Response>
-  listReviewsByReviewer(req: Request<{ id: string }>, res: Response): Promise<void>
+  setIdentityMode(req: Request<Record<string, never>, unknown, { id: string; preferredMode: string }>, res: Response): Promise<void | Response>
+  getIdentityMode(req: Request<Record<string, never>, unknown, { id: string }>, res: Response): Promise<void | Response>
+  setUserMode(req: Request<Record<string, never>, unknown, { id: string; preferredMode: string }>, res: Response): Promise<void | Response>
+  getUserMode(req: Request<Record<string, never>, unknown, { id: string }>, res: Response): Promise<void | Response>
+  listReviewsByReviewer(req: Request<Record<string, never>, unknown, { id: string }>, res: Response): Promise<void>
   createReview(req: Request, res: Response): Promise<void>
   createReport(req: Request, res: Response): Promise<void>
-  listReportsByReporter(req: Request<{ id: string }>, res: Response): Promise<void>
-  getBlockedUsers(req: Request<{ id: string }>, res: Response): Promise<void>
-  blockUser(req: Request<{ id: string }>, res: Response): Promise<void>
-  unblockUser(req: Request<{ id: string; blockedId: string }>, res: Response): Promise<void>
-  listNotifications(req: Request<{ id: string }>, res: Response): Promise<void>
-  createNotification(req: Request<{ id: string }>, res: Response): Promise<void>
-  markNotificationRead(req: Request<{ id: string; notificationId: string }>, res: Response): Promise<void | Response>
-  markAllNotificationsRead(req: Request<{ id: string }>, res: Response): Promise<void>
+  listReportsByReporter(req: Request<Record<string, never>, unknown, { id: string }>, res: Response): Promise<void>
+  getBlockedUsers(req: Request<Record<string, never>, unknown, { id: string }>, res: Response): Promise<void>
+  blockUser(req: Request<Record<string, never>, unknown, { id: string; blockedId: string }>, res: Response): Promise<void>
+  unblockUser(req: Request<Record<string, never>, unknown, { id: string; blockedId: string }>, res: Response): Promise<void>
+  listNotifications(req: Request<Record<string, never>, unknown, { id: string }>, res: Response): Promise<void>
+  createNotification(req: Request<Record<string, never>, unknown, CreateNotificationPayload & { id: string }>, res: Response): Promise<void>
+  markNotificationRead(req: Request<Record<string, never>, unknown, { id: string; notificationId: string }>, res: Response): Promise<void | Response>
+  markAllNotificationsRead(req: Request<Record<string, never>, unknown, { id: string }>, res: Response): Promise<void>
+}
+
+function readId(req: Request, message = 'id is required'): string {
+  const { id } = req.body || {}
+  requireControllerParam(id, message)
+  return id as string
 }
 
 function readPreferredMode(req: Request): string {
@@ -70,15 +76,16 @@ export function createUsersController(): UsersController {
     },
 
     async getUser(req, res) {
-      const user = await userService.getUser(req.params.id as string)
+      const user = await userService.getUser(readId(req))
       if (!user) return notFound(res, 'User not found')
       res.json(user)
     },
 
     async updateUser(req, res) {
+      const { id: _id, ...editablePayload } = req.body || {}
       const user = await userService.updateUser(
-        req.params.id as string,
-        req.body || {},
+        readId(req),
+        editablePayload,
       )
       if (!user) return notFound(res, 'User not found')
       res.json(user)
@@ -86,7 +93,7 @@ export function createUsersController(): UsersController {
 
     async setIdentityMode(req, res) {
       const result = await userService.setUserMode(
-        req.params.id as string,
+        readId(req),
         readPreferredMode(req),
       )
       if (!result) return notFound(res, 'User not found')
@@ -94,14 +101,14 @@ export function createUsersController(): UsersController {
     },
 
     async getIdentityMode(req, res) {
-      const result = await userService.getUserMode(req.params.id as string)
+      const result = await userService.getUserMode(readId(req))
       if (!result) return notFound(res, 'User not found')
       res.json(result)
     },
 
     async setUserMode(req, res) {
       const result = await userService.setModeForUser(
-        req.params.id as string,
+        readId(req),
         readPreferredMode(req),
       )
       if (!result) return notFound(res, 'User not found')
@@ -109,13 +116,13 @@ export function createUsersController(): UsersController {
     },
 
     async getUserMode(req, res) {
-      const result = await userService.getModeForUser(req.params.id as string)
+      const result = await userService.getModeForUser(readId(req))
       if (!result) return notFound(res, 'User not found')
       res.json(result)
     },
 
     async listReviewsByReviewer(req, res) {
-      const reviews = await userService.listReviewsByReviewer(req.params.id as string)
+      const reviews = await userService.listReviewsByReviewer(readId(req))
       res.json({ items: reviews })
     },
 
@@ -154,32 +161,34 @@ export function createUsersController(): UsersController {
     },
 
     async listReportsByReporter(req, res) {
-      const reports = await userService.listReportsByReporter(req.params.id as string)
+      const reports = await userService.listReportsByReporter(readId(req))
       res.json({ items: reports })
     },
 
     async getBlockedUsers(req, res) {
-      const blockedUserIds = await userService.getBlockedUsers(req.params.id as string)
+      const blockedUserIds = await userService.getBlockedUsers(readId(req))
       res.json({ blockedUserIds })
     },
 
     async blockUser(req, res) {
       const { blockedId } = req.body || {}
       requireControllerParam(blockedId, 'blockedId is required')
-      const blockedUserIds = await userService.blockUser(req.params.id as string, blockedId)
+      const blockedUserIds = await userService.blockUser(readId(req), blockedId)
       res.status(201).json({ blockedUserIds })
     },
 
     async unblockUser(req, res) {
+      const { blockedId } = req.body || {}
+      requireControllerParam(blockedId, 'blockedId is required')
       const blockedUserIds = await userService.unblockUser(
-        req.params.id as string,
-        req.params.blockedId as string,
+        readId(req),
+        blockedId as string,
       )
       res.json({ blockedUserIds })
     },
 
     async listNotifications(req, res) {
-      const items = await userService.listNotifications(req.params.id as string)
+      const items = await userService.listNotifications(readId(req))
       res.json({ items })
     },
 
@@ -190,7 +199,7 @@ export function createUsersController(): UsersController {
       requireControllerParam(body, 'body is required')
 
       const notification = await userService.createNotification({
-        recipientId: req.params.id as string,
+        recipientId: readId(req),
         type,
         title,
         body,
@@ -203,16 +212,18 @@ export function createUsersController(): UsersController {
     },
 
     async markNotificationRead(req, res) {
+      const { notificationId } = req.body || {}
+      requireControllerParam(notificationId, 'notificationId is required')
       const notification = await userService.markNotificationRead(
-        req.params.id as string,
-        req.params.notificationId as string,
+        readId(req),
+        notificationId as string,
       )
       if (!notification) return notFound(res, 'Notification not found')
       res.json(notification)
     },
 
     async markAllNotificationsRead(req, res) {
-      await userService.markAllNotificationsRead(req.params.id as string)
+      await userService.markAllNotificationsRead(readId(req))
       res.status(204).end()
     },
   }

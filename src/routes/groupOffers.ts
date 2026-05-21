@@ -5,13 +5,13 @@ import { asyncHandler } from './helpers'
 
 const router = Router()
 
-// GET /api/client/incoming-driver-offers?clientId= — client inbox
-router.get('/incoming-driver-offers', asyncHandler(groupOffersController.listGroupOffers))
+// POST /api/clients/group-offers/list — client inbox
+router.post('/group-offers/list', asyncHandler(groupOffersController.listGroupOffers))
 
-// POST /api/client/group-offers/:id/accept
-router.post('/group-offers/:id/accept', asyncHandler(groupOffersController.acceptGroupOffer))
+// POST /api/clients/group-offers/accept
+router.post('/group-offers/accept', asyncHandler(groupOffersController.acceptGroupOffer))
 
-// POST /api/client/group-offers/:id/decline
-router.post('/group-offers/:id/decline', asyncHandler(groupOffersController.declineGroupOffer))
+// POST /api/clients/group-offers/decline
+router.post('/group-offers/decline', asyncHandler(groupOffersController.declineGroupOffer))
 
 export default router
