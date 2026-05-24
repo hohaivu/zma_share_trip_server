@@ -27,6 +27,8 @@ export interface ListGroupRequestsByDriverFilters {
   status?: string
 }
 
+export type SentGroupRequest = GroupRequest & { memberPlanIds: string[] }
+
 export async function createGroupRequestWithOffers(
   input: CreateGroupRequestTxInput,
 ): Promise<{ groupRequest: GroupRequest; offers: GroupOffer[] }> {
@@ -144,7 +146,7 @@ export async function cancelGroupRequestWithOffers(
 export async function listGroupRequestsByDriver(
   driverId: string,
   filters: ListGroupRequestsByDriverFilters = {},
-): Promise<GroupRequest[]> {
+): Promise<SentGroupRequest[]> {
   const conditions = ['driver_id = ?']
   const params = [driverId]
 
@@ -165,8 +167,32 @@ export async function listGroupRequestsByDriver(
   }
 
   const result = await query(
-    `SELECT * FROM group_requests WHERE ${conditions.join(' AND ')}`,
+    `
+      SELECT
+        gr.*,
+        covered.member_plan_ids
+      FROM group_requests gr
+      LEFT JOIN (
+        SELECT
+          group_request_id,
+          route_id,
+          GROUP_CONCAT(DISTINCT plan_id ORDER BY plan_id) AS member_plan_ids
+        FROM group_offers
+        WHERE status IN ('pending', 'accepted')
+        GROUP BY group_request_id, route_id
+      ) covered
+        ON covered.group_request_id = gr.id
+        AND covered.route_id = gr.route_id
+      WHERE ${conditions.map((condition) => `gr.${condition}`).join(' AND ')}
+    `,
     params,
   )
-  return mapRows<GroupRequest>(result.rows)
+  return result.rows.map((row) => {
+    const request = toCamelCase<GroupRequest & { memberPlanIds?: string }>(row)
+    if (!request) throw new Error('Failed to map group request')
+    const memberPlanIds = request.memberPlanIds
+      ? request.memberPlanIds.split(',')
+      : []
+    return { ...request, memberPlanIds }
+  })
 }

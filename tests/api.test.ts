@@ -1962,7 +1962,12 @@ describe('POST /api/drivers/group-requests/*', () => {
       driverId: DRIVER_001_ID,
     })
     assert.equal(listRes.status, 200)
-    assert.equal(listRes.body.some((item: { id: string }) => item.id === createRes.body.groupRequest.id), true)
+    const listedRequest = listRes.body.find(
+      (item: { id: string }) => item.id === createRes.body.groupRequest.id,
+    )
+    assert.ok(listedRequest)
+    assert.equal(listedRequest.status, 'pending')
+    assert.deepEqual(listedRequest.memberPlanIds.sort(), targetGroup!.memberPlanIds.sort())
 
     const scopedListRes = await request(server, 'POST', '/api/drivers/group-requests/list', {
       driverId: DRIVER_001_ID,

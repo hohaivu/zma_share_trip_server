@@ -207,4 +207,76 @@ describe('group request memberPlanIds validation', () => {
     assert.equal(requests.rows.length, 0)
     assert.equal(offers.rows.length, 0)
   })
+
+  it('lists sent group requests with active covered memberPlanIds only', async () => {
+    await setupTestDb()
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const group = groups.find((candidate) => candidate.memberCount > 1)
+    if (!group) throw new Error('Expected a multi-member demand group')
+
+    const selectedMemberPlanIds = group.memberPlanIds.slice(0, 2)
+    const result = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      group.id,
+      selectedMemberPlanIds,
+      'read-model coverage',
+    )
+
+    await query(
+      "UPDATE group_offers SET status = 'accepted' WHERE group_request_id = ? AND plan_id = ?",
+      [result.groupRequest.id, selectedMemberPlanIds[0]],
+    )
+    await query(
+      "INSERT INTO group_offers (id, group_request_id, route_id, driver_id, client_id, plan_id, trip_price, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'closed', NOW())",
+      [
+        'goffer-closed-read-model-test',
+        result.groupRequest.id,
+        'route-001',
+        DRIVER_001_ID,
+        CLIENT_001_ID,
+        'plan-003',
+        120000,
+      ],
+    )
+
+    const requests = await groupRequestService.listGroupRequestsByDriver(
+      DRIVER_001_ID,
+      { routeId: 'route-001', statuses: ['pending'] },
+    )
+    const listedRequest = requests.find((request) => request.id === result.groupRequest.id)
+
+    assert.ok(listedRequest)
+    assert.equal(listedRequest.routeId, 'route-001')
+    assert.equal(listedRequest.demandGroupId, group.id)
+    assert.equal(listedRequest.status, 'pending')
+    assert.equal(listedRequest.note, 'read-model coverage')
+    assert.deepEqual(listedRequest.memberPlanIds.sort(), selectedMemberPlanIds.sort())
+  })
+
+  it('lists empty memberPlanIds when a sent group request has no active offers', async () => {
+    await setupTestDb()
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const group = groups.find((candidate) => candidate.memberCount > 1)
+    if (!group) throw new Error('Expected a multi-member demand group')
+
+    const result = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      group.id,
+      [group.memberPlanIds[0]],
+    )
+    await query("UPDATE group_offers SET status = 'closed' WHERE group_request_id = ?", [
+      result.groupRequest.id,
+    ])
+
+    const requests = await groupRequestService.listGroupRequestsByDriver(
+      DRIVER_001_ID,
+      { routeId: 'route-001', statuses: ['pending'] },
+    )
+    const listedRequest = requests.find((request) => request.id === result.groupRequest.id)
+
+    assert.ok(listedRequest)
+    assert.deepEqual(listedRequest.memberPlanIds, [])
+  })
 })

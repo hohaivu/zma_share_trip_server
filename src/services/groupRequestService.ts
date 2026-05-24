@@ -19,7 +19,7 @@ export interface GroupRequestService {
   listGroupRequestsByDriver(
     driverId: string,
     filters?: groupRequestRepository.ListGroupRequestsByDriverFilters,
-  ): Promise<GroupRequest[]>
+  ): Promise<groupRequestRepository.SentGroupRequest[]>
   cancelGroupRequest(requestId: string): Promise<GroupRequest>
 }
 
