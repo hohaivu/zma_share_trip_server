@@ -7,7 +7,6 @@ export interface Location {
   province_id?: string
   ward_name?: string
   province_name?: string
-  country_name?: string
   isVerified?: boolean
 }
 
