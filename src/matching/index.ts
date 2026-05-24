@@ -223,10 +223,16 @@ const driverEngine = new MatchEngine<DriverMatchQuery, DemandGroupCandidate, Dem
       tripPrice: q.tripPrice,
       originWardId: group.originWardId,
       destinationWardId: group.destinationWardId,
-      originWardName: group.origin?.label || group.originWardId,
-      destinationWardName: group.destination?.label || group.destinationWardId,
+      originWardName:
+        group.origin?.ward_name || group.origin?.label || group.originWardId,
+      destinationWardName:
+        group.destination?.ward_name ||
+        group.destination?.label ||
+        group.destinationWardId,
       originProvinceId: group.originProvinceId,
       destinationProvinceId: group.destinationProvinceId,
+      originProvinceName: group.origin?.province_name || group.originProvinceId,
+      destinationProvinceName: group.destination?.province_name || group.destinationProvinceId,
       memberCount: group.memberCount,
       totalPassengerCount: group.totalPassengerCount,
       memberPlanIds: group.memberPlanIds,

@@ -172,6 +172,8 @@ export interface DemandGroupResult extends ScoreFields {
   destinationWardName: string
   originProvinceId: string
   destinationProvinceId: string
+  originProvinceName: string
+  destinationProvinceName: string
   memberCount: number
   totalPassengerCount: number
   memberPlanIds?: string[]
