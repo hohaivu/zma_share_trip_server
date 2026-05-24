@@ -1964,11 +1964,35 @@ describe('POST /api/drivers/group-requests/*', () => {
     assert.equal(listRes.status, 200)
     assert.equal(listRes.body.some((item: { id: string }) => item.id === createRes.body.groupRequest.id), true)
 
+    const scopedListRes = await request(server, 'POST', '/api/drivers/group-requests/list', {
+      driverId: DRIVER_001_ID,
+      routeId: route.id,
+      statuses: ['pending'],
+    })
+    assert.equal(scopedListRes.status, 200)
+    assert.equal(scopedListRes.body.some((item: { id: string }) => item.id === createRes.body.groupRequest.id), true)
+
+    const wrongRouteListRes = await request(server, 'POST', '/api/drivers/group-requests/list', {
+      driverId: DRIVER_001_ID,
+      routeId: 'route-not-matching-group-request-rpc',
+      statuses: ['pending'],
+    })
+    assert.equal(wrongRouteListRes.status, 200)
+    assert.equal(wrongRouteListRes.body.some((item: { id: string }) => item.id === createRes.body.groupRequest.id), false)
+
     const cancelRes = await request(server, 'POST', '/api/drivers/group-requests/cancel', {
       id: createRes.body.groupRequest.id,
     })
     assert.equal(cancelRes.status, 200)
     assert.equal(cancelRes.body.status, 'canceled')
+
+    const canceledListRes = await request(server, 'POST', '/api/drivers/group-requests/list', {
+      driverId: DRIVER_001_ID,
+      routeId: route.id,
+      statuses: ['pending', 'canceled'],
+    })
+    assert.equal(canceledListRes.status, 200)
+    assert.equal(canceledListRes.body.some((item: { id: string }) => item.id === createRes.body.groupRequest.id), true)
   })
 
   it('returns 400 instead of 500 for missing group request bodies', async () => {

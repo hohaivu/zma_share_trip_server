@@ -16,7 +16,10 @@ export interface GroupRequestService {
     memberPlanIds: string[],
     note?: string,
   ): Promise<{ groupRequest: GroupRequest; offers: GroupOffer[] }>
-  listGroupRequestsByDriver(driverId: string): Promise<GroupRequest[]>
+  listGroupRequestsByDriver(
+    driverId: string,
+    filters?: groupRequestRepository.ListGroupRequestsByDriverFilters,
+  ): Promise<GroupRequest[]>
   cancelGroupRequest(requestId: string): Promise<GroupRequest>
 }
 
@@ -153,9 +156,9 @@ export const groupRequestService: GroupRequestService = {
     return result
   },
 
-  async listGroupRequestsByDriver(driverId) {
+  async listGroupRequestsByDriver(driverId, filters) {
     await assertUserRole(driverId, 'driver')
-    return groupRequestRepository.listGroupRequestsByDriver(driverId)
+    return groupRequestRepository.listGroupRequestsByDriver(driverId, filters)
   },
 
   async cancelGroupRequest(requestId) {

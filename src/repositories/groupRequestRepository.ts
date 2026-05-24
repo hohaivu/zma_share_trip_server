@@ -21,6 +21,12 @@ export interface CancelGroupRequestTxResult {
   closedOffers: GroupOffer[]
 }
 
+export interface ListGroupRequestsByDriverFilters {
+  routeId?: string
+  statuses?: string[]
+  status?: string
+}
+
 export async function createGroupRequestWithOffers(
   input: CreateGroupRequestTxInput,
 ): Promise<{ groupRequest: GroupRequest; offers: GroupOffer[] }> {
@@ -137,10 +143,30 @@ export async function cancelGroupRequestWithOffers(
 
 export async function listGroupRequestsByDriver(
   driverId: string,
+  filters: ListGroupRequestsByDriverFilters = {},
 ): Promise<GroupRequest[]> {
+  const conditions = ['driver_id = ?']
+  const params = [driverId]
+
+  if (filters.routeId) {
+    conditions.push('route_id = ?')
+    params.push(filters.routeId)
+  }
+
+  const statuses = filters.statuses?.length
+    ? filters.statuses
+    : filters.status
+      ? [filters.status]
+      : []
+
+  if (statuses.length > 0) {
+    conditions.push(`status IN (${statuses.map(() => '?').join(',')})`)
+    params.push(...statuses)
+  }
+
   const result = await query(
-    'SELECT * FROM group_requests WHERE driver_id = ?',
-    [driverId],
+    `SELECT * FROM group_requests WHERE ${conditions.join(' AND ')}`,
+    params,
   )
   return mapRows<GroupRequest>(result.rows)
 }
