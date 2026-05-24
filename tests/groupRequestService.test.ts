@@ -52,6 +52,84 @@ describe('group request memberPlanIds validation', () => {
     assert.deepEqual(result.offers.map((offer) => offer.planId), selectedMemberPlanIds)
   })
 
+  it('appends uncovered members to an existing pending group request', async () => {
+    await setupTestDb()
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const group = groups.find((candidate) => candidate.memberCount > 1)
+    if (!group) throw new Error('Expected a multi-member demand group')
+
+    const firstMemberPlanId = group.memberPlanIds[0]
+    const secondMemberPlanId = group.memberPlanIds[1]
+    const firstResult = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      group.id,
+      [firstMemberPlanId],
+      'original note',
+    )
+    const secondResult = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      group.id,
+      [secondMemberPlanId],
+      'ignored append note',
+    )
+
+    assert.equal(secondResult.groupRequest.id, firstResult.groupRequest.id)
+    assert.equal(secondResult.groupRequest.note, 'original note')
+    assert.deepEqual(secondResult.offers.map((offer) => offer.planId), [secondMemberPlanId])
+
+    const requestRows = await query(
+      'SELECT * FROM group_requests WHERE driver_id = ? AND route_id = ? AND demand_group_id = ?',
+      [DRIVER_001_ID, 'route-001', group.id],
+    )
+    assert.equal(requestRows.rows.length, 1)
+
+    const listedRequests = await groupRequestService.listGroupRequestsByDriver(
+      DRIVER_001_ID,
+      { routeId: 'route-001', statuses: ['pending'] },
+    )
+    const listedRequest = listedRequests.find(
+      (request) => request.id === firstResult.groupRequest.id,
+    )
+    assert.ok(listedRequest)
+    assert.deepEqual(
+      listedRequest.memberPlanIds.sort(),
+      [firstMemberPlanId, secondMemberPlanId].sort(),
+    )
+  })
+
+  it('rejects resubmitting an already active member to the same group request', async () => {
+    await setupTestDb()
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const group = groups.find((candidate) => candidate.memberCount > 1)
+    if (!group) throw new Error('Expected a multi-member demand group')
+    const memberPlanId = group.memberPlanIds[0]
+
+    await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      group.id,
+      [memberPlanId],
+    )
+
+    await assert.rejects(
+      async () =>
+        await groupRequestService.createGroupRequest(
+          DRIVER_001_ID,
+          'route-001',
+          group.id,
+          [memberPlanId],
+        ),
+      (err: unknown) => assertStaleConflict(err, [memberPlanId]),
+    )
+
+    const requests = await query('SELECT * FROM group_requests')
+    const offers = await query('SELECT * FROM group_offers')
+    assert.equal(requests.rows.length, 1)
+    assert.equal(offers.rows.length, 1)
+  })
+
   it('rejects empty memberPlanIds with 409 and does not create requests or offers', async () => {
     await setupTestDb()
     const groups = await demandGroupRepository.deriveDemandGroups()

@@ -46,8 +46,24 @@ export async function createGroupRequestWithOffers(
       )
     }
 
-    const groupRequestId = generateId('greq')
-    const requestRes = await tx.query(
+    const existingRequestRes = await tx.query(
+      `
+      SELECT * FROM group_requests
+      WHERE driver_id = ?
+        AND route_id = ?
+        AND demand_group_id = ?
+        AND status = 'pending'
+      ORDER BY created_at ASC
+      LIMIT 1
+      FOR UPDATE
+    `,
+      [input.driverId, input.routeId, input.demandGroupId],
+    )
+    let groupRequest = toCamelCase<GroupRequest>(existingRequestRes.rows[0])
+
+    if (!groupRequest) {
+      const groupRequestId = generateId('greq')
+      const requestRes = await tx.query(
       `
       INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, NOW())
@@ -61,9 +77,10 @@ export async function createGroupRequestWithOffers(
         input.note || '',
         'pending',
       ],
-    )
-    const groupRequest = toCamelCase<GroupRequest>(requestRes.rows[0])
-    if (!groupRequest) throw new Error('Failed to create group request')
+      )
+      groupRequest = toCamelCase<GroupRequest>(requestRes.rows[0])
+      if (!groupRequest) throw new Error('Failed to create group request')
+    }
 
     const offers: GroupOffer[] = []
     for (const planId of input.memberPlanIds) {
