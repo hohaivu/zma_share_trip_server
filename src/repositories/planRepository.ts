@@ -1,7 +1,7 @@
 import { query, withTransaction } from '../db/connection'
 import { normalizeUtc, toCamelCase } from '../db/utils'
 import { HttpError } from '../http-error'
-import { Plan, Route } from '../types/entities'
+import { Location, Plan, Route } from '../types/entities'
 import {
   CreatePlanPayload,
   UpdatePlanPayload,
@@ -62,6 +62,22 @@ function mapPlan(row: Record<string, unknown>): Plan {
   return plan
 }
 
+function extractWardFields(
+  data: CreatePlanPayload,
+  prefix: 'origin' | 'destination',
+  geoObj: Location,
+) {
+  const wardId =
+    (prefix === 'origin' ? data.originWardId : data.destinationWardId) ||
+    geoObj.ward_id ||
+    ''
+  const provinceId =
+    (prefix === 'origin' ? data.originProvinceId : data.destinationProvinceId) ||
+    geoObj.province_id ||
+    ''
+  return { wardId, provinceId }
+}
+
 async function dynamicUpdate<T>(
   table: string,
   id: string,
@@ -104,6 +120,8 @@ export async function createPlan(
 ): Promise<Plan> {
   await assertUserRole(clientId, 'client')
   assertDepartureWindowIsNotPast(data.departureWindowStartDate)
+  const origin = extractWardFields(data, 'origin', data.origin)
+  const destination = extractWardFields(data, 'destination', data.destination)
 
   const res = await query(
     `
@@ -122,10 +140,10 @@ export async function createPlan(
       clientId,
       JSON.stringify(data.origin),
       JSON.stringify(data.destination),
-      data.originWardId,
-      data.destinationWardId,
-      data.originProvinceId,
-      data.destinationProvinceId,
+      origin.wardId,
+      destination.wardId,
+      origin.provinceId,
+      destination.provinceId,
       normalizeUtc(data.departureWindowStartDate),
       normalizeUtc(data.departureWindowEndDate),
       data.passengerCount,

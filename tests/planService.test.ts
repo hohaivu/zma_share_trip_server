@@ -34,6 +34,32 @@ const TERMINAL_SEARCH_REQUEST_STATUSES = [
   'expired',
 ] as const
 
+const NORMALIZED_ORIGIN = {
+  label: 'Quận 1',
+  full_address: 'Phường Bến Nghé, Thành phố Hồ Chí Minh, Việt Nam',
+  ward_id: 'ward-normalized-origin',
+  province_id: 'province-normalized-origin',
+  ward_name: 'Phường Bến Nghé',
+  province_name: 'Thành phố Hồ Chí Minh',
+  country_name: 'Việt Nam',
+  lat: 10.77,
+  lng: 106.7,
+  isVerified: true,
+}
+
+const NORMALIZED_DESTINATION = {
+  label: 'Thủ Đức',
+  full_address: 'Phường Linh Trung, Thành phố Hồ Chí Minh, Việt Nam',
+  ward_id: 'ward-normalized-destination',
+  province_id: 'province-normalized-destination',
+  ward_name: 'Phường Linh Trung',
+  province_name: 'Thành phố Hồ Chí Minh',
+  country_name: 'Việt Nam',
+  lat: 10.85,
+  lng: 106.75,
+  isVerified: true,
+}
+
 async function markRouteFeeReserved(routeId: string): Promise<void> {
   await query(
     "UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1",
@@ -53,6 +79,59 @@ after(async () => {
 })
 
 // ─── 6.1 deriveDemandGroups ────────────────────────────────────────────────────
+
+
+describe('route and plan location persistence', () => {
+  it('stores complete normalized route location JSON and normalized columns', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await driverRouteService.createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: NORMALIZED_ORIGIN,
+      destination: NORMALIZED_DESTINATION,
+      departureWindowStartDate: '2030-05-07T07:00:00.000Z',
+      departureWindowEndDate: '2030-05-07T07:30:00.000Z',
+      tripPrice: 100000,
+      distanceMeters: 1200,
+    })
+
+    assert.deepEqual(route.origin, NORMALIZED_ORIGIN)
+    assert.deepEqual(route.destination, NORMALIZED_DESTINATION)
+    assert.equal('district_id' in route.origin, false)
+    assert.equal('district_name' in route.origin, false)
+    assert.equal('district_id_new' in route.destination, false)
+    assert.equal('detail' in route.destination, false)
+    assert.equal(route.originWardId, NORMALIZED_ORIGIN.ward_id)
+    assert.equal(route.originProvinceId, NORMALIZED_ORIGIN.province_id)
+    assert.equal(route.destinationWardId, NORMALIZED_DESTINATION.ward_id)
+    assert.equal(route.destinationProvinceId, NORMALIZED_DESTINATION.province_id)
+  })
+
+  it('stores complete normalized plan location JSON and normalized columns', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const plan = await planService.createPlan(CLIENT_001_ID, {
+      origin: NORMALIZED_ORIGIN,
+      destination: NORMALIZED_DESTINATION,
+      departureWindowStartDate: '2030-05-07T07:00:00.000Z',
+      departureWindowEndDate: '2030-05-07T07:30:00.000Z',
+      passengerCount: 1,
+    })
+
+    assert.deepEqual(plan.origin, NORMALIZED_ORIGIN)
+    assert.deepEqual(plan.destination, NORMALIZED_DESTINATION)
+    assert.equal('district_id' in plan.origin, false)
+    assert.equal('district_name' in plan.origin, false)
+    assert.equal('district_id_new' in plan.destination, false)
+    assert.equal('detail' in plan.destination, false)
+    assert.equal(plan.originWardId, NORMALIZED_ORIGIN.ward_id)
+    assert.equal(plan.originProvinceId, NORMALIZED_ORIGIN.province_id)
+    assert.equal(plan.destinationWardId, NORMALIZED_DESTINATION.ward_id)
+    assert.equal(plan.destinationProvinceId, NORMALIZED_DESTINATION.province_id)
+  })
+})
 
 
 describe('MVC plan service client cancellation', () => {

@@ -62,9 +62,9 @@ function extractWardFields(
   prefix: string,
   geoObj?: Location,
 ) {
-  const wardId = (data[`${prefix}WardId`] as string) || geoObj?.wardId || ''
+  const wardId = (data[`${prefix}WardId`] as string) || geoObj?.ward_id || ''
   const provinceId =
-    (data[`${prefix}ProvinceId`] as string) || geoObj?.provinceId || ''
+    (data[`${prefix}ProvinceId`] as string) || geoObj?.province_id || ''
   return { wardId, provinceId }
 }
 

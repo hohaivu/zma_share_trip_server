@@ -1,14 +1,14 @@
 export interface Location {
   label?: string
-  address?: string
+  full_address?: string
   lat: number
   lng: number
-  wardName?: string
-  wardId?: string
-  districtName?: string
-  districtId?: string
-  provinceName?: string
-  provinceId?: string
+  ward_id?: string
+  province_id?: string
+  ward_name?: string
+  province_name?: string
+  country_name?: string
+  isVerified?: boolean
 }
 
 export interface User {
