@@ -253,8 +253,8 @@ export async function listGroupRequestsByDriver(
           SUM(p.passenger_count)                         AS total_passenger_count,
           MIN(p.departure_window_start_date)             AS earliest_departure,
           GROUP_CONCAT(DISTINCT go.plan_id ORDER BY go.plan_id) AS member_plan_ids,
-          ANY_VALUE(p.origin)                            AS group_origin,
-          ANY_VALUE(p.destination)                       AS group_destination
+          MIN(p.origin)                                  AS group_origin,
+          MIN(p.destination)                             AS group_destination
         FROM group_offers go
         JOIN plans p ON p.id = go.plan_id
         WHERE go.status IN ('pending', 'accepted')
