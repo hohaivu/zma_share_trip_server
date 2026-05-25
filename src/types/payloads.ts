@@ -326,13 +326,19 @@ export interface RouteFeeSnapshot {
 // -- Hydrated request-list types --
 export type Counterparty = Pick<
   User,
-  'id' | 'displayName' | 'avatarUrl' | 'ratingAvg' | 'tripCount' | 'verificationStatus'
+  | 'id'
+  | 'displayName'
+  | 'avatarUrl'
+  | 'ratingAvg'
+  | 'tripCount'
+  | 'verificationStatus'
 >
 
 export interface SlimRoute {
   origin: Location
   destination: Location
   departureWindowStartDate: string
+  departureWindowEndDate: string
 }
 
 export interface SlimPlan {

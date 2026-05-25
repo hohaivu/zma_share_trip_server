@@ -3,14 +3,14 @@ import { after, before, describe, it as nodeIt } from 'node:test'
 
 import { query } from '../src/db/connection'
 import * as matching from '../src/matching'
-import * as carService from '../src/services/carService'
+import * as demandGroupRepository from '../src/repositories/demandGroupRepository'
 import * as driverRouteRepository from '../src/repositories/driverRouteRepository'
+import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
+import * as journeyRepository from '../src/repositories/journeyRepository'
+import * as carService from '../src/services/carService'
 import * as driverRouteService from '../src/services/driverRouteService'
 import * as groupOfferService from '../src/services/groupOfferService'
-import * as demandGroupRepository from '../src/repositories/demandGroupRepository'
-import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
 import * as groupRequestService from '../src/services/groupRequestService'
-import * as journeyRepository from '../src/repositories/journeyRepository'
 import * as planService from '../src/services/planService'
 import * as routeRequestService from '../src/services/routeRequestService'
 import * as userService from '../src/services/userService'
@@ -54,7 +54,6 @@ after(async () => {
 
 // ─── 6.1 deriveDemandGroups ────────────────────────────────────────────────────
 
-
 describe('MVC request services first-accept-wins behavior', () => {
   it('lists visible requests in newest-first backend order and preserves conflicts', async () => {
     await setupTestDb()
@@ -69,7 +68,7 @@ describe('MVC request services first-accept-wins behavior', () => {
           departureWindowStartDate: '2030-06-01T07:00:00.000Z',
           departureWindowEndDate: '2030-06-01T07:30:00.000Z',
           tripPrice: 110000,
-            distanceMeters: 10000,
+          distanceMeters: 10000,
         })
       ).id,
     )
@@ -82,7 +81,7 @@ describe('MVC request services first-accept-wins behavior', () => {
           departureWindowStartDate: '2030-06-02T07:00:00.000Z',
           departureWindowEndDate: '2030-06-02T07:30:00.000Z',
           tripPrice: 120000,
-            distanceMeters: 10000,
+          distanceMeters: 10000,
         })
       ).id,
     )
@@ -124,20 +123,33 @@ describe('MVC request services first-accept-wins behavior', () => {
       newerRequest.id,
     ])
 
-    const clientRequests = await routeRequestService.listRouteRequestsByClient(CLIENT_001_ID)
-    const driverRequests = await routeRequestService.listRouteRequestsByDriver(DRIVER_001_ID)
+    const clientRequests =
+      await routeRequestService.listRouteRequestsByClient(CLIENT_001_ID)
+    const driverRequests =
+      await routeRequestService.listRouteRequestsByDriver(DRIVER_001_ID)
 
     assert.deepEqual(
       clientRequests
-        .filter((request) => [olderRequest.id, newerRequest.id].includes(request.id))
+        .filter((request) =>
+          [olderRequest.id, newerRequest.id].includes(request.id),
+        )
         .map((request) => request.id),
       [newerRequest.id, olderRequest.id],
     )
     assert.deepEqual(
       driverRequests
-        .filter((request) => [olderRequest.id, newerRequest.id].includes(request.id))
+        .filter((request) =>
+          [olderRequest.id, newerRequest.id].includes(request.id),
+        )
         .map((request) => request.id),
       [newerRequest.id, olderRequest.id],
+    )
+    const hydratedNewerRequest = driverRequests.find(
+      (request) => request.id === newerRequest.id,
+    )
+    assert.equal(
+      hydratedNewerRequest?.route?.departureWindowEndDate,
+      newerRoute.departureWindowEndDate,
     )
 
     await assert.rejects(
@@ -148,7 +160,10 @@ describe('MVC request services first-accept-wins behavior', () => {
           newerRoute.id,
         ),
       (err: unknown) => {
-        const conflict = err as { statusCode?: number; payload?: { existingRequest?: { id?: string } } }
+        const conflict = err as {
+          statusCode?: number
+          payload?: { existingRequest?: { id?: string } }
+        }
         assert.equal(conflict.statusCode, 409)
         assert.equal(conflict.payload?.existingRequest?.id, newerRequest.id)
         return true
@@ -181,14 +196,23 @@ describe('MVC request services first-accept-wins behavior', () => {
     // Check siblings are closed
     for (const offer of result.offers) {
       if (offer.id === winnerId) continue
-      const clientOffers = await groupOfferService.listGroupOffersByClient(offer.clientId)
+      const clientOffers = await groupOfferService.listGroupOffersByClient(
+        offer.clientId,
+      )
       const sibling = clientOffers.find((o) => o.id === offer.id)
       assert.equal(sibling!.status, 'closed', 'Sibling should be closed')
     }
 
-    const sentRequests = await groupRequestService.listGroupRequestsByDriver(DRIVER_001_ID)
-    const parent = sentRequests.find((request) => request.id === result.groupRequest.id)
+    const sentRequests =
+      await groupRequestService.listGroupRequestsByDriver(DRIVER_001_ID)
+    const parent = sentRequests.find(
+      (request) => request.id === result.groupRequest.id,
+    )
     assert.ok(parent, 'Parent group request should exist')
+    assert.equal(
+      parent.route?.departureWindowEndDate,
+      '2030-03-20T00:30:00.000Z',
+    )
     assert.equal(parent.status, 'accepted')
     assert.equal(parent.acceptedClientUserId, accepted.clientId)
     assert.equal(parent.clientId, accepted.clientId)
@@ -235,15 +259,26 @@ describe('MVC request services route exclusivity', () => {
 
     await assert.rejects(
       async () =>
-        await groupRequestService.createGroupRequest(DRIVER_002_ID, 'route-001', group.id, group.memberPlanIds),
+        await groupRequestService.createGroupRequest(
+          DRIVER_002_ID,
+          'route-001',
+          group.id,
+          group.memberPlanIds,
+        ),
       /not available/,
       'Should reject group request for unavailable route',
     )
   })
 
   it('rejects search request acceptance for unavailable route', async () => {
-    assert.equal(await driverRouteRepository.isRouteAvailable('route-001'), false)
-    assert.equal(await driverRouteRepository.isRouteAvailable('route-002'), true)
+    assert.equal(
+      await driverRouteRepository.isRouteAvailable('route-001'),
+      false,
+    )
+    assert.equal(
+      await driverRouteRepository.isRouteAvailable('route-002'),
+      true,
+    )
   })
 
   it('accepted search request blocks group offer acceptance', async () => {
@@ -259,7 +294,10 @@ describe('MVC request services route exclusivity', () => {
     await markRouteFeeReserved('route-002')
     const accepted = await routeRequestService.acceptRouteRequest(sreq.id)
     assert.equal(accepted.status, 'accepted')
-    assert.equal(await driverRouteRepository.isRouteAvailable('route-002'), false)
+    assert.equal(
+      await driverRouteRepository.isRouteAvailable('route-002'),
+      false,
+    )
   })
 })
 

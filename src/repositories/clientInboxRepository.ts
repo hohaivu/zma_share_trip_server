@@ -1,5 +1,9 @@
 import { query } from '../db/connection'
-import { mapCounterpartyRow, parseLocationJson, toCamelCaseRecord } from '../db/utils'
+import {
+  mapCounterpartyRow,
+  parseLocationJson,
+  toCamelCaseRecord,
+} from '../db/utils'
 import type { HydratedClientRequestItem } from '../types/payloads'
 
 function mapRow(row: Record<string, unknown>): HydratedClientRequestItem {
@@ -11,16 +15,19 @@ function mapRow(row: Record<string, unknown>): HydratedClientRequestItem {
   const routeOrigin = parseLocationJson(r.routeOrigin)
   const routeDestination = parseLocationJson(r.routeDestination)
   const route =
-    routeOrigin && routeDestination && r.routeDeparture
+    routeOrigin && routeDestination && r.routeDeparture && r.routeDepartureEnd
       ? {
           origin: routeOrigin,
           destination: routeDestination,
           departureWindowStartDate: r.routeDeparture as string,
+          departureWindowEndDate: r.routeDepartureEnd as string,
         }
       : null
 
-  const planPassengerCount = r.planPassengerCount != null ? Number(r.planPassengerCount) : null
-  const plan = planPassengerCount != null ? { passengerCount: planPassengerCount } : null
+  const planPassengerCount =
+    r.planPassengerCount != null ? Number(r.planPassengerCount) : null
+  const plan =
+    planPassengerCount != null ? { passengerCount: planPassengerCount } : null
 
   return {
     id: r.id as string,
@@ -61,6 +68,7 @@ export async function listClientInboxHydrated(
            go.trip_price, go.status, go.created_at, NULL AS note,
            r.origin AS route_origin, r.destination AS route_destination,
            r.departure_window_start_date AS route_departure,
+           r.departure_window_end_date AS route_departure_end,
            p.passenger_count AS plan_passenger_count,
            u.id AS cp_id, u.display_name AS cp_display_name,
            u.avatar_url AS cp_avatar_url, u.rating_avg AS cp_rating_avg,
@@ -77,7 +85,7 @@ export async function listClientInboxHydrated(
     SELECT 'route_request',
            rr.id, rr.client_id, rr.route_id, rr.driver_id, rr.plan_id,
            rr.trip_price, rr.status, rr.created_at, rr.note,
-           r.origin, r.destination, r.departure_window_start_date,
+           r.origin, r.destination, r.departure_window_start_date, r.departure_window_end_date,
            p.passenger_count,
            u.id, u.display_name, u.avatar_url, u.rating_avg,
            u.trip_count, u.verification_status

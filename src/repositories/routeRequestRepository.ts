@@ -1,30 +1,40 @@
 import { query, withTransaction } from '../db/connection'
-import { mapCounterpartyRow, parseLocationJson, parseNumeric, toCamelCase, toCamelCaseRecord } from '../db/utils'
-import { HttpError } from '../http-error'
 import {
-  chargeRouteFeeTx,
-  loadRouteForWalletTx,
-  type DbQueryExecutor,
-} from './walletRepository'
+  mapCounterpartyRow,
+  parseLocationJson,
+  parseNumeric,
+  toCamelCase,
+  toCamelCaseRecord,
+} from '../db/utils'
+import { HttpError } from '../http-error'
 import { Plan, Route, RouteRequest } from '../types/entities'
 import type { HydratedRouteRequest } from '../types/payloads'
+import {
+  type DbQueryExecutor,
+  chargeRouteFeeTx,
+  loadRouteForWalletTx,
+} from './walletRepository'
 
-function mapHydratedRouteRequestRow(row: Record<string, unknown>): HydratedRouteRequest {
+function mapHydratedRouteRequestRow(
+  row: Record<string, unknown>,
+): HydratedRouteRequest {
   const r = toCamelCaseRecord(row)
   const counterparty = mapCounterpartyRow(r)
 
   const routeOrigin = parseLocationJson(r.routeOrigin)
   const routeDestination = parseLocationJson(r.routeDestination)
   const route =
-    routeOrigin && routeDestination && r.routeDeparture
+    routeOrigin && routeDestination && r.routeDeparture && r.routeDepartureEnd
       ? {
           origin: routeOrigin,
           destination: routeDestination,
           departureWindowStartDate: r.routeDeparture as string,
+          departureWindowEndDate: r.routeDepartureEnd as string,
         }
       : null
 
-  const planPassengerCount = r.planPassengerCount != null ? Number(r.planPassengerCount) : null
+  const planPassengerCount =
+    r.planPassengerCount != null ? Number(r.planPassengerCount) : null
   const plan =
     planPassengerCount != null
       ? {
@@ -112,12 +122,18 @@ export async function createRouteRequest(
       if (!tp) throw new HttpError(400, 'Plan not found')
     }
 
-    const routeRes = await tx.query('SELECT * FROM routes WHERE id = ? FOR UPDATE', [routeId])
+    const routeRes = await tx.query(
+      'SELECT * FROM routes WHERE id = ? FOR UPDATE',
+      [routeId],
+    )
     if (!routeRes.rows[0]) throw new HttpError(404, 'Route not found')
     const route = mapRoute(routeRes.rows[0])
 
     if (!(await checkRouteAvailability(tx, routeId))) {
-      throw new HttpError(409, 'Route is not available — already has an accepted client')
+      throw new HttpError(
+        409,
+        'Route is not available — already has an accepted client',
+      )
     }
 
     try {
@@ -127,7 +143,16 @@ export async function createRouteRequest(
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
           RETURNING *
         `,
-        [generateId('sreq'), clientId, planId, routeId, route.driverId, route.tripPrice, note || '', 'pending'],
+        [
+          generateId('sreq'),
+          clientId,
+          planId,
+          routeId,
+          route.driverId,
+          route.tripPrice,
+          note || '',
+          'pending',
+        ],
       )
       const routeRequest = toCamelCase<RouteRequest>(sreqRes.rows[0])
       if (!routeRequest) throw new Error('Failed to create search request')
@@ -161,67 +186,123 @@ export async function getPlan(planId?: string): Promise<Plan | null> {
   return toCamelCase<Plan>(result.rows[0])
 }
 
-export async function acceptRouteRequest(requestId: string): Promise<RouteRequest> {
+export async function acceptRouteRequest(
+  requestId: string,
+): Promise<RouteRequest> {
   return withTransaction(async (tx) => {
-    const sreqRes = await tx.query('SELECT * FROM route_requests WHERE id = ? FOR UPDATE', [requestId])
+    const sreqRes = await tx.query(
+      'SELECT * FROM route_requests WHERE id = ? FOR UPDATE',
+      [requestId],
+    )
     let sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
     if (!sreq) throw new HttpError(404, 'Search request not found')
     if (sreq.status === 'accepted') return sreq
     if (sreq.status !== 'pending') {
-      throw new HttpError(409, `Cannot accept search request in status: ${sreq.status}`)
+      throw new HttpError(
+        409,
+        `Cannot accept search request in status: ${sreq.status}`,
+      )
     }
 
     const route = await loadRouteForWalletTx(tx, sreq.routeId, mapRoute)
     if (route.status !== 'published') {
-      throw new HttpError(409, `Cannot accept search request on route in status: ${route.status}`)
+      throw new HttpError(
+        409,
+        `Cannot accept search request on route in status: ${route.status}`,
+      )
     }
     if (!(await checkRouteAvailability(tx, sreq.routeId))) {
-      throw new HttpError(409, 'Route is no longer available — another client was accepted first')
+      throw new HttpError(
+        409,
+        'Route is no longer available — another client was accepted first',
+      )
     }
 
-    await tx.query("UPDATE route_requests SET status = 'accepted' WHERE id = ?", [requestId])
-    const updatedRes = await tx.query('SELECT * FROM route_requests WHERE id = ?', [requestId])
+    await tx.query(
+      "UPDATE route_requests SET status = 'accepted' WHERE id = ?",
+      [requestId],
+    )
+    const updatedRes = await tx.query(
+      'SELECT * FROM route_requests WHERE id = ?',
+      [requestId],
+    )
     sreq = toCamelCase<RouteRequest>(updatedRes.rows[0])
     if (!sreq) throw new Error('Failed to accept search request')
 
-    await tx.query("UPDATE routes SET status = 'matched' WHERE id = ?", [sreq.routeId])
+    await tx.query("UPDATE routes SET status = 'matched' WHERE id = ?", [
+      sreq.routeId,
+    ])
     if (sreq.planId) {
-      await tx.query("UPDATE plans SET status = 'matched' WHERE id = ? AND status = 'published'", [sreq.planId])
+      await tx.query(
+        "UPDATE plans SET status = 'matched' WHERE id = ? AND status = 'published'",
+        [sreq.planId],
+      )
     }
-    await chargeRouteFeeTx(tx, route, mapRoute, { description: 'Route fee charged on accepted search request' })
-    await tx.query("UPDATE group_offers SET status = 'closed' WHERE route_id = ? AND status = 'pending'", [sreq.routeId])
-    await tx.query("UPDATE route_requests SET status = 'closed' WHERE route_id = ? AND id != ? AND status = 'pending'", [sreq.routeId, requestId])
+    await chargeRouteFeeTx(tx, route, mapRoute, {
+      description: 'Route fee charged on accepted search request',
+    })
+    await tx.query(
+      "UPDATE group_offers SET status = 'closed' WHERE route_id = ? AND status = 'pending'",
+      [sreq.routeId],
+    )
+    await tx.query(
+      "UPDATE route_requests SET status = 'closed' WHERE route_id = ? AND id != ? AND status = 'pending'",
+      [sreq.routeId, requestId],
+    )
     return sreq
   })
 }
 
-export async function declineRouteRequest(requestId: string): Promise<RouteRequest> {
-  const sreqRes = await query('SELECT * FROM route_requests WHERE id = ?', [requestId])
+export async function declineRouteRequest(
+  requestId: string,
+): Promise<RouteRequest> {
+  const sreqRes = await query('SELECT * FROM route_requests WHERE id = ?', [
+    requestId,
+  ])
   const sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
   if (!sreq) throw new Error('Search request not found')
-  if (sreq.status !== 'pending') throw new Error(`Cannot decline search request in status: ${sreq.status}`)
-  await query("UPDATE route_requests SET status = 'declined' WHERE id = ?", [requestId])
-  const updatedRes = await query('SELECT * FROM route_requests WHERE id = ?', [requestId])
+  if (sreq.status !== 'pending')
+    throw new Error(`Cannot decline search request in status: ${sreq.status}`)
+  await query("UPDATE route_requests SET status = 'declined' WHERE id = ?", [
+    requestId,
+  ])
+  const updatedRes = await query('SELECT * FROM route_requests WHERE id = ?', [
+    requestId,
+  ])
   const updated = toCamelCase<RouteRequest>(updatedRes.rows[0])
   if (!updated) throw new Error('Failed to decline search request')
   return updated
 }
 
-export async function cancelRouteRequest(requestId: string): Promise<RouteRequest> {
-  const sreqRes = await query('SELECT * FROM route_requests WHERE id = ?', [requestId])
+export async function cancelRouteRequest(
+  requestId: string,
+): Promise<RouteRequest> {
+  const sreqRes = await query('SELECT * FROM route_requests WHERE id = ?', [
+    requestId,
+  ])
   const sreq = toCamelCase<RouteRequest>(sreqRes.rows[0])
   if (!sreq) throw new Error('Search request not found')
   if (sreq.status !== 'pending') {
-    throw new HttpError(409, `Cannot cancel search request in status: ${sreq.status}`)
+    throw new HttpError(
+      409,
+      `Cannot cancel search request in status: ${sreq.status}`,
+    )
   }
-  await query("UPDATE route_requests SET status = 'canceled' WHERE id = ?", [requestId])
-  const updatedRes = await query('SELECT * FROM route_requests WHERE id = ?', [requestId])
+  await query("UPDATE route_requests SET status = 'canceled' WHERE id = ?", [
+    requestId,
+  ])
+  const updatedRes = await query('SELECT * FROM route_requests WHERE id = ?', [
+    requestId,
+  ])
   const updated = toCamelCase<RouteRequest>(updatedRes.rows[0])
   if (!updated) throw new Error('Failed to cancel search request')
   return updated
 }
 
-export async function listRouteRequestsByDriver(driverId: string, statuses?: string[]): Promise<HydratedRouteRequest[]> {
+export async function listRouteRequestsByDriver(
+  driverId: string,
+  statuses?: string[],
+): Promise<HydratedRouteRequest[]> {
   const hasStatuses = statuses && statuses.length > 0
   const statusClause = hasStatuses
     ? `AND rr.status IN (${statuses!.map(() => '?').join(',')})`
@@ -233,6 +314,7 @@ export async function listRouteRequestsByDriver(driverId: string, statuses?: str
            r.origin     AS route_origin,
            r.destination AS route_destination,
            r.departure_window_start_date AS route_departure,
+           r.departure_window_end_date AS route_departure_end,
            p.passenger_count AS plan_passenger_count,
            p.origin     AS plan_origin,
            p.destination AS plan_destination,
@@ -257,7 +339,10 @@ export async function listRouteRequestsByDriver(driverId: string, statuses?: str
   return result.rows.map(mapHydratedRouteRequestRow)
 }
 
-export async function listRouteRequestsByClient(clientId: string, statuses?: string[]): Promise<RouteRequest[]> {
+export async function listRouteRequestsByClient(
+  clientId: string,
+  statuses?: string[],
+): Promise<RouteRequest[]> {
   const hasStatuses = statuses && statuses.length > 0
   const sql = hasStatuses
     ? `SELECT * FROM route_requests WHERE client_id = ? AND status IN (${statuses.map(() => '?').join(',')}) ORDER BY created_at DESC, id DESC`
@@ -267,7 +352,9 @@ export async function listRouteRequestsByClient(clientId: string, statuses?: str
   return mapRows<RouteRequest>(requestsRes.rows)
 }
 
-export async function listRouteRequestsByRoute(routeId: string): Promise<RouteRequest[]> {
+export async function listRouteRequestsByRoute(
+  routeId: string,
+): Promise<RouteRequest[]> {
   const requestsRes = await query(
     'SELECT * FROM route_requests WHERE route_id = ? ORDER BY created_at DESC, id DESC',
     [routeId],

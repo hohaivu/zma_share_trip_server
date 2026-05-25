@@ -1,5 +1,10 @@
 import { query, withTransaction } from '../db/connection'
-import { mapRows, parseLocationJson, toCamelCase, toCamelCaseRecord } from '../db/utils'
+import {
+  mapRows,
+  parseLocationJson,
+  toCamelCase,
+  toCamelCaseRecord,
+} from '../db/utils'
 import { HttpError } from '../http-error'
 import { GroupOffer, GroupRequest, Plan } from '../types/entities'
 import type { HydratedSentGroupRequest } from '../types/payloads'
@@ -30,7 +35,9 @@ export interface ListGroupRequestsByDriverFilters {
 
 export type SentGroupRequest = GroupRequest & { memberPlanIds: string[] }
 
-function mapHydratedGroupRequestRow(row: Record<string, unknown>): HydratedSentGroupRequest {
+function mapHydratedGroupRequestRow(
+  row: Record<string, unknown>,
+): HydratedSentGroupRequest {
   const r = toCamelCaseRecord(row)
 
   const memberPlanIds = r.memberPlanIds
@@ -40,11 +47,12 @@ function mapHydratedGroupRequestRow(row: Record<string, unknown>): HydratedSentG
   const routeOrigin = parseLocationJson(r.routeOrigin)
   const routeDestination = parseLocationJson(r.routeDestination)
   const route =
-    routeOrigin && routeDestination && r.routeDeparture
+    routeOrigin && routeDestination && r.routeDeparture && r.routeDepartureEnd
       ? {
           origin: routeOrigin,
           destination: routeDestination,
           departureWindowStartDate: r.routeDeparture as string,
+          departureWindowEndDate: r.routeDepartureEnd as string,
         }
       : null
 
@@ -53,7 +61,8 @@ function mapHydratedGroupRequestRow(row: Record<string, unknown>): HydratedSentG
     memberCount != null
       ? {
           memberCount,
-          totalPassengerCount: r.totalPassengerCount != null ? Number(r.totalPassengerCount) : 0,
+          totalPassengerCount:
+            r.totalPassengerCount != null ? Number(r.totalPassengerCount) : 0,
           earliestDeparture: r.earliestDeparture as string,
           origin: parseLocationJson(r.groupOrigin),
           destination: parseLocationJson(r.groupDestination),
@@ -67,7 +76,8 @@ function mapHydratedGroupRequestRow(row: Record<string, unknown>): HydratedSentG
     demandGroupId: r.demandGroupId as string,
     note: (r.note as string | null) ?? undefined,
     status: r.status as string,
-    acceptedClientUserId: (r.acceptedClientUserId as string | null) ?? undefined,
+    acceptedClientUserId:
+      (r.acceptedClientUserId as string | null) ?? undefined,
     acceptedPlanId: (r.acceptedPlanId as string | null) ?? undefined,
     clientId: (r.clientId as string | null) ?? undefined,
     createdAt: r.createdAt as string,
@@ -81,9 +91,10 @@ export async function createGroupRequestWithOffers(
   input: CreateGroupRequestTxInput,
 ): Promise<{ groupRequest: GroupRequest; offers: GroupOffer[] }> {
   return withTransaction(async (tx) => {
-    const routeRes = await tx.query('SELECT * FROM routes WHERE id = ? FOR UPDATE', [
-      input.routeId,
-    ])
+    const routeRes = await tx.query(
+      'SELECT * FROM routes WHERE id = ? FOR UPDATE',
+      [input.routeId],
+    )
     const route = routeRes.rows[0] ? mapRoute(routeRes.rows[0]) : null
     if (!route) throw new HttpError(404, 'Route not found')
 
@@ -112,19 +123,19 @@ export async function createGroupRequestWithOffers(
     if (!groupRequest) {
       const groupRequestId = generateId('greq')
       const requestRes = await tx.query(
-      `
+        `
       INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, NOW())
       RETURNING *
     `,
-      [
-        groupRequestId,
-        input.driverId,
-        input.routeId,
-        input.demandGroupId,
-        input.note || '',
-        'pending',
-      ],
+        [
+          groupRequestId,
+          input.driverId,
+          input.routeId,
+          input.demandGroupId,
+          input.note || '',
+          'pending',
+        ],
       )
       groupRequest = toCamelCase<GroupRequest>(requestRes.rows[0])
       if (!groupRequest) throw new Error('Failed to create group request')
@@ -132,7 +143,9 @@ export async function createGroupRequestWithOffers(
 
     const offers: GroupOffer[] = []
     for (const planId of input.memberPlanIds) {
-      const planRes = await tx.query('SELECT * FROM plans WHERE id = ?', [planId])
+      const planRes = await tx.query('SELECT * FROM plans WHERE id = ?', [
+        planId,
+      ])
       const plan = toCamelCase<Plan>(planRes.rows[0])
       if (!plan) continue
 
@@ -238,6 +251,7 @@ export async function listGroupRequestsByDriver(
         r.origin     AS route_origin,
         r.destination AS route_destination,
         r.departure_window_start_date AS route_departure,
+        r.departure_window_end_date AS route_departure_end,
         agg.member_count,
         agg.total_passenger_count,
         agg.earliest_departure,
