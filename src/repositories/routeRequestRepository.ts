@@ -1,5 +1,5 @@
 import { query, withTransaction } from '../db/connection'
-import { parseNumeric, toCamelCase } from '../db/utils'
+import { mapCounterpartyRow, parseLocationJson, parseNumeric, toCamelCase, toCamelCaseRecord } from '../db/utils'
 import { HttpError } from '../http-error'
 import {
   chargeRouteFeeTx,
@@ -7,6 +7,48 @@ import {
   type DbQueryExecutor,
 } from './walletRepository'
 import { Plan, Route, RouteRequest } from '../types/entities'
+import type { HydratedRouteRequest } from '../types/payloads'
+
+function mapHydratedRouteRequestRow(row: Record<string, unknown>): HydratedRouteRequest {
+  const r = toCamelCaseRecord(row)
+  const counterparty = mapCounterpartyRow(r)
+
+  const routeOrigin = parseLocationJson(r.routeOrigin)
+  const routeDestination = parseLocationJson(r.routeDestination)
+  const route =
+    routeOrigin && routeDestination && r.routeDeparture
+      ? {
+          origin: routeOrigin,
+          destination: routeDestination,
+          departureWindowStartDate: r.routeDeparture as string,
+        }
+      : null
+
+  const planPassengerCount = r.planPassengerCount != null ? Number(r.planPassengerCount) : null
+  const plan =
+    planPassengerCount != null
+      ? {
+          passengerCount: planPassengerCount,
+          origin: parseLocationJson(r.planOrigin) ?? undefined,
+          destination: parseLocationJson(r.planDestination) ?? undefined,
+        }
+      : null
+
+  return {
+    id: r.id as string,
+    clientId: r.clientId as string,
+    planId: (r.planId as string | null) ?? undefined,
+    routeId: r.routeId as string,
+    driverId: r.driverId as string,
+    tripPrice: parseNumeric(r.tripPrice),
+    note: (r.note as string | null) ?? undefined,
+    status: r.status as string,
+    createdAt: r.createdAt as string,
+    counterparty,
+    route,
+    plan,
+  }
+}
 
 function isMariadbDuplicateEntry(e: unknown): boolean {
   const err = e as Record<string, unknown>
@@ -179,14 +221,40 @@ export async function cancelRouteRequest(requestId: string): Promise<RouteReques
   return updated
 }
 
-export async function listRouteRequestsByDriver(driverId: string, statuses?: string[]): Promise<RouteRequest[]> {
+export async function listRouteRequestsByDriver(driverId: string, statuses?: string[]): Promise<HydratedRouteRequest[]> {
   const hasStatuses = statuses && statuses.length > 0
-  const sql = hasStatuses
-    ? `SELECT * FROM route_requests WHERE driver_id = ? AND status IN (${statuses.map(() => '?').join(',')}) ORDER BY created_at DESC, id DESC`
-    : 'SELECT * FROM route_requests WHERE driver_id = ? ORDER BY created_at DESC, id DESC'
-  const params = hasStatuses ? [driverId, ...statuses] : [driverId]
-  const requestsRes = await query(sql, params)
-  return mapRows<RouteRequest>(requestsRes.rows)
+  const statusClause = hasStatuses
+    ? `AND rr.status IN (${statuses!.map(() => '?').join(',')})`
+    : ''
+  const params = hasStatuses ? [driverId, ...statuses!] : [driverId]
+  const result = await query(
+    `
+    SELECT rr.*,
+           r.origin     AS route_origin,
+           r.destination AS route_destination,
+           r.departure_window_start_date AS route_departure,
+           p.passenger_count AS plan_passenger_count,
+           p.origin     AS plan_origin,
+           p.destination AS plan_destination,
+           u.id         AS cp_id,
+           u.display_name AS cp_display_name,
+           u.avatar_url AS cp_avatar_url,
+           u.rating_avg AS cp_rating_avg,
+           u.trip_count AS cp_trip_count,
+           u.verification_status AS cp_verification_status
+    FROM route_requests rr
+    JOIN users  u ON u.id = rr.client_id
+    JOIN routes r ON r.id = rr.route_id
+    LEFT JOIN plans p ON p.id = rr.plan_id
+    WHERE rr.driver_id = ?
+      ${statusClause}
+      AND r.status NOT IN ('completed', 'canceled')
+      AND (p.id IS NULL OR p.status NOT IN ('completed', 'canceled'))
+    ORDER BY rr.created_at DESC, rr.id DESC
+    `,
+    params,
+  )
+  return result.rows.map(mapHydratedRouteRequestRow)
 }
 
 export async function listRouteRequestsByClient(clientId: string, statuses?: string[]): Promise<RouteRequest[]> {

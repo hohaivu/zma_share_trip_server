@@ -1,5 +1,35 @@
 // Helper functions to safely convert DB results to TS domains.
 
+import type { Location } from '../types/entities'
+
+export function parseLocationJson(value: unknown): Location | null {
+  if (!value) return null
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as Location
+    } catch {
+      return null
+    }
+  }
+  return value as Location
+}
+
+export function mapCounterpartyRow(
+  r: Record<string, unknown>,
+  prefix = 'cp',
+): import('../types/payloads').Counterparty | null {
+  const id = r[`${prefix}Id`] as string | null
+  if (!id) return null
+  return {
+    id,
+    displayName: r[`${prefix}DisplayName`] as string,
+    avatarUrl: r[`${prefix}AvatarUrl`] as string,
+    ratingAvg: r[`${prefix}RatingAvg`] != null ? Number(r[`${prefix}RatingAvg`]) : undefined,
+    tripCount: r[`${prefix}TripCount`] != null ? Number(r[`${prefix}TripCount`]) : undefined,
+    verificationStatus: r[`${prefix}VerificationStatus`] as string | undefined,
+  }
+}
+
 export function normalizeUtc(
   val: string | Date | null | undefined,
 ): string | undefined {

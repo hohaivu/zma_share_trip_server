@@ -97,10 +97,50 @@ Content-Type: application/json
 | Method | Path | Body shape | Description |
 | ------ | ---- | ---------- | ----------- |
 | POST | `/api/drivers/group-requests/create` | `{ "driverId", "routeId", "demandGroupId", "note"? }` | Create a group request and fan-out offers. |
-| POST | `/api/drivers/group-requests/list` | `{ "driverId": "user-uuid" }` | List a driver's sent group requests. |
+| POST | `/api/drivers/group-requests/list` | `{ "driverId": "user-uuid" }` | List a driver's sent group requests (hydrated). |
 | POST | `/api/drivers/group-requests/cancel` | `{ "id": "group-request-uuid", "driverId": "user-uuid" }` | Cancel a group request and close pending offers. |
 
 **Create response**: `{ "data": { "groupRequest": { ... }, "offers": [ ... ] } }`
+
+**List response** — each item includes hydrated fields alongside existing fields:
+```json
+{
+  "id": "greq-...",
+  "driverId": "...",
+  "routeId": "...",
+  "status": "pending",
+  "memberPlanIds": ["plan-a", "plan-b"],
+  "route": { "origin": { "label": "Quận 1", "lat": 10.77, "lng": 106.69, "ward_name": "Phường Bến Nghé", "province_name": "Hồ Chí Minh" }, "destination": { ... }, "departureWindowStartDate": "2026-06-01T09:00:00.000Z" },
+  "demandGroup": { "memberCount": 2, "totalPassengerCount": 3, "earliestDeparture": "2026-06-01T07:30:00.000Z", "origin": { ... }, "destination": { ... } }
+}
+```
+
+> `route.*` reflects the live route record at call time — not a snapshot.
+> `demandGroup` aggregates only `group_offers` with status `pending` or `accepted`; closed/canceled offers are excluded.
+
+### Driver search requests (Driver inbox)
+
+| Method | Path | Body shape | Description |
+| ------ | ---- | ---------- | ----------- |
+| POST | `/api/drivers/search-requests/list` | `{ "driverId": "user-uuid", "statuses"?: [...] }` | List inbound search requests for a driver (hydrated). |
+| POST | `/api/drivers/search-requests/accept` | `{ "id": "search-request-uuid" }` | Accept a search request. |
+| POST | `/api/drivers/search-requests/decline` | `{ "id": "search-request-uuid" }` | Decline a search request. |
+
+**List response** — each item includes hydrated fields:
+```json
+{
+  "id": "sreq-...",
+  "clientId": "...",
+  "routeId": "...",
+  "status": "pending",
+  "counterparty": { "id": "...", "displayName": "Nguyễn Văn A", "avatarUrl": "...", "ratingAvg": 4.8, "tripCount": 12, "verificationStatus": "verified" },
+  "route": { "origin": { ... }, "destination": { ... }, "departureWindowStartDate": "2026-06-01T09:00:00.000Z" },
+  "plan": { "passengerCount": 2, "origin": { ... }, "destination": { ... } }
+}
+```
+
+> Rows whose linked route or plan status is `completed` or `canceled` are excluded by the SQL query.
+> `route.*` data is live (re-read each call), not snapshotted.
 
 ### Group offers (Client inbox)
 
@@ -121,7 +161,28 @@ Group offer statuses:
 
 | Method | Path | Body shape | Description |
 | ------ | ---- | ---------- | ----------- |
-| POST | `/api/clients/inbox/list` | `{ "clientId": "user-uuid" }` | List client inbox items. |
+| POST | `/api/clients/inbox/list` | `{ "clientId": "user-uuid", "statuses"?: [...] }` | List client inbox items (hydrated). |
+
+**Response** — UNION ALL of `group_offers` (direction: `incoming`) and `route_requests` (direction: `outgoing`), each including hydrated fields:
+```json
+{
+  "id": "...",
+  "source": "group_offer",
+  "direction": "incoming",
+  "clientId": "...",
+  "routeId": "...",
+  "driverId": "...",
+  "planId": "plan-uuid",
+  "status": "pending",
+  "counterparty": { "id": "...", "displayName": "Trần B", "avatarUrl": "...", "ratingAvg": 4.5, "tripCount": 7, "verificationStatus": "verified" },
+  "route": { "origin": { ... }, "destination": { ... }, "departureWindowStartDate": "2026-06-01T09:00:00.000Z" },
+  "plan": { "passengerCount": 2 }
+}
+```
+
+> Rows whose linked route or plan status is `completed` or `canceled` are excluded by the SQL query.
+> `route.*` data is live (re-read each call), not snapshotted.
+> `plan` is `null` when `planId` is null or the plan record cannot be loaded.
 
 ### Journeys and trips
 

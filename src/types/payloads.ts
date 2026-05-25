@@ -2,6 +2,7 @@ import {
   AppNotification,
   BootstrapSession,
   ClientRequestSource,
+  GroupRequest,
   Location,
   Plan,
   Report,
@@ -322,6 +323,32 @@ export interface RouteFeeSnapshot {
   walletRefundedAt?: string | null
 }
 
+// -- Hydrated request-list types --
+export type Counterparty = Pick<
+  User,
+  'id' | 'displayName' | 'avatarUrl' | 'ratingAvg' | 'tripCount' | 'verificationStatus'
+>
+
+export interface SlimRoute {
+  origin: Location
+  destination: Location
+  departureWindowStartDate: string
+}
+
+export interface SlimPlan {
+  passengerCount: number
+  origin?: Location
+  destination?: Location
+}
+
+export interface DemandGroupSummaryForRequest {
+  memberCount: number
+  totalPassengerCount: number
+  earliestDeparture: string
+  origin: Location | null
+  destination: Location | null
+}
+
 // -- Client Inbox --
 export type RequestDirection = 'incoming' | 'outgoing'
 
@@ -338,6 +365,25 @@ export interface ClientRequestItem {
   note?: string
   createdAt: string
   expiresAt?: string
+}
+
+export interface HydratedClientRequestItem extends ClientRequestItem {
+  counterparty: Counterparty | null
+  route: SlimRoute | null
+  plan: SlimPlan | null
+}
+
+export type SentGroupRequest = GroupRequest & { memberPlanIds: string[] }
+
+export interface HydratedSentGroupRequest extends SentGroupRequest {
+  route: SlimRoute | null
+  demandGroup: DemandGroupSummaryForRequest | null
+}
+
+export interface HydratedRouteRequest extends RouteRequest {
+  counterparty: Counterparty | null
+  route: SlimRoute | null
+  plan: SlimPlan | null
 }
 
 // -- Conflicts --

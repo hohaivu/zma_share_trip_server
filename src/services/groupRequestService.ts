@@ -7,6 +7,7 @@ import { demandGroupIdFor } from '../repositories/demandGroupRepository'
 import * as groupRequestRepository from '../repositories/groupRequestRepository'
 import { emitNotification } from './notificationService'
 import { assertUserRole } from './userService'
+import type { HydratedSentGroupRequest } from '../types/payloads'
 
 export interface GroupRequestService {
   createGroupRequest(
@@ -19,7 +20,7 @@ export interface GroupRequestService {
   listGroupRequestsByDriver(
     driverId: string,
     filters?: groupRequestRepository.ListGroupRequestsByDriverFilters,
-  ): Promise<groupRequestRepository.SentGroupRequest[]>
+  ): Promise<HydratedSentGroupRequest[]>
   cancelGroupRequest(requestId: string): Promise<GroupRequest>
 }
 

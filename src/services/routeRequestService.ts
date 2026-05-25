@@ -2,6 +2,7 @@ import { RouteRequest } from '../types/entities'
 import * as routeRequestRepository from '../repositories/routeRequestRepository'
 import { emitNotification } from './notificationService'
 import { assertUserRole } from './userService'
+import type { HydratedRouteRequest } from '../types/payloads'
 
 function isTerminalTripStatus(status?: string | null): boolean {
   return status === 'completed' || status === 'canceled'
@@ -79,9 +80,9 @@ export async function cancelRouteRequest(requestId: string): Promise<RouteReques
   return routeRequest
 }
 
-export async function listRouteRequestsByDriver(driverId: string, statuses?: string[]): Promise<RouteRequest[]> {
+export async function listRouteRequestsByDriver(driverId: string, statuses?: string[]): Promise<HydratedRouteRequest[]> {
   await assertUserRole(driverId, 'driver')
-  return filterVisibleForActiveTrip(await routeRequestRepository.listRouteRequestsByDriver(driverId, statuses))
+  return routeRequestRepository.listRouteRequestsByDriver(driverId, statuses)
 }
 
 export async function listRouteRequestsByClient(clientId: string, statuses?: string[]): Promise<RouteRequest[]> {

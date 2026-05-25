@@ -1,7 +1,8 @@
 import { query, withTransaction } from '../db/connection'
-import { mapRows, toCamelCase } from '../db/utils'
+import { mapRows, parseLocationJson, toCamelCase, toCamelCaseRecord } from '../db/utils'
 import { HttpError } from '../http-error'
 import { GroupOffer, GroupRequest, Plan } from '../types/entities'
+import type { HydratedSentGroupRequest } from '../types/payloads'
 import { checkRouteAvailability, mapRoute } from './routeAvailabilityRepository'
 
 function generateId(prefix: string): string {
@@ -28,6 +29,53 @@ export interface ListGroupRequestsByDriverFilters {
 }
 
 export type SentGroupRequest = GroupRequest & { memberPlanIds: string[] }
+
+function mapHydratedGroupRequestRow(row: Record<string, unknown>): HydratedSentGroupRequest {
+  const r = toCamelCaseRecord(row)
+
+  const memberPlanIds = r.memberPlanIds
+    ? (r.memberPlanIds as string).split(',')
+    : []
+
+  const routeOrigin = parseLocationJson(r.routeOrigin)
+  const routeDestination = parseLocationJson(r.routeDestination)
+  const route =
+    routeOrigin && routeDestination && r.routeDeparture
+      ? {
+          origin: routeOrigin,
+          destination: routeDestination,
+          departureWindowStartDate: r.routeDeparture as string,
+        }
+      : null
+
+  const memberCount = r.memberCount != null ? Number(r.memberCount) : null
+  const demandGroup =
+    memberCount != null
+      ? {
+          memberCount,
+          totalPassengerCount: r.totalPassengerCount != null ? Number(r.totalPassengerCount) : 0,
+          earliestDeparture: r.earliestDeparture as string,
+          origin: parseLocationJson(r.groupOrigin),
+          destination: parseLocationJson(r.groupDestination),
+        }
+      : null
+
+  return {
+    id: r.id as string,
+    driverId: r.driverId as string,
+    routeId: r.routeId as string,
+    demandGroupId: r.demandGroupId as string,
+    note: (r.note as string | null) ?? undefined,
+    status: r.status as string,
+    acceptedClientUserId: (r.acceptedClientUserId as string | null) ?? undefined,
+    acceptedPlanId: (r.acceptedPlanId as string | null) ?? undefined,
+    clientId: (r.clientId as string | null) ?? undefined,
+    createdAt: r.createdAt as string,
+    memberPlanIds,
+    route,
+    demandGroup,
+  }
+}
 
 export async function createGroupRequestWithOffers(
   input: CreateGroupRequestTxInput,
@@ -163,12 +211,12 @@ export async function cancelGroupRequestWithOffers(
 export async function listGroupRequestsByDriver(
   driverId: string,
   filters: ListGroupRequestsByDriverFilters = {},
-): Promise<SentGroupRequest[]> {
-  const conditions = ['driver_id = ?']
-  const params = [driverId]
+): Promise<HydratedSentGroupRequest[]> {
+  const conditions = ['gr.driver_id = ?']
+  const params: string[] = [driverId]
 
   if (filters.routeId) {
-    conditions.push('route_id = ?')
+    conditions.push('gr.route_id = ?')
     params.push(filters.routeId)
   }
 
@@ -179,7 +227,7 @@ export async function listGroupRequestsByDriver(
       : []
 
   if (statuses.length > 0) {
-    conditions.push(`status IN (${statuses.map(() => '?').join(',')})`)
+    conditions.push(`gr.status IN (${statuses.map(() => '?').join(',')})`)
     params.push(...statuses)
   }
 
@@ -187,29 +235,35 @@ export async function listGroupRequestsByDriver(
     `
       SELECT
         gr.*,
-        covered.member_plan_ids
+        r.origin     AS route_origin,
+        r.destination AS route_destination,
+        r.departure_window_start_date AS route_departure,
+        agg.member_count,
+        agg.total_passenger_count,
+        agg.earliest_departure,
+        agg.member_plan_ids,
+        agg.group_origin,
+        agg.group_destination
       FROM group_requests gr
+      JOIN routes r ON r.id = gr.route_id
       LEFT JOIN (
         SELECT
-          group_request_id,
-          route_id,
-          GROUP_CONCAT(DISTINCT plan_id ORDER BY plan_id) AS member_plan_ids
-        FROM group_offers
-        WHERE status IN ('pending', 'accepted')
-        GROUP BY group_request_id, route_id
-      ) covered
-        ON covered.group_request_id = gr.id
-        AND covered.route_id = gr.route_id
-      WHERE ${conditions.map((condition) => `gr.${condition}`).join(' AND ')}
+          go.group_request_id,
+          COUNT(*)                                       AS member_count,
+          SUM(p.passenger_count)                         AS total_passenger_count,
+          MIN(p.departure_window_start_date)             AS earliest_departure,
+          GROUP_CONCAT(DISTINCT go.plan_id ORDER BY go.plan_id) AS member_plan_ids,
+          ANY_VALUE(p.origin)                            AS group_origin,
+          ANY_VALUE(p.destination)                       AS group_destination
+        FROM group_offers go
+        JOIN plans p ON p.id = go.plan_id
+        WHERE go.status IN ('pending', 'accepted')
+        GROUP BY go.group_request_id
+      ) agg ON agg.group_request_id = gr.id
+      WHERE ${conditions.join(' AND ')}
     `,
     params,
   )
-  return result.rows.map((row) => {
-    const request = toCamelCase<GroupRequest & { memberPlanIds?: string }>(row)
-    if (!request) throw new Error('Failed to map group request')
-    const memberPlanIds = request.memberPlanIds
-      ? request.memberPlanIds.split(',')
-      : []
-    return { ...request, memberPlanIds }
-  })
+
+  return result.rows.map(mapHydratedGroupRequestRow)
 }
