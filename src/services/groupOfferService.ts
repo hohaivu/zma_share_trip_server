@@ -29,15 +29,15 @@ async function filterVisibleForActiveTrip<T extends Pick<GroupOffer, 'routeId' |
 }
 
 export interface GroupOfferService {
-  listGroupOffersByClient(clientId: string): Promise<GroupOffer[]>
+  listGroupOffersByClient(clientId: string, statuses?: string[]): Promise<GroupOffer[]>
   acceptGroupOffer(offerId: string): Promise<GroupOffer>
   declineGroupOffer(offerId: string): Promise<GroupOffer>
 }
 
 export const groupOfferService: GroupOfferService = {
-  async listGroupOffersByClient(clientId) {
+  async listGroupOffersByClient(clientId, statuses) {
     await assertUserRole(clientId, 'client')
-    const offers = await groupOfferRepository.listGroupOffersByClient(clientId)
+    const offers = await groupOfferRepository.listGroupOffersByClient(clientId, statuses)
     return filterVisibleForActiveTrip(offers)
   },
 

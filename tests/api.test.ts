@@ -1431,6 +1431,75 @@ describe('inbox visibility endpoints', () => {
     )
   })
 
+  it('filters client group offers by status while preserving visible envelope counts', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const pendingOffer = await createPendingGroupOfferForClient('2030-04-24', 'status-pending')
+    const acceptedOffer = await createPendingGroupOfferForClient('2030-04-25', 'status-accepted')
+    const hiddenPendingOffer = await createPendingGroupOfferForClient('2030-04-26', 'status-hidden')
+    await query("UPDATE group_offers SET status = 'accepted' WHERE id = $1", [acceptedOffer.id])
+    await query(
+      `UPDATE routes
+       SET status = 'completed'
+       WHERE id = (SELECT route_id FROM group_offers WHERE id = $1)`,
+      [hiddenPendingOffer.id],
+    )
+
+    const listGroupOffers = (body: Record<string, unknown>) => request(
+      server,
+      'POST',
+      '/api/clients/group-offers/list',
+      { clientId: CLIENT_001_ID, ...body },
+    )
+
+    const unfiltered = await listGroupOffers({})
+    assert.equal(unfiltered.status, 200)
+    assertOnlyEnvelopeKeys(unfiltered.body, ['data', 'meta'])
+    assert.ok(Array.isArray(unfiltered.body.data), 'expected envelope { data: [...] }')
+    assert.equal(unfiltered.body.meta?.count, unfiltered.body.data.length)
+    assert.equal(unfiltered.body.data.some((item: { id: string }) => item.id === pendingOffer.id), true)
+    assert.equal(unfiltered.body.data.some((item: { id: string }) => item.id === acceptedOffer.id), true)
+    assert.equal(unfiltered.body.data.some((item: { id: string }) => item.id === hiddenPendingOffer.id), false)
+
+    const pendingIds = [pendingOffer.id]
+    const arrayFiltered = await listGroupOffers({ statuses: ['pending'] })
+    assert.equal(arrayFiltered.status, 200)
+    assertOnlyEnvelopeKeys(arrayFiltered.body, ['data', 'meta'])
+    assert.equal(arrayFiltered.body.meta?.count, arrayFiltered.body.data.length)
+    assert.deepEqual(
+      arrayFiltered.body.data
+        .filter((item: { id: string }) => [pendingOffer.id, acceptedOffer.id, hiddenPendingOffer.id].includes(item.id))
+        .map((item: { id: string }) => item.id)
+        .sort(),
+      pendingIds,
+    )
+
+    const singularFiltered = await listGroupOffers({ status: 'pending' })
+    assert.equal(singularFiltered.status, 200)
+    assertOnlyEnvelopeKeys(singularFiltered.body, ['data', 'meta'])
+    assert.equal(singularFiltered.body.meta?.count, singularFiltered.body.data.length)
+    assert.deepEqual(
+      singularFiltered.body.data
+        .filter((item: { id: string }) => [pendingOffer.id, acceptedOffer.id, hiddenPendingOffer.id].includes(item.id))
+        .map((item: { id: string }) => item.id)
+        .sort(),
+      pendingIds,
+    )
+
+    const precedenceFiltered = await listGroupOffers({ statuses: ['pending'], status: 'accepted' })
+    assert.equal(precedenceFiltered.status, 200)
+    assertOnlyEnvelopeKeys(precedenceFiltered.body, ['data', 'meta'])
+    assert.equal(precedenceFiltered.body.meta?.count, precedenceFiltered.body.data.length)
+    assert.deepEqual(
+      precedenceFiltered.body.data
+        .filter((item: { id: string }) => [pendingOffer.id, acceptedOffer.id, hiddenPendingOffer.id].includes(item.id))
+        .map((item: { id: string }) => item.id)
+        .sort(),
+      pendingIds,
+    )
+  })
+
   it('accepts a group offer with a { data } envelope only', async () => {
     await setupTestDb()
     if (!isDbAvailable()) return

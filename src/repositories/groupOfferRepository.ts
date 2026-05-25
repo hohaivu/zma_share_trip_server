@@ -21,10 +21,14 @@ export async function getPlanStatus(planId: string): Promise<string | null> {
   return row?.status ?? null
 }
 
-export async function listGroupOffersByClient(clientId: string): Promise<GroupOffer[]> {
+export async function listGroupOffersByClient(clientId: string, statuses?: string[]): Promise<GroupOffer[]> {
+  const statusParams = statuses && statuses.length > 0 ? statuses : []
+  const statusClause = statusParams.length > 0
+    ? ` AND status IN (${statusParams.map(() => '?').join(',')})`
+    : ''
   const offersRes = await query(
-    'SELECT * FROM group_offers WHERE client_id = ? ORDER BY created_at DESC, id DESC',
-    [clientId],
+    `SELECT * FROM group_offers WHERE client_id = ?${statusClause} ORDER BY created_at DESC, id DESC`,
+    [clientId, ...statusParams],
   )
   return mapRows<GroupOffer>(offersRes.rows)
 }
