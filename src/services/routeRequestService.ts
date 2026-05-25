@@ -79,14 +79,14 @@ export async function cancelRouteRequest(requestId: string): Promise<RouteReques
   return routeRequest
 }
 
-export async function listRouteRequestsByDriver(driverId: string): Promise<RouteRequest[]> {
+export async function listRouteRequestsByDriver(driverId: string, statuses?: string[]): Promise<RouteRequest[]> {
   await assertUserRole(driverId, 'driver')
-  return filterVisibleForActiveTrip(await routeRequestRepository.listRouteRequestsByDriver(driverId))
+  return filterVisibleForActiveTrip(await routeRequestRepository.listRouteRequestsByDriver(driverId, statuses))
 }
 
-export async function listRouteRequestsByClient(clientId: string): Promise<RouteRequest[]> {
+export async function listRouteRequestsByClient(clientId: string, statuses?: string[]): Promise<RouteRequest[]> {
   await assertUserRole(clientId, 'client')
-  return filterVisibleForActiveTrip(await routeRequestRepository.listRouteRequestsByClient(clientId))
+  return filterVisibleForActiveTrip(await routeRequestRepository.listRouteRequestsByClient(clientId, statuses))
 }
 
 export async function listRouteRequestsByRoute(routeId: string): Promise<RouteRequest[]> {

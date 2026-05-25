@@ -36,14 +36,14 @@ function mapRouteRequestToClientRequestItem(request: RouteRequest): ClientReques
 }
 
 export interface ClientInboxService {
-  listClientInbox(clientId: string): Promise<ClientRequestItem[]>
+  listClientInbox(clientId: string, statuses?: string[]): Promise<ClientRequestItem[]>
 }
 
 export const clientInboxService: ClientInboxService = {
-  async listClientInbox(clientId) {
+  async listClientInbox(clientId, statuses) {
     const [offers, routeRequests] = await Promise.all([
-      groupOfferService.listGroupOffersByClient(clientId),
-      listRouteRequestsByClient(clientId),
+      groupOfferService.listGroupOffersByClient(clientId, statuses),
+      listRouteRequestsByClient(clientId, statuses),
     ])
     const items = [
       ...offers.map(mapOfferToClientRequestItem),

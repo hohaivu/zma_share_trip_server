@@ -179,19 +179,23 @@ export async function cancelRouteRequest(requestId: string): Promise<RouteReques
   return updated
 }
 
-export async function listRouteRequestsByDriver(driverId: string): Promise<RouteRequest[]> {
-  const requestsRes = await query(
-    'SELECT * FROM route_requests WHERE driver_id = ? ORDER BY created_at DESC, id DESC',
-    [driverId],
-  )
+export async function listRouteRequestsByDriver(driverId: string, statuses?: string[]): Promise<RouteRequest[]> {
+  const hasStatuses = statuses && statuses.length > 0
+  const sql = hasStatuses
+    ? `SELECT * FROM route_requests WHERE driver_id = ? AND status IN (${statuses.map(() => '?').join(',')}) ORDER BY created_at DESC, id DESC`
+    : 'SELECT * FROM route_requests WHERE driver_id = ? ORDER BY created_at DESC, id DESC'
+  const params = hasStatuses ? [driverId, ...statuses] : [driverId]
+  const requestsRes = await query(sql, params)
   return mapRows<RouteRequest>(requestsRes.rows)
 }
 
-export async function listRouteRequestsByClient(clientId: string): Promise<RouteRequest[]> {
-  const requestsRes = await query(
-    'SELECT * FROM route_requests WHERE client_id = ? ORDER BY created_at DESC, id DESC',
-    [clientId],
-  )
+export async function listRouteRequestsByClient(clientId: string, statuses?: string[]): Promise<RouteRequest[]> {
+  const hasStatuses = statuses && statuses.length > 0
+  const sql = hasStatuses
+    ? `SELECT * FROM route_requests WHERE client_id = ? AND status IN (${statuses.map(() => '?').join(',')}) ORDER BY created_at DESC, id DESC`
+    : 'SELECT * FROM route_requests WHERE client_id = ? ORDER BY created_at DESC, id DESC'
+  const params = hasStatuses ? [clientId, ...statuses] : [clientId]
+  const requestsRes = await query(sql, params)
   return mapRows<RouteRequest>(requestsRes.rows)
 }
 

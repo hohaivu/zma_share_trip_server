@@ -2394,6 +2394,233 @@ describe('POST /api/clients/search-requests/create', () => {
   })
 })
 
+// ─── 4. Backend status filter verification ───────────────────────────────────
+
+describe('POST /api/drivers/search-requests/list status filter', () => {
+  async function setupDriverStatusFilterFixture(dateTag: string) {
+    const route = await publishRoute(
+      (await createRoute(DRIVER_001_ID, {
+        carId: 'car-001',
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+        departureWindowStartDate: `2031-${dateTag}T07:00:00.000Z`,
+        tripPrice: 100000,
+      })).id,
+    )
+    const plan1 = await planService.createPlan(CLIENT_001_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: `ward-dsf-${dateTag}-1`,
+      destinationWardId: `ward-dsf-${dateTag}-1d`,
+      departureWindowStartDate: `2031-${dateTag}T07:00:00.000Z`,
+      departureWindowEndDate: `2031-${dateTag}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const plan2 = await planService.createPlan(CLIENT_002_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: `ward-dsf-${dateTag}-2`,
+      destinationWardId: `ward-dsf-${dateTag}-2d`,
+      departureWindowStartDate: `2031-${dateTag}T07:00:00.000Z`,
+      departureWindowEndDate: `2031-${dateTag}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const pendingReq = await createRouteRequest(CLIENT_002_ID, plan2.id, route.id)
+    const declinedReq = await createRouteRequest(CLIENT_001_ID, plan1.id, route.id)
+    await query("UPDATE route_requests SET status = 'declined' WHERE id = $1", [declinedReq.id])
+    return { route, pendingReq, declinedReq }
+  }
+
+  it('omitted statuses preserves unfiltered driver search-request list', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+    const { pendingReq, declinedReq } = await setupDriverStatusFilterFixture('01-01')
+
+    const res = await request(server, 'POST', '/api/drivers/search-requests/list', {
+      driverId: DRIVER_001_ID,
+    })
+    assert.equal(res.status, 200)
+    assert.ok(Array.isArray(res.body))
+    assert.equal(res.body.some((item: { id: string }) => item.id === pendingReq.id), true)
+    assert.equal(res.body.some((item: { id: string }) => item.id === declinedReq.id), true)
+    assert.ok(res.body.every((item: { id: string; status: string; driverId: string }) =>
+      typeof item.id === 'string' && typeof item.status === 'string',
+    ), 'item shape preserved')
+  })
+
+  it('empty statuses array preserves unfiltered driver search-request list', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+    const { pendingReq, declinedReq } = await setupDriverStatusFilterFixture('01-02')
+
+    const res = await request(server, 'POST', '/api/drivers/search-requests/list', {
+      driverId: DRIVER_001_ID,
+      statuses: [],
+    })
+    assert.equal(res.status, 200)
+    assert.ok(Array.isArray(res.body))
+    assert.equal(res.body.some((item: { id: string }) => item.id === pendingReq.id), true)
+    assert.equal(res.body.some((item: { id: string }) => item.id === declinedReq.id), true)
+  })
+
+  it("statuses: ['pending'] returns only pending driver search requests", async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+    const { pendingReq, declinedReq } = await setupDriverStatusFilterFixture('01-03')
+
+    const res = await request(server, 'POST', '/api/drivers/search-requests/list', {
+      driverId: DRIVER_001_ID,
+      statuses: ['pending'],
+    })
+    assert.equal(res.status, 200)
+    assert.ok(Array.isArray(res.body))
+    assert.equal(res.body.some((item: { id: string }) => item.id === pendingReq.id), true)
+    assert.equal(res.body.some((item: { id: string }) => item.id === declinedReq.id), false, 'declined should be excluded')
+    assert.ok(
+      res.body.every((item: { status: string }) => item.status === 'pending'),
+      'all returned items must be pending',
+    )
+    assert.ok(res.body.every((item: { id: string; status: string }) =>
+      typeof item.id === 'string' && typeof item.status === 'string',
+    ), 'item shape preserved')
+  })
+
+  it('multiple statuses return matching driver search requests', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+    const { pendingReq, declinedReq } = await setupDriverStatusFilterFixture('01-04')
+    const plan3 = await planService.createPlan(CLIENT_001_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-dsf-01-04-3',
+      destinationWardId: 'ward-dsf-01-04-3d',
+      departureWindowStartDate: '2031-01-04T07:00:00.000Z',
+      departureWindowEndDate: '2031-01-04T07:30:00.000Z',
+      passengerCount: 1,
+    })
+    const canceledRoute = await publishRoute(
+      (await createRoute(DRIVER_001_ID, {
+        carId: 'car-001',
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+        departureWindowStartDate: '2031-01-04T08:00:00.000Z',
+        tripPrice: 100000,
+      })).id,
+    )
+    const canceledReq = await createRouteRequest(CLIENT_001_ID, plan3.id, canceledRoute.id)
+    await query("UPDATE route_requests SET status = 'canceled' WHERE id = $1", [canceledReq.id])
+
+    const res = await request(server, 'POST', '/api/drivers/search-requests/list', {
+      driverId: DRIVER_001_ID,
+      statuses: ['pending', 'declined'],
+    })
+    assert.equal(res.status, 200)
+    assert.ok(Array.isArray(res.body))
+    assert.equal(res.body.some((item: { id: string }) => item.id === pendingReq.id), true)
+    assert.equal(res.body.some((item: { id: string }) => item.id === declinedReq.id), true)
+    assert.equal(res.body.some((item: { id: string }) => item.id === canceledReq.id), false, 'canceled should be excluded')
+    assert.ok(
+      res.body.every((item: { status: string }) => item.status === 'pending' || item.status === 'declined'),
+      'only matching statuses returned',
+    )
+    assert.ok(res.body.every((item: { id: string; status: string }) =>
+      typeof item.id === 'string' && typeof item.status === 'string',
+    ), 'item shape preserved')
+  })
+})
+
+describe('POST /api/clients/inbox/list status filter', () => {
+  async function setupClientInboxFilterFixture(dateTag: string) {
+    const route = await publishRoute(
+      (await createRoute(DRIVER_001_ID, {
+        carId: 'car-001',
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+        departureWindowStartDate: `2031-${dateTag}T07:00:00.000Z`,
+        tripPrice: 100000,
+      })).id,
+    )
+    const pendingPlan = await planService.createPlan(CLIENT_001_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: `ward-cif-${dateTag}-pending`,
+      destinationWardId: `ward-cif-${dateTag}-pending-d`,
+      departureWindowStartDate: `2031-${dateTag}T07:00:00.000Z`,
+      departureWindowEndDate: `2031-${dateTag}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const declinedPlan = await planService.createPlan(CLIENT_001_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: `ward-cif-${dateTag}-declined`,
+      destinationWardId: `ward-cif-${dateTag}-declined-d`,
+      departureWindowStartDate: `2031-${dateTag}T07:00:00.000Z`,
+      departureWindowEndDate: `2031-${dateTag}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+    const pendingRoute2 = await publishRoute(
+      (await createRoute(DRIVER_002_ID, {
+        carId: 'car-002',
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+        departureWindowStartDate: `2031-${dateTag}T09:00:00.000Z`,
+        tripPrice: 100000,
+      })).id,
+    )
+    const pendingReq = await createRouteRequest(CLIENT_001_ID, pendingPlan.id, route.id)
+    const declinedReq = await createRouteRequest(CLIENT_001_ID, declinedPlan.id, pendingRoute2.id)
+    await query("UPDATE route_requests SET status = 'declined' WHERE id = $1", [declinedReq.id])
+    return { pendingReq, declinedReq }
+  }
+
+  it('omitted statuses and empty statuses preserve unfiltered client inbox list', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+    const { pendingReq, declinedReq } = await setupClientInboxFilterFixture('02-01')
+
+    const omitted = await request(server, 'POST', '/api/clients/inbox/list', {
+      clientId: CLIENT_001_ID,
+    })
+    assert.equal(omitted.status, 200)
+    assert.ok(Array.isArray(omitted.body.data), 'expected { data: [...] } envelope')
+    assert.equal(omitted.body.meta?.count, omitted.body.data.length, 'meta.count matches data length')
+    assert.equal(omitted.body.data.some((item: { id: string }) => item.id === pendingReq.id), true)
+    assert.equal(omitted.body.data.some((item: { id: string }) => item.id === declinedReq.id), true)
+
+    const empty = await request(server, 'POST', '/api/clients/inbox/list', {
+      clientId: CLIENT_001_ID,
+      statuses: [],
+    })
+    assert.equal(empty.status, 200)
+    assert.ok(Array.isArray(empty.body.data))
+    assert.equal(empty.body.data.some((item: { id: string }) => item.id === pendingReq.id), true)
+    assert.equal(empty.body.data.some((item: { id: string }) => item.id === declinedReq.id), true)
+  })
+
+  it("statuses: ['pending'] returns only pending client inbox items", async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+    const { pendingReq, declinedReq } = await setupClientInboxFilterFixture('02-02')
+
+    const res = await request(server, 'POST', '/api/clients/inbox/list', {
+      clientId: CLIENT_001_ID,
+      statuses: ['pending'],
+    })
+    assert.equal(res.status, 200)
+    assert.ok(Array.isArray(res.body.data), 'expected { data: [...] } envelope')
+    assert.equal(res.body.meta?.count, res.body.data.length, 'meta.count matches data length')
+    assert.equal(res.body.data.some((item: { id: string }) => item.id === pendingReq.id), true)
+    assert.equal(res.body.data.some((item: { id: string }) => item.id === declinedReq.id), false, 'declined should be excluded')
+    assert.ok(
+      res.body.data.every((item: { status: string }) => item.status === 'pending'),
+      'all returned items must be pending',
+    )
+    assert.ok(res.body.data.every((item: { id: string; status: string; source: string }) =>
+      typeof item.id === 'string' && typeof item.status === 'string' && typeof item.source === 'string',
+    ), 'item shape preserved')
+  })
+})
+
 // ─── 6.8 Regression tests for preserved endpoints ────────────────────────────
 
 describe('preserved endpoints', () => {

@@ -3,6 +3,10 @@ import { Request, Response } from 'express'
 import { routeRequestService } from '../services/routeRequestService'
 import { requireParam } from '../routes/helpers'
 
+function parseStatuses(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((status): status is string => typeof status === 'string') : undefined
+}
+
 export async function createRouteRequest(req: Request, res: Response): Promise<void> {
   const { clientId, planId, routeId, note } = req.body || {}
   requireParam(clientId, 'clientId is required')
@@ -27,10 +31,10 @@ export async function cancelRouteRequest(req: Request, res: Response): Promise<v
 }
 
 export async function listRouteRequestsByDriver(req: Request, res: Response): Promise<void> {
-  const { driverId } = req.body || {}
+  const { driverId, statuses } = req.body || {}
   requireParam(driverId, 'driverId is required')
 
-  res.json(await routeRequestService.listRouteRequestsByDriver(driverId))
+  res.json(await routeRequestService.listRouteRequestsByDriver(driverId, parseStatuses(statuses)))
 }
 
 export async function acceptRouteRequest(req: Request, res: Response): Promise<void> {

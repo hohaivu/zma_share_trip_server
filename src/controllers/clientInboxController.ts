@@ -12,12 +12,16 @@ export interface ClientInboxController {
   listClientInbox(req: Request, res: Response): Promise<void>
 }
 
+function parseStatuses(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((status): status is string => typeof status === 'string') : undefined
+}
+
 export function createClientInboxController(): ClientInboxController {
   return {
     async listClientInbox(req, res) {
-      const { clientId } = req.body || {}
+      const { clientId, statuses } = req.body || {}
       requireBodyParam(clientId, 'clientId is required')
-      const items = await clientInboxService.listClientInbox(clientId)
+      const items = await clientInboxService.listClientInbox(clientId, parseStatuses(statuses))
       res.json(ok(items, { count: items.length }))
     },
   }
