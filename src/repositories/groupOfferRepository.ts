@@ -2,7 +2,7 @@ import { query, withTransaction } from '../db/connection'
 import { mapCounterpartyRow, mapRows, parseLocationJson, parseNumeric, toCamelCase, toCamelCaseRecord } from '../db/utils'
 import { GroupOffer } from '../types/entities'
 import type { HydratedClientGroupOffer } from '../types/payloads'
-import { cascadeDeclineSiblingsTx } from './matchCascade'
+import { cascadeDeclineParentGroupRequestsTx, cascadeDeclineSiblingsTx } from './matchCascade'
 import { mapRoute, ROUTE_ACCEPTED_SQL } from './routeAvailabilityRepository'
 import { chargeRouteFeeTx, loadRouteForWalletTx } from './walletRepository'
 
@@ -179,6 +179,10 @@ export async function acceptGroupOfferTx(offerId: string): Promise<AcceptGroupOf
       routeId: updatedOffer.routeId,
       planId: updatedOffer.planId,
       exceptGroupOfferId: updatedOffer.id,
+    })
+    await cascadeDeclineParentGroupRequestsTx(tx, {
+      routeId: updatedOffer.routeId,
+      exceptGroupRequestId: updatedOffer.groupRequestId,
     })
 
     let siblings: GroupOffer[] = []

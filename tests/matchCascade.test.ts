@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { cascadeDeclineSiblingsTx } from '../src/repositories/matchCascade'
+import { cascadeDeclineParentGroupRequestsTx, cascadeDeclineSiblingsTx } from '../src/repositories/matchCascade'
 
 type Row = {
   id: string
@@ -12,19 +12,23 @@ type Row = {
 
 type Call = { sql: string; params: unknown[] }
 
-function makeExecutor(tables: { group_offers: Row[]; route_requests: Row[] }) {
+function makeExecutor(tables: { group_offers: Row[]; route_requests: Row[]; group_requests?: Row[] }) {
   const calls: Call[] = []
   return {
     calls,
     async query(sql: string, params: unknown[] = []) {
       calls.push({ sql, params })
 
-      const tableName = sql.includes('UPDATE group_offers') ? 'group_offers' : 'route_requests'
+      const tableName = sql.includes('UPDATE group_offers')
+        ? 'group_offers'
+        : sql.includes('UPDATE route_requests')
+          ? 'route_requests'
+          : 'group_requests'
       const scopeColumn = sql.includes('route_id = ?') ? 'route_id' : 'plan_id'
       const [scopeId, exceptId] = params
       let affectedRows = 0
 
-      for (const row of tables[tableName]) {
+      for (const row of tables[tableName] ?? []) {
         if (row.status !== 'pending') continue
         if (row[scopeColumn] !== scopeId) continue
         if (exceptId && row.id === exceptId) continue
@@ -135,5 +139,91 @@ describe('cascadeDeclineSiblingsTx', () => {
 
     assert.equal(tables.group_offers[0].status, 'pending')
     assert.equal(tables.route_requests[0].status, 'pending')
+  })
+})
+
+describe('cascadeDeclineParentGroupRequestsTx', () => {
+  it('declines only pending parent requests scoped to the route', async () => {
+    const tables = {
+      group_offers: [],
+      route_requests: [],
+      group_requests: [
+        { id: 'gr-route-pending', route_id: 'route-1', plan_id: null, status: 'pending' },
+        { id: 'gr-other-route', route_id: 'route-2', plan_id: null, status: 'pending' },
+        { id: 'gr-no-route', route_id: null, plan_id: null, status: 'pending' },
+      ],
+    }
+    const executor = makeExecutor(tables)
+
+    await cascadeDeclineParentGroupRequestsTx(executor, { routeId: 'route-1' })
+
+    assert.equal(executor.calls.length, 1)
+    assert.equal(executor.calls[0].sql.includes('UPDATE group_requests'), true)
+    assert.deepEqual(executor.calls[0].params, ['route-1'])
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-route-pending')?.status, 'declined')
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-other-route')?.status, 'pending')
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-no-route')?.status, 'pending')
+  })
+
+  it('preserves the excluded parent request', async () => {
+    const tables = {
+      group_offers: [],
+      route_requests: [],
+      group_requests: [
+        { id: 'gr-keep', route_id: 'route-1', plan_id: null, status: 'pending' },
+        { id: 'gr-decline', route_id: 'route-1', plan_id: null, status: 'pending' },
+      ],
+    }
+    const executor = makeExecutor(tables)
+
+    await cascadeDeclineParentGroupRequestsTx(executor, {
+      routeId: 'route-1',
+      exceptGroupRequestId: 'gr-keep',
+    })
+
+    assert.deepEqual(executor.calls.map((call) => call.params), [['route-1', 'gr-keep']])
+    assert.equal(executor.calls[0].sql.includes('AND id != ?'), true)
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-keep')?.status, 'pending')
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-decline')?.status, 'declined')
+  })
+
+  it('is idempotent on retry and preserves accepted, declined, canceled, and terminal rows', async () => {
+    const tables = {
+      group_offers: [],
+      route_requests: [],
+      group_requests: [
+        { id: 'gr-pending', route_id: 'route-1', plan_id: null, status: 'pending' },
+        { id: 'gr-accepted', route_id: 'route-1', plan_id: null, status: 'accepted' },
+        { id: 'gr-declined', route_id: 'route-1', plan_id: null, status: 'declined' },
+        { id: 'gr-canceled', route_id: 'route-1', plan_id: null, status: 'canceled' },
+        { id: 'gr-closed', route_id: 'route-1', plan_id: null, status: 'closed' },
+      ],
+    }
+    const executor = makeExecutor(tables)
+
+    await cascadeDeclineParentGroupRequestsTx(executor, { routeId: 'route-1' })
+    await cascadeDeclineParentGroupRequestsTx(executor, { routeId: 'route-1' })
+
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-pending')?.status, 'declined')
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-accepted')?.status, 'accepted')
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-declined')?.status, 'declined')
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-canceled')?.status, 'canceled')
+    assert.equal(tables.group_requests.find((row) => row.id === 'gr-closed')?.status, 'closed')
+  })
+
+  it('is a no-op for null or empty route ids', async () => {
+    const tables = {
+      group_offers: [],
+      route_requests: [],
+      group_requests: [{ id: 'gr-1', route_id: 'route-1', plan_id: null, status: 'pending' }],
+    }
+    const executor = makeExecutor(tables)
+
+    await cascadeDeclineParentGroupRequestsTx(executor, { routeId: null })
+    await cascadeDeclineParentGroupRequestsTx(executor, { routeId: '' })
+    await cascadeDeclineParentGroupRequestsTx(executor, { routeId: '   ' })
+
+    assert.equal(executor.calls.length, 0)
+    assert.equal(tables.group_requests[0].status, 'pending')
   })
 })

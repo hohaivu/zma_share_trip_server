@@ -29,8 +29,8 @@ export interface CancelGroupRequestTxResult {
 
 export interface ListGroupRequestsByDriverFilters {
   routeId?: string
-  statuses?: string[]
   status?: string
+  statuses?: string[]
 }
 
 export type SentGroupRequest = GroupRequest & { memberPlanIds: string[] }
@@ -225,7 +225,7 @@ export async function listGroupRequestsByDriver(
   driverId: string,
   filters: ListGroupRequestsByDriverFilters = {},
 ): Promise<HydratedSentGroupRequest[]> {
-  const conditions = ['gr.driver_id = ?']
+  const conditions = ["gr.driver_id = ?", "r.status NOT IN ('completed', 'canceled')"]
   const params: string[] = [driverId]
 
   if (filters.routeId) {

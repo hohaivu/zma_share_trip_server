@@ -17,14 +17,12 @@ export interface GroupOffersController {
 export function createGroupOffersController(): GroupOffersController {
   return {
     async listGroupOffers(req, res) {
-      const { clientId, statuses, status } = req.body || {}
+      const { clientId, statuses } = req.body || {}
       requireBodyParam(clientId, 'clientId is required')
 
       const statusFilter = Array.isArray(statuses) && statuses.length > 0
         ? statuses
-        : status
-          ? [status]
-          : undefined
+        : undefined
       const items = await groupOfferService.listGroupOffersByClient(clientId, statusFilter)
       const count = Array.isArray(items) ? items.length : undefined
       res.json(ok(items, count !== undefined ? { count } : undefined))

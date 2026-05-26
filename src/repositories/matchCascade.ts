@@ -5,7 +5,12 @@ export interface CascadeDeclineSiblingsArgs {
   exceptRouteRequestId?: string
 }
 
-type CascadeExecutor = {
+export interface CascadeDeclineParentGroupRequestsArgs {
+  routeId: string | null
+  exceptGroupRequestId?: string
+}
+
+export type CascadeExecutor = {
   query: (sql: string, params: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
 }
 
@@ -13,9 +18,9 @@ function hasNonEmptyId(value: string | null): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
 
-async function declinePendingByScope(
+export async function declinePendingByScope(
   executor: CascadeExecutor,
-  tableName: 'group_offers' | 'route_requests',
+  tableName: 'group_offers' | 'route_requests' | 'group_requests',
   scopeColumn: 'route_id' | 'plan_id',
   scopeId: string,
   exceptId?: string,
@@ -28,6 +33,15 @@ async function declinePendingByScope(
     `UPDATE ${tableName} SET status='declined' WHERE status='pending' AND ${scopeColumn} = ?${exceptClause}`,
     params,
   )
+}
+
+export async function cascadeDeclineParentGroupRequestsTx(
+  executor: CascadeExecutor,
+  args: CascadeDeclineParentGroupRequestsArgs,
+): Promise<void> {
+  if (!hasNonEmptyId(args.routeId)) return
+
+  await declinePendingByScope(executor, 'group_requests', 'route_id', args.routeId, args.exceptGroupRequestId)
 }
 
 export async function cascadeDeclineSiblingsTx(

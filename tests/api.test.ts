@@ -1462,41 +1462,29 @@ describe('inbox visibility endpoints', () => {
     assert.equal(unfiltered.body.data.some((item: { id: string }) => item.id === acceptedOffer.id), true)
     assert.equal(unfiltered.body.data.some((item: { id: string }) => item.id === hiddenPendingOffer.id), false)
 
-    const pendingIds = [pendingOffer.id]
-    const arrayFiltered = await listGroupOffers({ statuses: ['pending'] })
-    assert.equal(arrayFiltered.status, 200)
-    assertOnlyEnvelopeKeys(arrayFiltered.body, ['data', 'meta'])
-    assert.equal(arrayFiltered.body.meta?.count, arrayFiltered.body.data.length)
+    const relevantOfferIds = [pendingOffer.id, acceptedOffer.id, hiddenPendingOffer.id]
+    const pendingFiltered = await listGroupOffers({ statuses: ['pending'] })
+    assert.equal(pendingFiltered.status, 200)
+    assertOnlyEnvelopeKeys(pendingFiltered.body, ['data', 'meta'])
+    assert.equal(pendingFiltered.body.meta?.count, pendingFiltered.body.data.length)
     assert.deepEqual(
-      arrayFiltered.body.data
+      pendingFiltered.body.data
         .filter((item: { id: string }) => [pendingOffer.id, acceptedOffer.id, hiddenPendingOffer.id].includes(item.id))
         .map((item: { id: string }) => item.id)
         .sort(),
-      pendingIds,
+      [pendingOffer.id],
     )
 
-    const singularFiltered = await listGroupOffers({ status: 'pending' })
-    assert.equal(singularFiltered.status, 200)
-    assertOnlyEnvelopeKeys(singularFiltered.body, ['data', 'meta'])
-    assert.equal(singularFiltered.body.meta?.count, singularFiltered.body.data.length)
+    const multiStatusFiltered = await listGroupOffers({ statuses: ['pending', 'accepted'] })
+    assert.equal(multiStatusFiltered.status, 200)
+    assertOnlyEnvelopeKeys(multiStatusFiltered.body, ['data', 'meta'])
+    assert.equal(multiStatusFiltered.body.meta?.count, multiStatusFiltered.body.data.length)
     assert.deepEqual(
-      singularFiltered.body.data
-        .filter((item: { id: string }) => [pendingOffer.id, acceptedOffer.id, hiddenPendingOffer.id].includes(item.id))
+      multiStatusFiltered.body.data
+        .filter((item: { id: string }) => relevantOfferIds.includes(item.id))
         .map((item: { id: string }) => item.id)
         .sort(),
-      pendingIds,
-    )
-
-    const precedenceFiltered = await listGroupOffers({ statuses: ['pending'], status: 'accepted' })
-    assert.equal(precedenceFiltered.status, 200)
-    assertOnlyEnvelopeKeys(precedenceFiltered.body, ['data', 'meta'])
-    assert.equal(precedenceFiltered.body.meta?.count, precedenceFiltered.body.data.length)
-    assert.deepEqual(
-      precedenceFiltered.body.data
-        .filter((item: { id: string }) => [pendingOffer.id, acceptedOffer.id, hiddenPendingOffer.id].includes(item.id))
-        .map((item: { id: string }) => item.id)
-        .sort(),
-      pendingIds,
+      [acceptedOffer.id, pendingOffer.id].sort(),
     )
   })
 

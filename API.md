@@ -97,7 +97,7 @@ Content-Type: application/json
 | Method | Path | Body shape | Description |
 | ------ | ---- | ---------- | ----------- |
 | POST | `/api/drivers/group-requests/create` | `{ "driverId", "routeId", "demandGroupId", "note"? }` | Create a group request and fan-out offers. |
-| POST | `/api/drivers/group-requests/list` | `{ "driverId": "user-uuid" }` | List a driver's sent group requests (hydrated). |
+| POST | `/api/drivers/group-requests/list` | `{ "driverId": "user-uuid", "statuses"?: [...] }` | List a driver's sent group requests (hydrated). |
 | POST | `/api/drivers/group-requests/cancel` | `{ "id": "group-request-uuid", "driverId": "user-uuid" }` | Cancel a group request and close pending offers. |
 
 **Create response**: `{ "data": { "groupRequest": { ... }, "offers": [ ... ] } }`
@@ -146,7 +146,7 @@ Content-Type: application/json
 
 | Method | Path | Body shape | Description |
 | ------ | ---- | ---------- | ----------- |
-| POST | `/api/clients/group-offers/list` | `{ "clientId": "user-uuid" }` | List a client's received group offers (hydrated). |
+| POST | `/api/clients/group-offers/list` | `{ "clientId": "user-uuid", "statuses"?: [...] }` | List a client's received group offers (hydrated). |
 | POST | `/api/clients/group-offers/accept` | `{ "id": "group-offer-uuid", "clientId": "user-uuid" }` | Accept a group offer (first-accept-wins). |
 | POST | `/api/clients/group-offers/decline` | `{ "id": "group-offer-uuid", "clientId": "user-uuid" }` | Decline a group offer. |
 

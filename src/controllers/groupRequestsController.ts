@@ -39,12 +39,11 @@ export function createGroupRequestsController(): GroupRequestsController {
     },
 
     async listGroupRequests(req, res) {
-      const { driverId, routeId, statuses, status } = req.body || {}
+      const { driverId, routeId, statuses } = req.body || {}
       requireBodyParam(driverId, 'driverId is required')
       res.json(await groupRequestService.listGroupRequestsByDriver(driverId, {
         routeId,
         statuses,
-        status,
       }))
     },
 

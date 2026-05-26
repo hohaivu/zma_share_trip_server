@@ -340,6 +340,58 @@ describe('cascade decline — group offer accept declines cross-table siblings',
     const rrRes = await query('SELECT status FROM route_requests WHERE id = $1', [rr.id])
     assert.equal(rrRes.rows[0]?.status, 'declined', 'pending route_request on same route should be declined')
   })
+
+  it('declines competing pending parent group_requests on the same route', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const multiMemberGroup = groups.find((g) => g.memberCount > 1)
+    assert.ok(multiMemberGroup, 'Need a multi-member group')
+
+    const { groupRequest, offers } = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      multiMemberGroup.id,
+      multiMemberGroup.memberPlanIds,
+    )
+    assert.ok(offers.length > 0, 'Need at least 1 offer')
+
+    const competingParentId = 'group-request-competing-parent-route-001'
+    await query(
+      `INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status)
+       VALUES ($1, $2, $3, $4, $5, 'pending')`,
+      [
+        competingParentId,
+        DRIVER_001_ID,
+        'route-001',
+        'competing-demand-group-route-001',
+        'competing parent request',
+      ],
+    )
+
+    await markRouteFeeReserved('route-001')
+    const accepted = await groupOfferService.acceptGroupOffer(offers[0].id)
+    assert.equal(accepted.status, 'accepted')
+
+    const parentRes = await query(
+      `SELECT status, accepted_client_user_id, accepted_plan_id, client_id
+       FROM group_requests
+       WHERE id = $1`,
+      [groupRequest.id],
+    )
+    assert.equal(parentRes.rows[0]?.status, 'accepted')
+    assert.equal(parentRes.rows[0]?.accepted_client_user_id, accepted.clientId)
+    assert.equal(parentRes.rows[0]?.accepted_plan_id, accepted.planId)
+    assert.equal(parentRes.rows[0]?.client_id, accepted.clientId)
+
+    const competingParentRes = await query('SELECT status FROM group_requests WHERE id = $1', [competingParentId])
+    assert.equal(
+      competingParentRes.rows[0]?.status,
+      'declined',
+      'competing pending parent group_request on same route should be declined',
+    )
+  })
 })
 
 // ─── Cascade decline: plan-scoped on route request accept (task 5.3) ──────────
@@ -359,6 +411,48 @@ describe('cascade decline — route request accept declines siblings on same pla
 
     const rr2Res = await query('SELECT status FROM route_requests WHERE id = $1', [rr2.id])
     assert.equal(rr2Res.rows[0]?.status, 'declined', 'sibling route_request on same plan should be declined')
+  })
+
+  it('declines all pending parent group_requests on the accepted route', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const parentIds = [
+      'group-request-direct-route-parent-001',
+      'group-request-direct-route-parent-002',
+    ]
+    for (const parentId of parentIds) {
+      await query(
+        `INSERT INTO group_requests (id, driver_id, route_id, demand_group_id, note, status)
+         VALUES ($1, $2, $3, $4, $5, 'pending')`,
+        [
+          parentId,
+          DRIVER_001_ID,
+          'route-001',
+          `${parentId}-demand-group`,
+          'direct route competing parent request',
+        ],
+      )
+    }
+
+    const rr = await routeRequestService.createRouteRequest(CLIENT_002_ID, 'plan-004', 'route-001')
+    assert.equal(rr.status, 'pending')
+
+    await markRouteFeeReserved('route-001')
+    const accepted = await routeRequestService.acceptRouteRequest(rr.id)
+    assert.equal(accepted.status, 'accepted')
+
+    const rrRes = await query('SELECT status FROM route_requests WHERE id = $1', [rr.id])
+    assert.equal(rrRes.rows[0]?.status, 'accepted')
+
+    const parentRes = await query(
+      'SELECT id, status FROM group_requests WHERE id IN ($1, $2) ORDER BY id',
+      parentIds,
+    )
+    assert.deepEqual(
+      parentRes.rows.map((row) => [row.id, row.status]),
+      parentIds.map((parentId) => [parentId, 'declined']),
+    )
   })
 })
 

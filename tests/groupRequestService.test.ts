@@ -357,4 +357,33 @@ describe('group request memberPlanIds validation', () => {
     assert.ok(listedRequest)
     assert.deepEqual(listedRequest.memberPlanIds, [])
   })
+
+  it('does not list stale pending group requests on terminal routes', async () => {
+    await setupTestDb()
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const group = groups.find((candidate) => candidate.memberCount > 1)
+    if (!group) throw new Error('Expected a multi-member demand group')
+
+    const result = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      group.id,
+      [group.memberPlanIds[0]],
+    )
+    await query("UPDATE group_offers SET status = 'declined' WHERE group_request_id = ?", [
+      result.groupRequest.id,
+    ])
+    await query("UPDATE routes SET status = 'completed' WHERE id = ?", ['route-001'])
+
+    const requests = await groupRequestService.listGroupRequestsByDriver(
+      DRIVER_001_ID,
+      { routeId: 'route-001', statuses: ['pending'] },
+    )
+
+    assert.equal(result.groupRequest.status, 'pending')
+    assert.equal(
+      requests.some((request) => request.id === result.groupRequest.id),
+      false,
+    )
+  })
 })

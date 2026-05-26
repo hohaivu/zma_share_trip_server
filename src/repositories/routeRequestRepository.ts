@@ -14,7 +14,7 @@ import {
   chargeRouteFeeTx,
   loadRouteForWalletTx,
 } from './walletRepository'
-import { cascadeDeclineSiblingsTx } from './matchCascade'
+import { cascadeDeclineParentGroupRequestsTx, cascadeDeclineSiblingsTx } from './matchCascade'
 
 function mapHydratedRouteRequestRow(
   row: Record<string, unknown>,
@@ -246,6 +246,9 @@ export async function acceptRouteRequest(
       routeId: sreq.routeId,
       planId: sreq.planId ?? null,
       exceptRouteRequestId: requestId,
+    })
+    await cascadeDeclineParentGroupRequestsTx(tx, {
+      routeId: sreq.routeId,
     })
     return sreq
   })
