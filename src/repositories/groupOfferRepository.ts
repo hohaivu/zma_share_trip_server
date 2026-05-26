@@ -82,16 +82,17 @@ export async function listGroupOffersByClient(clientId: string, statuses?: strin
            p.passenger_count     AS plan_passenger_count,
            p.origin              AS plan_origin,
            p.destination         AS plan_destination,
-           u.id                  AS cp_id,
-           u.display_name        AS cp_display_name,
-           u.avatar_url          AS cp_avatar_url,
-           u.rating_avg          AS cp_rating_avg,
-           u.trip_count          AS cp_trip_count,
-           u.verification_status AS cp_verification_status
+           u.id                                      AS cp_id,
+           COALESCE(ui.display_name, u.display_name) AS cp_display_name,
+           COALESCE(ui.avatar_url, u.avatar_url)     AS cp_avatar_url,
+           u.rating_avg                              AS cp_rating_avg,
+           u.trip_count                              AS cp_trip_count,
+           u.verification_status                     AS cp_verification_status
     FROM group_offers go
     INNER JOIN routes r ON r.id = go.route_id
     LEFT JOIN plans p ON p.id = go.plan_id
     LEFT JOIN users u ON u.id = go.driver_id
+    LEFT JOIN identities ui ON ui.id = u.identity_id
     WHERE go.client_id = ?
       ${statusClause}
       AND r.status NOT IN ('completed', 'canceled')

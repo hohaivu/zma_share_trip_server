@@ -70,12 +70,15 @@ export async function listClientInboxHydrated(
            r.departure_window_start_date AS route_departure,
            r.departure_window_end_date AS route_departure_end,
            p.passenger_count AS plan_passenger_count,
-           u.id AS cp_id, u.display_name AS cp_display_name,
-           u.avatar_url AS cp_avatar_url, u.rating_avg AS cp_rating_avg,
+           u.id AS cp_id,
+           COALESCE(ui.display_name, u.display_name) AS cp_display_name,
+           COALESCE(ui.avatar_url, u.avatar_url)     AS cp_avatar_url,
+           u.rating_avg AS cp_rating_avg,
            u.trip_count AS cp_trip_count, u.verification_status AS cp_verification_status
     FROM group_offers go
     JOIN routes r ON r.id = go.route_id
     JOIN users  u ON u.id = go.driver_id
+    LEFT JOIN identities ui ON ui.id = u.identity_id
     LEFT JOIN plans p ON p.id = go.plan_id
     WHERE go.client_id = ?
       ${statusFilter}
@@ -87,11 +90,13 @@ export async function listClientInboxHydrated(
            rr.trip_price, rr.status, rr.created_at, rr.note,
            r.origin, r.destination, r.departure_window_start_date, r.departure_window_end_date,
            p.passenger_count,
-           u.id, u.display_name, u.avatar_url, u.rating_avg,
+           u.id, COALESCE(ui2.display_name, u.display_name), COALESCE(ui2.avatar_url, u.avatar_url),
+           u.rating_avg,
            u.trip_count, u.verification_status
     FROM route_requests rr
     JOIN routes r ON r.id = rr.route_id
     JOIN users  u ON u.id = rr.driver_id
+    LEFT JOIN identities ui2 ON ui2.id = u.identity_id
     LEFT JOIN plans p ON p.id = rr.plan_id
     WHERE rr.client_id = ?
       ${statusFilter2}
