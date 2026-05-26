@@ -134,8 +134,8 @@ async function acceptRouteRequest(requestId: string): Promise<RouteRequest> {
   if (request.planId) {
     await query("UPDATE plans SET status = 'matched' WHERE id = $1", [request.planId])
   }
-  await query("UPDATE group_offers SET status = 'closed' WHERE route_id = $1 AND status = 'pending'", [request.routeId])
-  await query("UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND id != $2 AND status = 'pending'", [request.routeId, requestId])
+  await query("UPDATE group_offers SET status = 'declined' WHERE route_id = $1 AND status = 'pending'", [request.routeId])
+  await query("UPDATE route_requests SET status = 'declined' WHERE route_id = $1 AND id != $2 AND status = 'pending'", [request.routeId, requestId])
   return { ...request, status: 'accepted' }
 }
 
@@ -146,8 +146,8 @@ async function acceptGroupOffer(offerId: string): Promise<void> {
   await query("UPDATE group_offers SET status = 'accepted' WHERE id = $1", [offerId])
   await query("UPDATE routes SET status = 'matched', wallet_fee_status = 'charged' WHERE id = $1", [offer.route_id])
   await query("UPDATE plans SET status = 'matched' WHERE id = $1", [offer.plan_id])
-  await query("UPDATE group_offers SET status = 'closed' WHERE route_id = $1 AND id != $2 AND status = 'pending'", [offer.route_id, offerId])
-  await query("UPDATE route_requests SET status = 'closed' WHERE route_id = $1 AND status = 'pending'", [offer.route_id])
+  await query("UPDATE group_offers SET status = 'declined' WHERE route_id = $1 AND id != $2 AND status = 'pending'", [offer.route_id, offerId])
+  await query("UPDATE route_requests SET status = 'declined' WHERE route_id = $1 AND status = 'pending'", [offer.route_id])
 }
 
 async function createPendingGroupOfferForClient(departureDate: string, label: string) {
@@ -3166,5 +3166,89 @@ describe('user profile, review, report, blocklist, and notification routes', () 
     )
     assert.equal(unblockRes.status, 200)
     assert.deepEqual(unblockRes.body.blockedUserIds, [])
+  })
+})
+
+// ─── Cascade decline: E2E accept declines siblings (task 6.2) ─────────────────
+
+describe('cascade decline on group offer accept — E2E (scenario 5.2)', () => {
+  it('declines sibling group_offers and pending route_requests on same route via API', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const departureDate = '2030-05-15'
+
+    const route = await publishRoute(
+      (
+        await createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+          tripPrice: 130000,
+        })
+      ).id,
+    )
+
+    const planA = await planService.createPlan(CLIENT_001_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-cascade-e2e-a',
+      destinationWardId: 'ward-cascade-e2e-a-dest',
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+
+    const planB = await planService.createPlan(CLIENT_002_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-cascade-e2e-b',
+      destinationWardId: 'ward-cascade-e2e-b-dest',
+      departureWindowStartDate: `${departureDate}T07:00:00.000Z`,
+      departureWindowEndDate: `${departureDate}T07:30:00.000Z`,
+      passengerCount: 1,
+    })
+
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const targetGroup = groups.find((g) =>
+      g.memberPlanIds.includes(planA.id) && g.memberPlanIds.includes(planB.id),
+    )
+    assert.ok(targetGroup, 'Need a demand group containing both plans')
+
+    const groupRequest = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      route.id,
+      targetGroup!.id,
+      [planA.id, planB.id],
+    )
+    const offerA = groupRequest.offers.find((o) => o.planId === planA.id)
+    const offerB = groupRequest.offers.find((o) => o.planId === planB.id)
+    assert.ok(offerA && offerB)
+
+    // Add a pending route_request on same route (CLIENT_002 with plan-004)
+    const rrRes = await request(server, 'POST', '/api/clients/search-requests/create', {
+      clientId: CLIENT_002_ID,
+      planId: 'plan-004',
+      routeId: route.id,
+    })
+    assert.equal(rrRes.status, 201)
+    const rrId = rrRes.body.routeRequest?.id ?? rrRes.body.id
+    assert.ok(rrId)
+
+    // CLIENT_001 accepts offer A via API
+    const acceptRes = await request(server, 'POST', '/api/clients/group-offers/accept', {
+      id: offerA.id,
+    })
+    assert.equal(acceptRes.status, 200)
+    assert.equal(acceptRes.body.data?.status ?? acceptRes.body.status, 'accepted')
+
+    // offer B should be declined
+    const offerBRow = (await query('SELECT status FROM group_offers WHERE id = $1', [offerB.id])).rows[0]
+    assert.equal(offerBRow?.status, 'declined', 'sibling offer B should be declined')
+
+    // route_request on same route should be declined
+    const rrRow = (await query('SELECT status FROM route_requests WHERE id = $1', [rrId])).rows[0]
+    assert.equal(rrRow?.status, 'declined', 'pending route_request should be declined')
   })
 })

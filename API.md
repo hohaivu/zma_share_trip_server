@@ -116,7 +116,7 @@ Content-Type: application/json
 ```
 
 > `route.*` reflects the live route record at call time — not a snapshot.
-> `demandGroup` aggregates only `group_offers` with status `pending` or `accepted`; closed/canceled offers are excluded.
+> `demandGroup` aggregates only `group_offers` with status `pending` or `accepted`; declined/closed/canceled offers are excluded.
 
 ### Driver search requests (Driver inbox)
 
@@ -154,8 +154,8 @@ Group offer statuses:
 
 - `pending` — awaiting client response
 - `accepted` — client accepted (route bound)
-- `declined` — client declined
-- `closed` — auto-closed (sibling won, request canceled, or route taken)
+- `declined` — client declined explicitly, or auto-declined (sibling accepted, route taken, or unmatched trip canceled)
+- `closed` — driver withdrew the group request (driver-side cancel)
 
 ### Client inbox
 
@@ -340,6 +340,6 @@ Schema-validated endpoint example:
 ## Orchestration Rules
 
 1. **First-accept-wins**: The first client to accept a group offer or the first driver to accept a search request wins the route.
-2. **Sibling closure**: When a group offer is accepted, all other pending offers from the same group request are auto-closed.
+2. **Sibling decline**: When a group offer or route request is accepted, all other pending sibling offers/requests on the same route or plan are auto-declined (`declined`).
 3. **Route exclusivity**: One route can have only one accepted client (via group offer OR search request).
 4. **Cross-flow blocking**: An accepted group offer blocks pending search requests for that route, and vice versa.

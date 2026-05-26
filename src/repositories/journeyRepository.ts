@@ -17,6 +17,7 @@ import {
   releaseRouteFeeTx,
   type DbQueryExecutor,
 } from './walletRepository'
+import { cascadeDeclineSiblingsTx } from './matchCascade'
 
 function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}${Math.random().toString().slice(2, 6)}`
@@ -130,6 +131,9 @@ async function cancelRouteTripTx(executor: DbQueryExecutor, route: Route): Promi
   } else if (route.walletFeeStatus === 'charged') {
     throw new HttpError(409, 'Cannot cancel an unmatched route after the fee has already been charged')
   }
+  if (!accepted) {
+    await cascadeDeclineSiblingsTx(executor, { routeId: route.id, planId: null })
+  }
   await executor.query("UPDATE routes SET status = 'canceled' WHERE id = ?", [route.id])
   const updatedRouteRes = await executor.query('SELECT * FROM routes WHERE id = ?', [route.id])
   return mapRoute(updatedRouteRes.rows[0])
@@ -143,6 +147,8 @@ async function cancelPlanTripTx(executor: DbQueryExecutor, plan: Plan): Promise<
     const route = await loadRouteForWalletTx(executor, routeId, mapRoute)
     await unwindRouteFeeOnMatchedCancel(executor, route)
     await cancelAcceptedMatchTx(executor, accepted)
+  } else {
+    await cascadeDeclineSiblingsTx(executor, { routeId: null, planId: plan.id })
   }
   await executor.query("UPDATE plans SET status = 'canceled' WHERE id = ?", [plan.id])
   const updatedPlanRes = await executor.query('SELECT * FROM plans WHERE id = ?', [plan.id])

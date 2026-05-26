@@ -14,6 +14,7 @@ import {
   chargeRouteFeeTx,
   loadRouteForWalletTx,
 } from './walletRepository'
+import { cascadeDeclineSiblingsTx } from './matchCascade'
 
 function mapHydratedRouteRequestRow(
   row: Record<string, unknown>,
@@ -241,14 +242,11 @@ export async function acceptRouteRequest(
     await chargeRouteFeeTx(tx, route, mapRoute, {
       description: 'Route fee charged on accepted search request',
     })
-    await tx.query(
-      "UPDATE group_offers SET status = 'closed' WHERE route_id = ? AND status = 'pending'",
-      [sreq.routeId],
-    )
-    await tx.query(
-      "UPDATE route_requests SET status = 'closed' WHERE route_id = ? AND id != ? AND status = 'pending'",
-      [sreq.routeId, requestId],
-    )
+    await cascadeDeclineSiblingsTx(tx, {
+      routeId: sreq.routeId,
+      planId: sreq.planId ?? null,
+      exceptRouteRequestId: requestId,
+    })
     return sreq
   })
 }

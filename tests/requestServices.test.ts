@@ -200,7 +200,7 @@ describe('MVC request services first-accept-wins behavior', () => {
         offer.clientId,
       )
       const sibling = clientOffers.find((o) => o.id === offer.id)
-      assert.equal(sibling!.status, 'closed', 'Sibling should be closed')
+      assert.equal(sibling!.status, 'declined', 'Sibling should be declined')
     }
 
     const sentRequests =
@@ -302,3 +302,98 @@ describe('MVC request services route exclusivity', () => {
 })
 
 // ─── 6.6 search request plan linkage ──────────────────────────────────────────
+
+// ─── Cascade decline: cross-table on group offer accept (task 5.2) ────────────
+
+describe('cascade decline — group offer accept declines cross-table siblings', () => {
+  it('declines sibling group_offers and pending route_requests on same route', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const multiMemberGroup = groups.find((g) => g.memberCount > 1)
+    assert.ok(multiMemberGroup, 'Need a multi-member group')
+
+    const { offers } = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      multiMemberGroup.id,
+      multiMemberGroup.memberPlanIds,
+    )
+    assert.ok(offers.length >= 2, 'Need at least 2 offers')
+
+    const rr = await routeRequestService.createRouteRequest(
+      CLIENT_002_ID,
+      'plan-004',
+      'route-001',
+    )
+
+    await markRouteFeeReserved('route-001')
+    await groupOfferService.acceptGroupOffer(offers[0].id)
+
+    for (const offer of offers.slice(1)) {
+      const res = await query('SELECT status FROM group_offers WHERE id = $1', [offer.id])
+      assert.equal(res.rows[0]?.status, 'declined', `sibling offer ${offer.id} should be declined`)
+    }
+
+    const rrRes = await query('SELECT status FROM route_requests WHERE id = $1', [rr.id])
+    assert.equal(rrRes.rows[0]?.status, 'declined', 'pending route_request on same route should be declined')
+  })
+})
+
+// ─── Cascade decline: plan-scoped on route request accept (task 5.3) ──────────
+
+describe('cascade decline — route request accept declines siblings on same plan', () => {
+  it('declines sibling route_requests sharing the same plan_id', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const rr1 = await routeRequestService.createRouteRequest(CLIENT_001_ID, 'plan-001', 'route-001')
+    const rr2 = await routeRequestService.createRouteRequest(CLIENT_001_ID, 'plan-001', 'route-002')
+    assert.equal(rr1.status, 'pending')
+    assert.equal(rr2.status, 'pending')
+
+    await markRouteFeeReserved('route-001')
+    await routeRequestService.acceptRouteRequest(rr1.id)
+
+    const rr2Res = await query('SELECT status FROM route_requests WHERE id = $1', [rr2.id])
+    assert.equal(rr2Res.rows[0]?.status, 'declined', 'sibling route_request on same plan should be declined')
+  })
+})
+
+// ─── Cascade decline: race accept returns 409 (task 5.4) ──────────────────────
+
+describe('cascade decline — race accept on declined offer returns 409', () => {
+  it('returns 409 when accepting a declined sibling offer', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const multiMemberGroup = groups.find((g) => g.memberCount > 1)
+    assert.ok(multiMemberGroup)
+
+    const { offers } = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      multiMemberGroup.id,
+      multiMemberGroup.memberPlanIds,
+    )
+    assert.ok(offers.length >= 2)
+
+    await markRouteFeeReserved('route-001')
+    await groupOfferService.acceptGroupOffer(offers[0].id)
+
+    const siblingRes = await query('SELECT status FROM group_offers WHERE id = $1', [offers[1].id])
+    assert.equal(siblingRes.rows[0]?.status, 'declined')
+
+    await assert.rejects(
+      () => groupOfferService.acceptGroupOffer(offers[1].id),
+      (err: unknown) => {
+        const e = err as { statusCode?: number; message?: string }
+        assert.equal(e.statusCode, 409)
+        assert.match(e.message ?? '', /declined/)
+        return true
+      },
+    )
+  })
+})

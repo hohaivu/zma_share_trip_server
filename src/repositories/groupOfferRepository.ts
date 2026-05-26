@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../db/connection'
 import { mapRows, toCamelCase } from '../db/utils'
 import { GroupOffer } from '../types/entities'
+import { cascadeDeclineSiblingsTx } from './matchCascade'
 import { mapRoute, ROUTE_ACCEPTED_SQL } from './routeAvailabilityRepository'
 import { chargeRouteFeeTx, loadRouteForWalletTx } from './walletRepository'
 
@@ -92,15 +93,24 @@ export async function acceptGroupOfferTx(offerId: string): Promise<AcceptGroupOf
       description: 'Route fee charged on accepted group offer',
     })
 
+    const siblingIdParams: unknown[] = [updatedOffer.id, updatedOffer.routeId]
+    let siblingIdScope = 'route_id = ?'
+    if (updatedOffer.planId) {
+      siblingIdScope = `(${siblingIdScope} OR plan_id = ?)`
+      siblingIdParams.push(updatedOffer.planId)
+    }
     const siblingIdsRes = await tx.query(
-      "SELECT id FROM group_offers WHERE group_request_id = ? AND id != ? AND status = 'pending'",
-      [offer.groupRequestId, offerId],
+      `SELECT id FROM group_offers WHERE status = 'pending' AND id != ? AND ${siblingIdScope}`,
+      siblingIdParams,
     )
     const siblingIds = siblingIdsRes.rows.map((r) => String(r.id))
-    await tx.query(
-      "UPDATE group_offers SET status = 'closed' WHERE group_request_id = ? AND id != ? AND status = 'pending'",
-      [offer.groupRequestId, offerId],
-    )
+
+    await cascadeDeclineSiblingsTx(tx, {
+      routeId: updatedOffer.routeId,
+      planId: updatedOffer.planId,
+      exceptGroupOfferId: updatedOffer.id,
+    })
+
     let siblings: GroupOffer[] = []
     if (siblingIds.length > 0) {
       const siblingsRes = await tx.query(
@@ -117,11 +127,6 @@ export async function acceptGroupOfferTx(offerId: string): Promise<AcceptGroupOf
       WHERE id = ?
       `,
       [updatedOffer.clientId, updatedOffer.planId, updatedOffer.clientId, updatedOffer.groupRequestId],
-    )
-
-    await tx.query(
-      "UPDATE route_requests SET status = 'closed' WHERE route_id = ? AND status = 'pending'",
-      [offer.routeId],
     )
 
     return { status: 'accepted' as const, offer, updatedOffer, siblings }
