@@ -1,35 +1,12 @@
 import { HttpError } from '../http-error'
 import { GroupOffer } from '../types/entities'
+import type { HydratedClientGroupOffer } from '../types/payloads'
 import * as groupOfferRepository from '../repositories/groupOfferRepository'
 import { emitNotification } from './notificationService'
 import { assertUserRole } from './userService'
 
-function isTerminalTripStatus(status?: string | null): boolean {
-  return status === 'completed' || status === 'canceled'
-}
-
-async function shouldHideOfferForTerminalTrip(
-  offer: Pick<GroupOffer, 'routeId' | 'planId'>,
-): Promise<boolean> {
-  const routeStatus = await groupOfferRepository.getRouteStatus(offer.routeId)
-  if (isTerminalTripStatus(routeStatus)) return true
-
-  if (!offer.planId) return false
-  const planStatus = await groupOfferRepository.getPlanStatus(offer.planId)
-  return isTerminalTripStatus(planStatus)
-}
-
-async function filterVisibleForActiveTrip<T extends Pick<GroupOffer, 'routeId' | 'planId'>>(
-  offers: T[],
-): Promise<T[]> {
-  const visibility = await Promise.all(
-    offers.map((offer) => shouldHideOfferForTerminalTrip(offer)),
-  )
-  return offers.filter((_, index) => !visibility[index])
-}
-
 export interface GroupOfferService {
-  listGroupOffersByClient(clientId: string, statuses?: string[]): Promise<GroupOffer[]>
+  listGroupOffersByClient(clientId: string, statuses?: string[]): Promise<HydratedClientGroupOffer[]>
   acceptGroupOffer(offerId: string): Promise<GroupOffer>
   declineGroupOffer(offerId: string): Promise<GroupOffer>
 }
@@ -37,8 +14,7 @@ export interface GroupOfferService {
 export const groupOfferService: GroupOfferService = {
   async listGroupOffersByClient(clientId, statuses) {
     await assertUserRole(clientId, 'client')
-    const offers = await groupOfferRepository.listGroupOffersByClient(clientId, statuses)
-    return filterVisibleForActiveTrip(offers)
+    return groupOfferRepository.listGroupOffersByClient(clientId, statuses)
   },
 
   async acceptGroupOffer(offerId) {

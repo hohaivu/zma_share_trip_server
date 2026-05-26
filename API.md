@@ -146,9 +146,30 @@ Content-Type: application/json
 
 | Method | Path | Body shape | Description |
 | ------ | ---- | ---------- | ----------- |
-| POST | `/api/clients/group-offers/list` | `{ "clientId": "user-uuid" }` | List a client's received group offers. |
+| POST | `/api/clients/group-offers/list` | `{ "clientId": "user-uuid" }` | List a client's received group offers (hydrated). |
 | POST | `/api/clients/group-offers/accept` | `{ "id": "group-offer-uuid", "clientId": "user-uuid" }` | Accept a group offer (first-accept-wins). |
 | POST | `/api/clients/group-offers/decline` | `{ "id": "group-offer-uuid", "clientId": "user-uuid" }` | Decline a group offer. |
+
+**Response for `/api/clients/group-offers/list`** — each item includes hydrated fields in addition to base fields:
+```json
+{
+  "id": "...",
+  "groupRequestId": "...",
+  "routeId": "...",
+  "driverId": "...",
+  "clientId": "...",
+  "planId": "...",
+  "tripPrice": 0,
+  "status": "pending",
+  "createdAt": "...",
+  "counterparty": { "id": "...", "displayName": "...", "avatarUrl": "...", "ratingAvg": 4.8, "tripCount": 12 },
+  "route": { "origin": {...}, "destination": {...}, "departureWindowStartDate": "...", "departureWindowEndDate": "..." },
+  "plan": { "passengerCount": 2, "origin": {...}, "destination": {...} }
+}
+```
+- `counterparty` is `null` if the driver user row is missing.
+- `plan` is `null` if `planId` references a hard-deleted plan row.
+- Rows whose linked `routes.status` or `plans.status` is `completed` or `canceled` are excluded server-side.
 
 Group offer statuses:
 

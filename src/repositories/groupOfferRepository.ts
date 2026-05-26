@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../db/connection'
-import { mapRows, toCamelCase } from '../db/utils'
+import { mapCounterpartyRow, mapRows, parseLocationJson, parseNumeric, toCamelCase, toCamelCaseRecord } from '../db/utils'
 import { GroupOffer } from '../types/entities'
+import type { HydratedClientGroupOffer } from '../types/payloads'
 import { cascadeDeclineSiblingsTx } from './matchCascade'
 import { mapRoute, ROUTE_ACCEPTED_SQL } from './routeAvailabilityRepository'
 import { chargeRouteFeeTx, loadRouteForWalletTx } from './walletRepository'
@@ -22,16 +23,84 @@ export async function getPlanStatus(planId: string): Promise<string | null> {
   return row?.status ?? null
 }
 
-export async function listGroupOffersByClient(clientId: string, statuses?: string[]): Promise<GroupOffer[]> {
-  const statusParams = statuses && statuses.length > 0 ? statuses : []
-  const statusClause = statusParams.length > 0
-    ? ` AND status IN (${statusParams.map(() => '?').join(',')})`
+function mapHydratedGroupOfferRow(row: Record<string, unknown>): HydratedClientGroupOffer {
+  const r = toCamelCaseRecord(row)
+  const counterparty = mapCounterpartyRow(r)
+
+  const routeOrigin = parseLocationJson(r.routeOrigin)
+  const routeDestination = parseLocationJson(r.routeDestination)
+  const route =
+    routeOrigin && routeDestination && r.routeDeparture && r.routeDepartureEnd
+      ? {
+          origin: routeOrigin,
+          destination: routeDestination,
+          departureWindowStartDate: r.routeDeparture as string,
+          departureWindowEndDate: r.routeDepartureEnd as string,
+        }
+      : null
+
+  const planPassengerCount =
+    r.planPassengerCount != null ? Number(r.planPassengerCount) : null
+  const plan =
+    planPassengerCount != null
+      ? {
+          passengerCount: planPassengerCount,
+          origin: parseLocationJson(r.planOrigin) ?? undefined,
+          destination: parseLocationJson(r.planDestination) ?? undefined,
+        }
+      : null
+
+  return {
+    id: r.id as string,
+    groupRequestId: r.groupRequestId as string,
+    routeId: r.routeId as string,
+    driverId: r.driverId as string,
+    clientId: r.clientId as string,
+    planId: r.planId as string,
+    tripPrice: parseNumeric(r.tripPrice),
+    status: r.status as string,
+    createdAt: r.createdAt as string | undefined,
+    counterparty,
+    route,
+    plan,
+  }
+}
+
+export async function listGroupOffersByClient(clientId: string, statuses?: string[]): Promise<HydratedClientGroupOffer[]> {
+  const hasStatuses = statuses && statuses.length > 0
+  const statusClause = hasStatuses
+    ? `AND go.status IN (${statuses!.map(() => '?').join(',')})`
     : ''
-  const offersRes = await query(
-    `SELECT * FROM group_offers WHERE client_id = ?${statusClause} ORDER BY created_at DESC, id DESC`,
-    [clientId, ...statusParams],
+  const params = hasStatuses ? [clientId, ...statuses!] : [clientId]
+  const result = await query(
+    `
+    SELECT go.*,
+           r.origin              AS route_origin,
+           r.destination         AS route_destination,
+           r.departure_window_start_date AS route_departure,
+           r.departure_window_end_date   AS route_departure_end,
+           p.passenger_count     AS plan_passenger_count,
+           p.origin              AS plan_origin,
+           p.destination         AS plan_destination,
+           u.id                  AS cp_id,
+           u.display_name        AS cp_display_name,
+           u.avatar_url          AS cp_avatar_url,
+           u.rating_avg          AS cp_rating_avg,
+           u.trip_count          AS cp_trip_count,
+           u.verification_status AS cp_verification_status
+    FROM group_offers go
+    INNER JOIN routes r ON r.id = go.route_id
+    LEFT JOIN plans p ON p.id = go.plan_id
+    LEFT JOIN users u ON u.id = go.driver_id
+    WHERE go.client_id = ?
+      ${statusClause}
+      AND r.status NOT IN ('completed', 'canceled')
+      AND (p.id IS NULL OR p.status NOT IN ('completed', 'canceled'))
+    ORDER BY go.created_at DESC, go.id DESC
+    `,
+    params,
   )
-  return mapRows<GroupOffer>(offersRes.rows)
+  return result.rows.map(mapHydratedGroupOfferRow)
 }
 
 export interface AcceptGroupOfferTxResult {

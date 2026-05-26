@@ -9,6 +9,7 @@ import * as groupRequestRepository from '../src/repositories/groupRequestReposit
 import * as journeyRepository from '../src/repositories/journeyRepository'
 import * as carService from '../src/services/carService'
 import * as driverRouteService from '../src/services/driverRouteService'
+import * as groupOfferRepository from '../src/repositories/groupOfferRepository'
 import * as groupOfferService from '../src/services/groupOfferService'
 import * as groupRequestService from '../src/services/groupRequestService'
 import * as planService from '../src/services/planService'
@@ -395,5 +396,85 @@ describe('cascade decline — race accept on declined offer returns 409', () => 
         return true
       },
     )
+  })
+})
+
+// ─── listGroupOffersByClient hydration ────────────────────────────────────────
+
+describe('listGroupOffersByClient — hydrated repository', () => {
+  it('returns hydrated counterparty, route, and plan for an active offer', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const multiMemberGroup = groups.find((g) => g.memberCount > 1)
+    assert.ok(multiMemberGroup, 'Need a multi-member group')
+
+    const { offers } = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      multiMemberGroup!.id,
+      multiMemberGroup!.memberPlanIds,
+    )
+    assert.ok(offers.length > 0, 'Should have at least one offer')
+
+    const clientOffers = await groupOfferRepository.listGroupOffersByClient(offers[0].clientId)
+    const offer = clientOffers.find((o) => o.id === offers[0].id)
+    assert.ok(offer, 'Offer should be in the list')
+
+    assert.ok(offer!.counterparty !== undefined, 'counterparty should be present')
+    assert.ok(offer!.route !== null, 'route should be present')
+    assert.ok(offer!.plan !== null || offer!.planId === null, 'plan present when planId is set')
+    assert.equal(offer!.driverId, DRIVER_001_ID)
+    assert.ok(offer!.route?.departureWindowStartDate, 'route has departure start')
+    assert.ok(offer!.route?.departureWindowEndDate, 'route has departure end')
+  })
+
+  it('excludes offers whose route is completed', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const multiMemberGroup = groups.find((g) => g.memberCount > 1)
+    assert.ok(multiMemberGroup)
+
+    const { offers } = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      multiMemberGroup!.id,
+      multiMemberGroup!.memberPlanIds,
+    )
+    assert.ok(offers.length > 0)
+
+    await query("UPDATE routes SET status = 'completed' WHERE id = 'route-001'")
+
+    const clientOffers = await groupOfferRepository.listGroupOffersByClient(offers[0].clientId)
+    const found = clientOffers.find((o) => o.id === offers[0].id)
+    assert.equal(found, undefined, 'Offer with completed route should be excluded')
+  })
+
+  it('returns offer with null counterparty when driver row is missing', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const groups = await demandGroupRepository.deriveDemandGroups()
+    const multiMemberGroup = groups.find((g) => g.memberCount > 1)
+    assert.ok(multiMemberGroup)
+
+    const { offers } = await groupRequestService.createGroupRequest(
+      DRIVER_001_ID,
+      'route-001',
+      multiMemberGroup!.id,
+      multiMemberGroup!.memberPlanIds,
+    )
+    assert.ok(offers.length > 0)
+
+    // Remove driver user row to simulate missing counterparty
+    await query('DELETE FROM users WHERE id = ?', [DRIVER_001_ID])
+
+    const clientOffers = await groupOfferRepository.listGroupOffersByClient(offers[0].clientId)
+    const offer = clientOffers.find((o) => o.id === offers[0].id)
+    assert.ok(offer, 'Offer should still appear despite missing driver user row')
+    assert.equal(offer!.counterparty, null, 'counterparty should be null for missing driver')
   })
 })

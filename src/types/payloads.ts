@@ -392,6 +392,21 @@ export interface HydratedRouteRequest extends RouteRequest {
   plan: SlimPlan | null
 }
 
+export interface HydratedClientGroupOffer {
+  id: string
+  groupRequestId: string
+  routeId: string
+  driverId: string
+  clientId: string
+  planId: string
+  tripPrice: number
+  status: string
+  createdAt?: string
+  counterparty: Counterparty | null
+  route: SlimRoute | null
+  plan: SlimPlan | null
+}
+
 // -- Conflicts --
 export interface DuplicateRequestConflict {
   existingRequest: RouteRequest
