@@ -1,4 +1,6 @@
 // Helper functions to safely convert DB results to TS domains.
+// Keep conversions JSON-safe and transport-friendly so future gateway layers
+// can forward serialized records without changing business logic.
 
 import type { Location } from '../types/entities'
 

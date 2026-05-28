@@ -80,6 +80,10 @@ export function httpErrorCode(status: number): string {
  * Used by both the global error middleware and `asyncHandler` so the on-wire
  * shape stays identical across error paths.
  *
+ * Moleculer gateway prep: keep this response contract framework-agnostic so a
+ * future transport adapter can wrap the same `{ data }` / `{ error }` payloads
+ * without changing downstream consumers.
+ *
  * Details from an `HttpError` payload are only exposed when explicitly opted
  * into via `HttpError.withSafeDetails`, and never on 500s.
  */

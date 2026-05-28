@@ -36,6 +36,16 @@ Services own application and domain behavior.
 
 `src/services/domainServices.ts` is the current shared service module. Later refactor work may split it by resource/use case while preserving this contract.
 
+### Future service compatibility rules
+
+These rules keep the current Express architecture stable while preparing for a Moleculer-style strangler migration.
+
+- Service methods must accept plain serializable inputs and return plain serializable outputs.
+- Service methods must not depend on Express `Request`, `Response`, or other HTTP-specific types.
+- Cross-domain dependencies should be introduced through explicit ports/adapters or action/event contracts, not by direct sibling service imports.
+- Same-domain helper code may stay local to a service boundary while the migration is in progress.
+- Future Moleculer adoption must remain an implementation detail behind the existing service contract; it must not change public API behavior by itself.
+
 ### Repositories (`src/repositories`)
 
 Repositories own persistence access.
@@ -72,6 +82,9 @@ src/routes -> src/controllers -> src/services -> src/repositories -> storage/ada
 ```
 
 Supporting shared modules may be imported where appropriate if they do not invert the layer direction. Examples include request helpers, error helpers, shared types, and compatibility facades.
+
+For future service extraction, prefer explicit action contracts for synchronous cross-domain calls and explicit events for downstream reactions.
+That keeps the current layered architecture intact while avoiding hidden coupling between sibling services.
 
 Run the MVC boundary guardrail before completing endpoint or refactor work:
 

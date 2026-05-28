@@ -23,9 +23,13 @@ export default function validate(...requiredFields: string[]): RequestHandler {
 export type ValidateSource = 'body' | 'query' | 'params'
 
 /**
- * Schema-driven validation boundary. Parses `req[source]` with the provided
- * zod schema before the controller runs. On failure responds 400 with the
- * shared error envelope (see API.md → "Validation Errors").
+ * Express-specific validation boundary. Parses `req[source]` with the provided
+ * zod schema before the controller runs, but keeps the schema itself
+ * framework-neutral so the same contract can be reused by a future Moleculer
+ * gateway or other transport adapter.
+ *
+ * On failure responds 400 with the shared error envelope (see API.md →
+ * "Validation Errors").
  *
  * On success the parsed (and possibly transformed/coerced) data replaces
  * `req[source]`, so downstream handlers get the narrowed payload.

@@ -7,6 +7,8 @@ export type TransactionClient = {
 
 let pool: mariadb.Pool | null = null
 
+// Pool lifecycle is owned at the application boundary: init once during boot,
+// reuse via getPool(), and close explicitly on shutdown.
 export function initPool(): mariadb.Pool {
   if (pool) return pool
 

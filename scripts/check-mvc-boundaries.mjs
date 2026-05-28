@@ -102,6 +102,10 @@ const isStoreImport = (specifier, importerPath) => {
 }
 
 const dbConnectionPath = path.join(projectRoot, 'src', 'db', 'connection')
+const serviceModulePath = (filePath) => stripKnownExtension(filePath)
+
+const isUnderServicesDir = (resolvedPath) =>
+  resolvedPath === servicesDir || resolvedPath.startsWith(`${servicesDir}${path.sep}`)
 
 const isDbConnectionImport = (specifier, importerPath) => {
   if (specifier.startsWith('.')) {
@@ -116,6 +120,19 @@ const isDbConnectionImport = (specifier, importerPath) => {
   }
 
   return false
+}
+
+const resolveSiblingServiceImport = (specifier, importerPath, serviceModulePaths) => {
+  if (!specifier.startsWith('.')) return null
+
+  const resolved = serviceModulePath(path.resolve(path.dirname(importerPath), specifier))
+  const importerModule = serviceModulePath(importerPath)
+
+  if (!isUnderServicesDir(resolved)) return null
+  if (resolved === importerModule) return null
+  if (!serviceModulePaths.has(resolved)) return null
+
+  return resolved
 }
 
 const isPgPackageImport = (specifier) =>
@@ -147,6 +164,11 @@ const findTypeScriptFiles = (dir) => {
 const lineNumberForIndex = (contents, index) => contents.slice(0, index).split('\n').length
 
 const storeViolations = []
+const serviceFiles = statSync(servicesDir, { throwIfNoEntry: false })?.isDirectory()
+  ? findTypeScriptFiles(servicesDir)
+  : []
+const serviceModulePaths = new Set(serviceFiles.map(serviceModulePath))
+const siblingServiceWarnings = []
 
 for (const dir of guardedDirs) {
   if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) continue
@@ -171,48 +193,56 @@ for (const dir of guardedDirs) {
 
 const serviceViolations = []
 
-if (statSync(servicesDir, { throwIfNoEntry: false })?.isDirectory()) {
-  for (const filePath of findTypeScriptFiles(servicesDir)) {
-    const contents = readFileSync(filePath, 'utf8')
-    const scanContents = stripComments(contents)
-    const relativePath = path.relative(projectRoot, filePath)
+for (const filePath of serviceFiles) {
+  const contents = readFileSync(filePath, 'utf8')
+  const scanContents = stripComments(contents)
+  const relativePath = path.relative(projectRoot, filePath)
 
-    for (const match of scanContents.matchAll(importPattern)) {
-      const specifier = match[1] ?? match[2] ?? match[3]
-      if (!specifier) continue
+  for (const match of scanContents.matchAll(importPattern)) {
+    const specifier = match[1] ?? match[2] ?? match[3]
+    if (!specifier) continue
 
-      if (isDbConnectionImport(specifier, filePath)) {
-        serviceViolations.push({
-          kind: 'db-connection-import',
-          filePath: relativePath,
-          line: lineNumberForIndex(contents, match.index),
-          detail: `imports DB connection "${specifier}"`,
-        })
-        continue
-      }
-
-      if (isPgPackageImport(specifier)) {
-        serviceViolations.push({
-          kind: 'pg-package-import',
-          filePath: relativePath,
-          line: lineNumberForIndex(contents, match.index),
-          detail: `imports pg package "${specifier}"`,
-        })
-      }
+    if (isDbConnectionImport(specifier, filePath)) {
+      serviceViolations.push({
+        kind: 'db-connection-import',
+        filePath: relativePath,
+        line: lineNumberForIndex(contents, match.index),
+        detail: `imports DB connection "${specifier}"`,
+      })
+      continue
     }
 
-    for (const stringMatch of scanContents.matchAll(stringLiteralPattern)) {
-      const literal = stringMatch[0]
-      const sqlMatch = literal.match(rawSqlPattern)
-      if (!sqlMatch) continue
-
+    if (isPgPackageImport(specifier)) {
       serviceViolations.push({
-        kind: 'raw-sql',
+        kind: 'pg-package-import',
         filePath: relativePath,
-        line: lineNumberForIndex(contents, stringMatch.index),
-        detail: `contains raw SQL keyword "${sqlMatch[1]}" in string literal`,
+        line: lineNumberForIndex(contents, match.index),
+        detail: `imports pg package "${specifier}"`,
+      })
+      continue
+    }
+
+    const siblingServiceModule = resolveSiblingServiceImport(specifier, filePath, serviceModulePaths)
+    if (siblingServiceModule) {
+      siblingServiceWarnings.push({
+        filePath: relativePath,
+        line: lineNumberForIndex(contents, match.index),
+        detail: `imports sibling service module "${specifier}" -> ${path.relative(projectRoot, siblingServiceModule)}`,
       })
     }
+  }
+
+  for (const stringMatch of scanContents.matchAll(stringLiteralPattern)) {
+    const literal = stringMatch[0]
+    const sqlMatch = literal.match(rawSqlPattern)
+    if (!sqlMatch) continue
+
+    serviceViolations.push({
+      kind: 'raw-sql',
+      filePath: relativePath,
+      line: lineNumberForIndex(contents, stringMatch.index),
+      detail: `contains raw SQL keyword "${sqlMatch[1]}" in string literal`,
+    })
   }
 }
 
@@ -228,6 +258,17 @@ if (storeViolations.length > 0) {
   }
 }
 
+if (siblingServiceWarnings.length > 0) {
+  console.warn('MVC boundary guardrail warning: direct sibling service imports were found under src/services (non-blocking).')
+  console.warn('Prefer routing shared logic through repositories or utility modules instead of sibling service-to-service imports.\n')
+
+  for (const warning of siblingServiceWarnings) {
+    console.warn(`- ${warning.filePath}:${warning.line} ${warning.detail}`)
+  }
+
+  console.warn('')
+}
+
 if (serviceViolations.length > 0) {
   failed = true
   if (storeViolations.length > 0) console.error('')
@@ -237,6 +278,10 @@ if (serviceViolations.length > 0) {
   for (const violation of serviceViolations) {
     console.error(`- ${violation.filePath}:${violation.line} [${violation.kind}] ${violation.detail}`)
   }
+}
+
+if (failed && siblingServiceWarnings.length > 0) {
+  console.warn('Non-blocking sibling service import warnings were emitted above.')
 }
 
 if (failed) {

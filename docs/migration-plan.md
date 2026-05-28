@@ -1,5 +1,32 @@
 # Backend Migration Plan
 
+## Phase 0: MoleculerJS Preparation
+
+**Status:** Planned
+
+This phase prepares the codebase for a future strangler migration to MoleculerJS without changing the current runtime.
+
+### Why
+
+- The current Express layered architecture already contains service boundaries that can be mapped to future actions.
+- Preparing service contracts first reduces the risk of a later framework switch.
+- A contract-first migration keeps the HTTP API stable while infrastructure changes behind the scenes.
+
+### Recommended strangler path
+
+1. Keep Express as the public HTTP entry point.
+2. Document and stabilize plain-data action contracts for each service boundary.
+3. Introduce explicit ports/adapters between cross-domain dependencies instead of direct sibling imports.
+4. Add a Moleculer broker only after the service contracts are stable.
+5. Migrate endpoints incrementally so each area can move behind the broker without changing public responses.
+
+### Non-goals
+
+- No Moleculer runtime dependency is added in this phase.
+- No public API behavior or response-shape change is introduced in this phase.
+- No database split or data-model split is introduced in this phase.
+- No Express route/controller rewrite is required in this phase.
+
 ## Phase 1: Postgres → MariaDB
 
 **Status:** Complete (2026-05-19)
