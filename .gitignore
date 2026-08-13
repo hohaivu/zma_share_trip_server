@@ -40,6 +40,5 @@ coverage/
 
 # Agent files — keep tracked
 # !.agent/
-.gitnexus
 .executor
 .superset
