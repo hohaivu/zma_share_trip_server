@@ -97,9 +97,9 @@ For local Docker-backed tests, use `postgres://postgres:postgres@localhost:5433/
 1. Push to GitHub/GitLab
 2. Render Dashboard → **New** → **Blueprint**
 3. Connect repo → Render reads `render.yaml`
-4. Render installs with `npm install`, then runs `npm run db:schema` and `npm run db:seed`
-5. The web service starts from `npm start`
-6. Set `ZALO_APP_ID`, `ZALO_APP_SECRET`, and `VNMAP_API_KEY` in dashboard (Postgres connects automatically via Blueprint)
+4. Render installs with `npm install`
+5. The web service starts with `npm run db:schema && npm run db:seed && npm start` — schema/seed run at service start (not during build) because Render's build environment has no access to the private network the database lives on
+6. Set `ZALO_APP_ID`, `ZALO_APP_SECRET`, `VNMAP_API_KEY`, and `DATABASE_URL` in dashboard (point `DATABASE_URL` at your MariaDB instance)
 7. Deploy 🚀
 
 This deploy path runs the TypeScript source directly through `tsx`, so it does not require a separate build step on Render.
@@ -107,10 +107,16 @@ This deploy path runs the TypeScript source directly through `tsx`, so it does n
 If you create a manual Node service instead of a Blueprint, use the same commands:
 
 ```bash
-npm install && npm run db:schema && npm run db:seed
+npm install
 ```
 
-and keep the start command as `npm start`. The package `start` script runs via `tsx`, so it does not require a separate build step.
+for build, and
+
+```bash
+npm run db:schema && npm run db:seed && npm start
+```
+
+as the start command. The package `start` script runs via `tsx`, so it does not require a separate build step.
 
 ## Test
 

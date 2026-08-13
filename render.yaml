@@ -3,8 +3,8 @@ services:
     name: cung-tuyen-api
     runtime: node
     plan: free
-    buildCommand: npm install && npm run db:schema && npm run db:seed
-    startCommand: npm start
+    buildCommand: npm install
+    startCommand: npm run db:schema && npm run db:seed && npm start
     envVars:
       - key: ZALO_APP_ID
         sync: false
@@ -13,13 +13,5 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: cung-tuyen-db
-          property: connectionString
+        sync: false
     healthCheckPath: /health
-
-databases:
-  - name: cung-tuyen-db
-    databaseName: cung_tuyen
-    user: cung_tuyen
-    plan: free
