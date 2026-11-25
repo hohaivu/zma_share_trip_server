@@ -29,9 +29,15 @@ async function start() {
   await kernel.boot()
 
   kernel.app.listen(PORT, () => {
-    if (!process.env.ZALO_APP_ID) console.warn('⚠ ZALO_APP_ID is not set')
-    if (!process.env.ZALO_APP_SECRET)
-      console.warn('⚠ ZALO_APP_SECRET is not set')
+    for (const name of [
+      'CLIENT_API_KEY',
+      'CLIENT_API_SECRET',
+      'DRIVER_API_KEY',
+      'DRIVER_API_SECRET',
+      'AUTH_TOKEN_SECRET',
+    ]) {
+      if (!process.env[name]) console.warn(`⚠ ${name} is not set`)
+    }
     if (!process.env.VNMAP_API_KEY) console.warn('⚠ VNMAP_API_KEY is not set')
     console.log(`✓ cung-tuyen-api listening on :${PORT}`)
   })

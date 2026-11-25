@@ -59,17 +59,16 @@ function readPreferredMode(req: Request): string {
 export function createUsersController(): UsersController {
   return {
     async bootstrapUser(req, res) {
+      // Mode comes from the verified API key (requireAuth), never from the body.
       const { mauid, displayName, avatarUrl } = req.body
       requireControllerParam(mauid, 'mauid is required')
       requireControllerParam(displayName, 'displayName is required')
-      if (avatarUrl === undefined) {
-        throw new HttpError(400, 'avatarUrl is required')
-      }
 
       const { session, wasCreated } = await userService.bootstrapUser(
         mauid,
         displayName,
-        avatarUrl,
+        avatarUrl ?? '',
+        res.locals.hostMode,
       )
 
       res.status(wasCreated ? 201 : 200).json(session)

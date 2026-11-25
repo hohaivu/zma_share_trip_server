@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import { after, before, describe } from 'node:test'
 
+import { authHeader } from './authSupport'
 import { query } from '../src/db/connection'
 import app from '../src/index.js'
 import * as matching from '../src/matching'
@@ -208,6 +209,7 @@ function request(
   method: string,
   path: string,
   body?: any,
+  headers: Record<string, string> = authHeader(),
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     const addr = server.address()
@@ -216,7 +218,7 @@ function request(
       port: addr.port,
       path,
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...headers },
     }
     const req = http.request(options, (res: any) => {
       let data = ''
@@ -2807,13 +2809,35 @@ describe('POST /api/users/bootstrap', () => {
     assert.ok(res.body.error.message.includes('displayName'))
   })
 
-  it('returns 400 when avatarUrl is missing', async () => {
+  it('accepts a missing avatarUrl and stores an empty string', async () => {
     const res = await request(server, 'POST', '/api/users/bootstrap', {
       mauid: 'zalo-missing-avatar',
       displayName: 'Missing Avatar',
     })
-    assert.equal(res.status, 400)
-    assert.ok(res.body.error.message.includes('avatarUrl'))
+    assert.equal(res.status, 201)
+    assert.equal(res.body.identity.avatarUrl, '')
+  })
+
+  it('takes activeMode from the verified key and ignores body credentials', async () => {
+    const body = { mauid: 'host-mode-001', displayName: 'Host Mode', apiKey: 'test-driver-key', apiSecret: 'test-driver-secret' }
+    const asDriver = await request(server, 'POST', '/api/users/bootstrap', body, authHeader('driver'))
+    assert.equal(asDriver.status, 201)
+    assert.equal(asDriver.body.activeMode, 'driver')
+    assert.equal(asDriver.body.activeUser.role, 'driver')
+
+    const asClient = await request(server, 'POST', '/api/users/bootstrap', body, authHeader('client'))
+    assert.equal(asClient.status, 200)
+    assert.equal(asClient.body.identity.id, asDriver.body.identity.id)
+    assert.equal(asClient.body.personas.client.id, asDriver.body.personas.client.id)
+    assert.equal(asClient.body.activeMode, 'client')
+    assert.equal(asClient.body.activeUser.role, 'client')
+    assert.equal(asClient.body.identity.preferredMode, 'client')
+  })
+
+  it('returns 401 without a valid Authorization header', async () => {
+    const res = await request(server, 'POST', '/api/users/bootstrap', { mauid: 'x', displayName: 'x' }, {})
+    assert.equal(res.status, 401)
+    assert.equal(res.body.error.code, 'HTTP_401')
   })
 })
 

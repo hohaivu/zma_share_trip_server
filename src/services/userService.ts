@@ -3,7 +3,7 @@ import * as notificationService from './notificationService'
 import * as reportService from './reportService'
 import * as reviewService from './reviewService'
 import * as userRepository from '../repositories/userRepository'
-import { AppNotification, BootstrapSession, Report, Review, User } from '../types/entities'
+import { AppNotification, BootstrapSession, HostMode, Report, Review, User } from '../types/entities'
 import {
   CreateNotificationPayload,
   CreateReportPayload,
@@ -35,10 +35,11 @@ function assertValidMode(mode: string): void {
 
 export async function bootstrapUser(
   mauid: string,
-  displayName?: string,
-  avatarUrl?: string,
+  displayName: string | undefined,
+  avatarUrl: string | undefined,
+  mode: HostMode,
 ): Promise<BootstrapResult> {
-  return userRepository.bootstrapUser(mauid, displayName, avatarUrl)
+  return userRepository.bootstrapUser(mauid, displayName, avatarUrl, mode)
 }
 
 export async function getUser(userId: string): Promise<User | null> {

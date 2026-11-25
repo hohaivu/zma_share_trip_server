@@ -3,6 +3,7 @@ import http from 'node:http'
 import { after, before, describe, it } from 'node:test'
 
 import app from '../src/index.js'
+import { authHeader } from './authSupport'
 
 function request(path: string): Promise<{ status: number; body: string; headers: http.IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
@@ -13,6 +14,7 @@ function request(path: string): Promise<{ status: number; body: string; headers:
         port: typeof address === 'object' && address ? address.port : 0,
         path,
         method: 'GET',
+        headers: authHeader(),
       },
       (res) => {
         let body = ''

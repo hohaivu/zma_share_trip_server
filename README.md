@@ -1,6 +1,6 @@
 # Cùng Tuyến — API Server
 
-TypeScript-authored Express API backed by Postgres for bootstrap, matching, trip lifecycle, and Zalo exchange flows.
+TypeScript-authored Express API backed by Postgres for bootstrap, matching, trip lifecycle, and ALI token auth.
 
 ## Endpoints
 
@@ -38,7 +38,7 @@ ALI-37 is not complete: broader source refactors and full dependency-direction e
 
 ```bash
 cd zma_share_trip_server
-cp .env.example .env   # fill in ZALO_APP_ID, ZALO_APP_SECRET, VNMAP_API_KEY, DATABASE_URL
+cp .env.example .env   # fill in CLIENT_/DRIVER_ API keys and secrets, AUTH_TOKEN_SECRET, VNMAP_API_KEY, DATABASE_URL
 yarn install
 yarn db:schema        # initialize Postgres schema
 yarn db:seed           # insert demo data
@@ -84,8 +84,10 @@ The build copies `src/db/schema.sql` into `dist/db/schema.sql` so the compiled s
 | Variable          | Required | Default | Description                                           |
 | ----------------- | -------- | ------- | ----------------------------------------------------- |
 | `DATABASE_URL`    | ✅       | —       | Postgres connection string                            |
-| `ZALO_APP_ID`     | ✅       | —       | From [developers.zalo.me](https://developers.zalo.me) |
-| `ZALO_APP_SECRET` | ✅       | —       | Secret key from app dashboard                         |
+| `CLIENT_API_KEY` / `CLIENT_API_SECRET` | ✅ | —  | Host key pair for mode `client` (see API.md → Authentication) |
+| `DRIVER_API_KEY` / `DRIVER_API_SECRET` | ✅ | —  | Host key pair for mode `driver`                       |
+| `AUTH_TOKEN_SECRET` | ✅     | —       | HMAC key signing `POST /api/auth` tokens              |
+| `PUBLIC_BASE_URL` | ❌       | request origin | `base_url` returned by `POST /api/auth`        |
 | `VNMAP_API_KEY`   | ✅       | —       | VNMap provider key used only by backend proxy         |
 | `PORT`            | ❌       | `3010`  | Server port                                           |
 | `ALLOWED_ORIGINS` | ❌       | `*`     | Comma-separated CORS origins                          |
@@ -99,7 +101,7 @@ For local Docker-backed tests, use `postgres://postgres:postgres@localhost:5433/
 3. Connect repo → Render reads `render.yaml`
 4. Render installs with `npm install`
 5. The web service starts with `npm run db:schema && npm run db:seed && npm start` — schema/seed run at service start (not during build) because Render's build environment has no access to the private network the database lives on
-6. Set `ZALO_APP_ID`, `ZALO_APP_SECRET`, `VNMAP_API_KEY`, and `DATABASE_URL` in dashboard (point `DATABASE_URL` at your MariaDB instance)
+6. Set `CLIENT_API_KEY`, `CLIENT_API_SECRET`, `DRIVER_API_KEY`, `DRIVER_API_SECRET`, `AUTH_TOKEN_SECRET`, `VNMAP_API_KEY`, and `DATABASE_URL` in dashboard (point `DATABASE_URL` at your MariaDB instance)
 7. Deploy 🚀
 
 This deploy path runs the TypeScript source directly through `tsx`, so it does not require a separate build step on Render.

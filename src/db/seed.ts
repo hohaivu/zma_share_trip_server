@@ -168,7 +168,7 @@ function makePlan(
 // --- Seed data ---
 
 // Deterministic UUIDs for reproducible demo/dev seeding.
-// mauid values represent external Zalo Mini App identifiers.
+// mauid values represent external Mini App identifiers.
 const users = [
   makeUser({
     id: DRIVER_001_ID,

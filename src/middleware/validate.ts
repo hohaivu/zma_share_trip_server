@@ -1,25 +1,6 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express'
 import type { ZodType } from 'zod'
 
-/**
- * Factory that returns middleware requiring specific body fields.
- * Legacy presence-only check kept for the Zalo proxy routes.
- * Usage: validate('accessToken', 'code')
- */
-export default function validate(...requiredFields: string[]): RequestHandler {
-  return (req: Request, res: Response, next: NextFunction) => {
-    for (const field of requiredFields) {
-      if (!req.body[field]) {
-        res
-          .status(400)
-          .json({ error: -1, message: `Missing required field: ${field}` })
-        return
-      }
-    }
-    next()
-  }
-}
-
 export type ValidateSource = 'body' | 'query' | 'params'
 
 /**

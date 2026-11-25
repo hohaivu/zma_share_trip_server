@@ -15,7 +15,7 @@ Application-owned endpoints use an RPC-style HTTP surface:
 - **Identifiers**: send identifiers such as `id`, `driverId`, `clientId`, `routeId`, `planId`, `demandGroupId`, and `offerId` in the request body.
 - **No path/query params**: application routes do not use `:id` path parameters or query-string filters.
 - **Verb vocabulary**: paths end in `get`, `list`, `create`, `update`, `delete`, plus domain verbs such as `cancel`, `complete`, `accept`, `decline`, `read`, and `read-all`.
-- **Carve-outs**: Zalo proxy endpoints remain `POST`; vnmap proxy endpoints and `/health` explicitly remain `GET`.
+- **Carve-outs**: vnmap proxy endpoints and `/health` explicitly remain `GET`.
 
 Example request:
 
@@ -25,6 +25,42 @@ Content-Type: application/json
 
 { "id": "route-uuid", "driverId": "driver-uuid" }
 ```
+
+---
+
+## Authentication
+
+The host app calls `POST /api/auth` once at startup, then sends the token on every other `/api/*` request. `/health` is open.
+
+### `POST /api/auth`
+
+Request: `{ "api_key": "string", "api_secret": "string" }` (both non-empty).
+
+Response `200` (raw JSON, no `data` envelope): `{ "base_url": "string", "token": "string" }`.
+
+- `base_url` is `PUBLIC_BASE_URL`, or the request's own origin when unset.
+- The token is a stateless HMAC token valid for 24 hours. It identifies the host app, not the user.
+- Unknown key, wrong secret, or an unconfigured key/secret: `401` `{ "error": { "code": "HTTP_401", "message": "..." } }`.
+- Missing or empty body field: `400` `VALIDATION_ERROR`.
+
+### Authorization header
+
+Every `/api/*` request except `POST /api/auth` (including `/api/drivers/*`, `/api/clients/*`, `/api/users/bootstrap`) sends:
+
+```
+Authorization: Basic base64("<api_key>:<token>")
+```
+
+A missing, malformed, tampered, expired or mismatched header (token issued for a different key, or key no longer configured) returns `401` in the error envelope. CORS `OPTIONS` preflight is answered before auth.
+
+### Host keys
+
+| Variable | Description |
+| -------- | ----------- |
+| `CLIENT_API_KEY` / `CLIENT_API_SECRET` | Host key pair for mode `client`. |
+| `DRIVER_API_KEY` / `DRIVER_API_SECRET` | Host key pair for mode `driver`. |
+| `AUTH_TOKEN_SECRET` | HMAC signing key. When unset, no host can authenticate. |
+| `PUBLIC_BASE_URL` | Optional `base_url` returned by `POST /api/auth`. |
 
 ---
 
@@ -227,6 +263,7 @@ Group offer statuses:
 
 | Method | Path | Body shape | Description |
 | ------ | ---- | ---------- | ----------- |
+| POST | `/api/users/bootstrap` | `{ "mauid": "string", "displayName": "string", "avatarUrl"?: "string" }` | Resolve or create the identity (201 created, 200 existing). `avatarUrl` defaults to `''`. The mode (`activeMode`, `activeUser`, and the stored `preferredMode`) comes from the API key in the Authorization header; `apiKey`/`apiSecret` in the body are ignored. |
 | POST | `/api/users/get` | `{ "id"?: "user-uuid", "mauid"?: "zalo-mauid" }` | Resolve an app user. |
 | POST | `/api/users/update` | `{ "id": "user-uuid", ...fieldsToUpdate }` | Update user profile fields. |
 | POST | `/api/users/mode/get` | `{ "userId": "user-uuid" }` | Read preferred mode. |
@@ -251,16 +288,7 @@ Group offer statuses:
 
 ## Proxy and health carve-outs
 
-### Zalo proxy endpoints
-
-These endpoints remain `POST` and proxy Zalo APIs.
-
-| Method | Path | Body shape | Description |
-| ------ | ---- | ---------- | ----------- |
-| POST | `/api/authorize` | `{ "code": "zalo-auth-code" }` | Exchange Zalo auth code for tokens. |
-| POST | `/api/user-info` | `{ "accessToken": "token" }` | Get user profile via Zalo access token. |
-| POST | `/api/phone-number` | `{ "accessToken": "token", "code": "phone-code" }` | Get phone number via Zalo token and code. |
-| POST | `/api/location` | `{ "accessToken": "token", ... }` | Get location data via Zalo token. |
+The former Zalo proxy endpoints (`/api/authorize`, `/api/user-info`, `/api/phone-number`, `/api/location`) and the `ZALO_*` env vars were removed.
 
 ### vnmap proxy endpoints
 

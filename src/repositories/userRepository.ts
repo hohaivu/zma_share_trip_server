@@ -3,7 +3,7 @@ import { parseJsonb, parseNumeric, toCamelCase } from '../db/utils'
 import { HttpError } from '../http-error'
 import { listReportsByReporter as listReportsByReporterFromRepository } from './reportRepository'
 import { listReviewsByReviewer as listReviewsByReviewerFromRepository } from './reviewRepository'
-import { BootstrapSession, Identity, User } from '../types/entities'
+import { BootstrapSession, HostMode, Identity, User } from '../types/entities'
 import { BootstrapResult, UpdateUserPayload } from '../types/payloads'
 
 export function mapUser(row: Record<string, unknown>): User {
@@ -65,8 +65,9 @@ function generateId(prefix: string): string {
 
 export async function bootstrapUser(
   mauid: string,
-  displayName?: string,
-  avatarUrl?: string,
+  displayName: string | undefined,
+  avatarUrl: string | undefined,
+  mode: HostMode,
 ): Promise<BootstrapResult> {
   return withTransaction(async (tx) => {
     const existing = await tx.query('SELECT * FROM identities WHERE mauid = ?', [
@@ -78,22 +79,23 @@ export async function bootstrapUser(
       const identityResult = await tx.query(
         `
           INSERT INTO identities (mauid, display_name, avatar_url, preferred_mode, created_at, updated_at)
-          VALUES (?, ?, ?, 'client', NOW(), NOW())
+          VALUES (?, ?, ?, ?, NOW(), NOW())
           RETURNING *
         `,
-        [mauid, displayName || '', avatarUrl || ''],
+        [mauid, displayName || '', avatarUrl || '', mode],
       )
       identity = mapIdentity(identityResult.rows[0])
     } else {
       await tx.query(
         `
           UPDATE identities
-          SET display_name = ?, avatar_url = ?, updated_at = NOW()
+          SET display_name = ?, avatar_url = ?, preferred_mode = ?, updated_at = NOW()
           WHERE mauid = ?
         `,
         [
           displayName || existing.rows[0].display_name,
           avatarUrl ?? existing.rows[0].avatar_url,
+          mode,
           mauid,
         ],
       )

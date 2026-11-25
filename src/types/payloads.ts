@@ -19,7 +19,7 @@ import {
 export interface BootstrapPayload {
   mauid: string
   displayName: string
-  avatarUrl: string
+  avatarUrl?: string
 }
 
 export interface BootstrapResult {

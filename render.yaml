@@ -6,9 +6,17 @@ services:
     buildCommand: npm install
     startCommand: npm run db:schema && npm run db:seed && npm start
     envVars:
-      - key: ZALO_APP_ID
+      - key: CLIENT_API_KEY
         sync: false
-      - key: ZALO_APP_SECRET
+      - key: CLIENT_API_SECRET
+        sync: false
+      - key: DRIVER_API_KEY
+        sync: false
+      - key: DRIVER_API_SECRET
+        sync: false
+      - key: AUTH_TOKEN_SECRET
+        sync: false
+      - key: PUBLIC_BASE_URL
         sync: false
       - key: NODE_ENV
         value: production

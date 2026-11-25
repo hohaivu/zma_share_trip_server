@@ -1,3 +1,6 @@
+/** Persona mode of the host app, fixed by the verified API key. */
+export type HostMode = 'client' | 'driver'
+
 export interface Location {
   label?: string
   full_address?: string
