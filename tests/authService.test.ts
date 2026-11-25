@@ -30,6 +30,26 @@ describe('authService', () => {
     assert.throws(() => issueToken('', ''), is401)
   })
 
+  it('rejects keys containing a colon, which the Basic header cannot carry', () => {
+    try {
+      process.env.CLIENT_API_KEY = 'team:client'
+      assert.throws(() => issueToken('team:client', 'test-client-secret'), is401)
+      assert.equal(verifyAuthorization(header('test-driver-key', issueToken('test-driver-key', 'test-driver-secret'))), 'driver')
+    } finally {
+      Object.assign(process.env, TEST_AUTH_ENV)
+    }
+  })
+
+  it('rejects a key shared by both modes instead of picking one', () => {
+    try {
+      process.env.DRIVER_API_KEY = 'test-client-key'
+      assert.throws(() => issueToken('test-client-key', 'test-client-secret'), is401)
+      assert.throws(() => issueToken('test-client-key', 'test-driver-secret'), is401)
+    } finally {
+      Object.assign(process.env, TEST_AUTH_ENV)
+    }
+  })
+
   it('treats unset or empty env as unauthenticatable', () => {
     const saved = { ...process.env }
     try {

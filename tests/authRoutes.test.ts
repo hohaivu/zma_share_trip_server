@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import http from 'node:http'
-import { after, before, describe, it } from 'node:test'
+import { after, before, describe, it, mock } from 'node:test'
 
 import app from '../src/index.js'
 import { authHeader } from './authSupport'
@@ -35,7 +35,7 @@ function request(
       },
     )
     req.on('error', reject)
-    if (body !== undefined) req.write(JSON.stringify(body))
+    if (body !== undefined) req.write(typeof body === 'string' ? body : JSON.stringify(body))
     req.end()
   })
 }
@@ -73,6 +73,17 @@ describe('POST /api/auth', () => {
     }
   })
 
+  it('returns 400 for malformed JSON without echoing or logging the body', async () => {
+    const errorLog = mock.method(console, 'error')
+    const raw = '{"api_key":"test-driver-key","api_secret":"hunter2-secret",'
+    const res = await request('POST', '/api/auth', raw)
+    errorLog.mock.restore()
+    assert.equal(res.status, 400)
+    assert.equal(res.body.error.code, 'HTTP_400')
+    assert.ok(!JSON.stringify(res.body).includes('hunter2'))
+    assert.equal(errorLog.mock.callCount(), 0)
+  })
+
   it('returns 400 for missing or empty fields', async () => {
     for (const body of [{}, { api_key: 'test-driver-key' }, { api_key: '', api_secret: '' }]) {
       const res = await request('POST', '/api/auth', body)
@@ -99,6 +110,20 @@ describe('Authorization on /api/*', () => {
         assert.equal(res.body.error.code, 'HTTP_401')
       }
     }
+  })
+
+  it('returns 401, not a parser error, for malformed JSON without a valid header', async () => {
+    for (const path of ['/api/users/bootstrap', '/api/drivers/cars/list', '/api/clients/plans/list']) {
+      const res = await request('POST', path, '{"broken":')
+      assert.equal(res.status, 401, path)
+      assert.equal(res.body.error.code, 'HTTP_401')
+    }
+  })
+
+  it('returns 400 for malformed JSON with a valid header', async () => {
+    const res = await request('POST', '/api/users/bootstrap', '{"broken":', authHeader())
+    assert.equal(res.status, 400)
+    assert.equal(res.body.error.message, 'Invalid request body')
   })
 
   it('lets a valid header through to the route', async () => {

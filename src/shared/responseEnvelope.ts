@@ -91,13 +91,22 @@ export function buildErrorResponse(err: unknown): {
   status: number
   body: ErrorEnvelope
 } {
-  const status = err instanceof HttpError ? err.statusCode : 500
+  // body-parser errors (malformed JSON, oversized body) are client errors. Their message can echo the raw
+  // body (e.g. api_secret), so it is replaced with a fixed string.
+  const bodyParserStatus =
+    typeof (err as { type?: unknown })?.type === 'string' &&
+    (err as { type: string }).type.startsWith('entity.')
+      ? (err as { statusCode?: number }).statusCode
+      : undefined
+  const status = err instanceof HttpError ? err.statusCode : (bodyParserStatus ?? 500)
   const message =
     status === 500
       ? 'Internal server error'
-      : err instanceof Error
-        ? err.message
-        : 'Internal server error'
+      : bodyParserStatus
+        ? 'Invalid request body'
+        : err instanceof Error
+          ? err.message
+          : 'Internal server error'
   const details =
     err instanceof HttpError && err.exposeDetails && status !== 500
       ? err.payload

@@ -12,17 +12,19 @@ interface Host {
   mode: UserMode
 }
 
-// Read env at call time. A host with an empty key/secret, or any host when
-// AUTH_TOKEN_SECRET is unset, cannot authenticate.
+// Read env at call time. A host with an empty key/secret, or any host when AUTH_TOKEN_SECRET is
+// unset, cannot authenticate. The Basic header is `apiKey:token`, so a key containing ':' is
+// ambiguous, and two modes sharing a key could not be told apart: both are rejected.
 function configuredHosts(): Host[] {
   if (!process.env.AUTH_TOKEN_SECRET) return []
   const hosts: Array<[UserMode, string | undefined, string | undefined]> = [
     ['client', process.env.CLIENT_API_KEY, process.env.CLIENT_API_SECRET],
     ['driver', process.env.DRIVER_API_KEY, process.env.DRIVER_API_SECRET],
   ]
-  return hosts.flatMap(([mode, apiKey, apiSecret]) =>
-    apiKey && apiSecret ? [{ apiKey, apiSecret, mode }] : [],
+  const valid = hosts.flatMap(([mode, apiKey, apiSecret]) =>
+    apiKey && apiSecret && !apiKey.includes(':') ? [{ apiKey, apiSecret, mode }] : [],
   )
+  return valid.filter((h) => valid.filter((o) => o.apiKey === h.apiKey).length === 1)
 }
 
 function safeEqual(a: string, b: string): boolean {

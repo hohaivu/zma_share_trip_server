@@ -41,7 +41,7 @@ Response `200` (raw JSON, no `data` envelope): `{ "base_url": "string", "token":
 - `base_url` is `PUBLIC_BASE_URL`, or the request's own origin when unset.
 - The token is a stateless HMAC token valid for 24 hours. It identifies the host app, not the user.
 - Unknown key, wrong secret, or an unconfigured key/secret: `401` `{ "error": { "code": "HTTP_401", "message": "..." } }`.
-- Missing or empty body field: `400` `VALIDATION_ERROR`.
+- Missing or empty body field: `400` `VALIDATION_ERROR`. Malformed JSON: `400` `HTTP_400`; the body is never echoed or logged.
 
 ### Authorization header
 
@@ -61,6 +61,8 @@ A missing, malformed, tampered, expired or mismatched header (token issued for a
 | `DRIVER_API_KEY` / `DRIVER_API_SECRET` | Host key pair for mode `driver`. |
 | `AUTH_TOKEN_SECRET` | HMAC signing key. When unset, no host can authenticate. |
 | `PUBLIC_BASE_URL` | Optional `base_url` returned by `POST /api/auth`. |
+
+Key requirements: an API key must not contain `:` (the Authorization header is `key:token`), and the client and driver keys must differ. A host that breaks either rule cannot obtain a token (`401`), and so cannot authenticate.
 
 ---
 
