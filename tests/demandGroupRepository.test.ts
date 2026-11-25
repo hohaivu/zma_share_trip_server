@@ -15,7 +15,6 @@ import { journeyService } from '../src/services/journeyService'
 import * as planService from '../src/services/planService'
 import * as routeRequestService from '../src/services/routeRequestService'
 import * as userService from '../src/services/userService'
-import * as walletService from '../src/services/walletService'
 import {
   createDbTest,
   isDbAvailable,
@@ -34,13 +33,6 @@ const TERMINAL_SEARCH_REQUEST_STATUSES = [
   'closed',
   'expired',
 ] as const
-
-async function markRouteFeeReserved(routeId: string): Promise<void> {
-  await query(
-    "UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1",
-    [routeId],
-  )
-}
 
 // Note: require resets are not trivial in CJS, so tests use the shared
 // MVC module graph. Tests should not depend on ordering within a describe block.
@@ -181,7 +173,6 @@ describe('MVC demand group repository derivation', () => {
       'plan-001',
       'route-002',
     )
-    await markRouteFeeReserved('route-002')
     await routeRequestService.acceptRouteRequest(request.id)
 
     const after = await demandGroupRepository.deriveDemandGroups()
@@ -242,7 +233,6 @@ describe('MVC demand group repository derivation', () => {
       plan.id,
       acceptedElsewhereRoute.id,
     )
-    await markRouteFeeReserved(acceptedElsewhereRoute.id)
     await routeRequestService.acceptRouteRequest(request.id)
 
     const after = await matching.computeMatchedDemandGroups(targetRoute.id)
@@ -301,7 +291,6 @@ describe('MVC demand group repository derivation', () => {
       'plan-001',
       route.id,
     )
-    await markRouteFeeReserved(route.id)
     await routeRequestService.acceptRouteRequest(request.id)
 
     const suppressed = await demandGroupRepository.deriveDemandGroups()

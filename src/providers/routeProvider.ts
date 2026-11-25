@@ -11,7 +11,6 @@ import demandGroupsRoute from '../routes/demandGroups'
 import driverMatchesRoute from '../routes/driverMatches'
 import driverRouteRequestsRoute from '../routes/driverRouteRequests'
 import driverRoutesRoute from '../routes/driverRoutes'
-import driverWalletRoute from '../routes/driverWallet'
 import groupOffersRoute from '../routes/groupOffers'
 import groupRequestsRoute from '../routes/groupRequests'
 import journeysRoute from '../routes/journeys'
@@ -21,7 +20,7 @@ import zaloRoutesRoute from '../routes/zaloRoutes'
 
 const routeGroups: Array<[string, express.Router[]]> = [
   ['/api', [zaloRoutesRoute, vnmapRoutesRoute, journeysRoute, usersRoute, bootstrapRoute]],
-  ['/api/drivers', [carsRoute, driverRoutesRoute, driverWalletRoute, driverMatchesRoute, demandGroupsRoute, groupRequestsRoute, driverRouteRequestsRoute]],
+  ['/api/drivers', [carsRoute, driverRoutesRoute, driverMatchesRoute, demandGroupsRoute, groupRequestsRoute, driverRouteRequestsRoute]],
   ['/api/clients', [clientPlansRoute, clientMatchesRoute, clientInboxRoute, groupOffersRoute, clientRouteRequestsRoute]],
 ]
 

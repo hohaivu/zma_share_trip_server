@@ -84,14 +84,6 @@ Content-Type: application/json
 > Demand group calendar day is based on canonical UTC `departureWindowStartDate`.
 > Group ID format: `dg-{departureWindowStartDate.slice(0,10)}|{pickupWardId}|{dropoffWardId}|{departureWindowStartDate}`.
 
-### Driver wallet
-
-| Method | Path | Body shape | Description |
-| ------ | ---- | ---------- | ----------- |
-| POST | `/api/drivers/wallet/get` | `{ "driverId": "user-uuid" }` | Get driver wallet summary. |
-| POST | `/api/drivers/wallet/transactions/list` | `{ "driverId": "user-uuid", "limit"?, "cursor"? }` | List wallet transactions. |
-| POST | `/api/drivers/wallet/topups/create` | `{ "driverId": "user-uuid", "amountVnd": 100000 }` | Create a manual wallet top-up. |
-
 ### Group requests (Driver → Group)
 
 | Method | Path | Body shape | Description |
@@ -349,12 +341,6 @@ Fields:
 | `error.issues[].code` | string | Stable zod issue code (`too_small`, `invalid_type`, `custom`, etc.). |
 
 > Validation errors share the same envelope as domain errors (see "Response Envelope" above) — they simply use the `VALIDATION_ERROR` code and carry `issues`. Domain `HttpError` responses use `HTTP_<status>` codes and omit `issues`.
-
-Schema-validated endpoint example:
-
-| Method | Path | Body schema (`src/schemas/`) |
-| ------ | ---- | ---------------------------- |
-| POST | `/api/drivers/wallet/topups/create` | `driverWallet.ts` → `manualTopUpBodySchema` |
 
 ---
 

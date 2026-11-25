@@ -13,7 +13,6 @@ import * as journeyRepository from '../src/repositories/journeyRepository'
 import * as planService from '../src/services/planService'
 import * as routeRequestService from '../src/services/routeRequestService'
 import * as userService from '../src/services/userService'
-import * as walletService from '../src/services/walletService'
 import {
   createDbTest,
   isDbAvailable,

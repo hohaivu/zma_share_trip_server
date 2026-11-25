@@ -1,7 +1,6 @@
 import * as driverRouteRepository from '../repositories/driverRouteRepository'
 import type { RouteWriteValues } from '../repositories/driverRouteRepository'
 import { assertUserRole } from './userService'
-import { computeRouteFeeRequiredVnd } from './walletService'
 import { TripListScope } from '../repositories/tripListRepository'
 import { HttpError } from '../http-error'
 import { Route } from '../types/entities'
@@ -110,13 +109,11 @@ export async function updateRoute(
 
   if (
     existing.status === 'published' &&
-    existing.walletFeeStatus &&
-    existing.walletFeeStatus !== 'none' &&
     hasImmutablePublishedRouteFieldUpdate(data)
   ) {
     throw new HttpError(
       409,
-      'Published fee-bearing route fields cannot be edited. Cancel and recreate the route instead.',
+      'Published route fields cannot be edited. Cancel and recreate the route instead.',
     )
   }
 
@@ -140,15 +137,6 @@ export async function publishRoute(
       )
     }
 
-    const nextValues = buildRouteWriteValues(route, data)
-    const feeRequiredVnd = computeRouteFeeRequiredVnd(
-      nextValues.distanceMeters ?? 0,
-    )
-    return {
-      kind: 'proceed',
-      nextValues,
-      feeRequiredVnd,
-      reservationDescription: 'Route fee reserved on publish',
-    }
+    return { kind: 'proceed', nextValues: buildRouteWriteValues(route, data) }
   })
 }

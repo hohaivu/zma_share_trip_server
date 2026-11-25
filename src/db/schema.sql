@@ -70,13 +70,6 @@ CREATE TABLE IF NOT EXISTS routes (
   departure_window_end_date DATETIME(3) NOT NULL,
   trip_price DECIMAL(12,2) NOT NULL,
   distance_meters INTEGER,
-  fee_rate_vnd_per_km INTEGER NOT NULL DEFAULT 0,
-  fee_required_vnd BIGINT NOT NULL DEFAULT 0,
-  wallet_fee_status VARCHAR(50) NOT NULL DEFAULT 'none',
-  wallet_reserved_at DATETIME(3),
-  wallet_charged_at DATETIME(3),
-  wallet_released_at DATETIME(3),
-  wallet_refunded_at DATETIME(3),
   notes TEXT,
   status VARCHAR(50) DEFAULT 'draft',
   completed_at DATETIME(3),
@@ -149,37 +142,6 @@ CREATE TABLE IF NOT EXISTS saved_locations (
   lng DECIMAL(10,7) NOT NULL,
   created_at DATETIME(3) DEFAULT NOW()
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS wallets (
-  id VARCHAR(255) PRIMARY KEY,
-  driver_id VARCHAR(255) NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-  balance_vnd BIGINT NOT NULL DEFAULT 0,
-  reserved_balance_vnd BIGINT NOT NULL DEFAULT 0,
-  created_at DATETIME(3) NOT NULL DEFAULT NOW(),
-  updated_at DATETIME(3) NOT NULL DEFAULT NOW()
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE INDEX IF NOT EXISTS wallets_driver_id_idx ON wallets(driver_id);
-
-CREATE TABLE IF NOT EXISTS wallet_transactions (
-  id VARCHAR(255) PRIMARY KEY,
-  wallet_id VARCHAR(255) NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
-  driver_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  route_id VARCHAR(255) REFERENCES routes(id) ON DELETE SET NULL,
-  type VARCHAR(50) NOT NULL,
-  amount_vnd BIGINT NOT NULL,
-  balance_after_vnd BIGINT NOT NULL,
-  reserved_balance_after_vnd BIGINT NOT NULL,
-  description TEXT,
-  metadata JSON NOT NULL,
-  created_at DATETIME(3) NOT NULL DEFAULT NOW()
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE INDEX IF NOT EXISTS wallet_transactions_wallet_id_created_at_idx
-  ON wallet_transactions(wallet_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS wallet_transactions_driver_id_created_at_idx
-  ON wallet_transactions(driver_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS reviews (
   id VARCHAR(255) PRIMARY KEY,

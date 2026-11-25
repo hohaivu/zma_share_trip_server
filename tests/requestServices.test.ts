@@ -15,7 +15,6 @@ import * as groupRequestService from '../src/services/groupRequestService'
 import * as planService from '../src/services/planService'
 import * as routeRequestService from '../src/services/routeRequestService'
 import * as userService from '../src/services/userService'
-import * as walletService from '../src/services/walletService'
 import {
   createDbTest,
   isDbAvailable,
@@ -34,13 +33,6 @@ const TERMINAL_SEARCH_REQUEST_STATUSES = [
   'closed',
   'expired',
 ] as const
-
-async function markRouteFeeReserved(routeId: string): Promise<void> {
-  await query(
-    "UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1",
-    [routeId],
-  )
-}
 
 // Note: require resets are not trivial in CJS, so tests use the shared
 // MVC module graph. Tests should not depend on ordering within a describe block.
@@ -190,7 +182,6 @@ describe('MVC request services first-accept-wins behavior', () => {
 
     // Accept the first offer
     const winnerId = result.offers[0].id
-    await markRouteFeeReserved('route-001')
     const accepted = await groupOfferService.acceptGroupOffer(winnerId)
     assert.equal(accepted.status, 'accepted')
 
@@ -249,7 +240,6 @@ describe('MVC request services route exclusivity', () => {
       multiMemberGroup.id,
       multiMemberGroup.memberPlanIds,
     )
-    await markRouteFeeReserved('route-001')
     await groupOfferService.acceptGroupOffer(result.offers[0].id)
   })
 
@@ -292,7 +282,6 @@ describe('MVC request services route exclusivity', () => {
     assert.equal(sreq.status, 'pending')
 
     // Accept it
-    await markRouteFeeReserved('route-002')
     const accepted = await routeRequestService.acceptRouteRequest(sreq.id)
     assert.equal(accepted.status, 'accepted')
     assert.equal(
@@ -329,7 +318,6 @@ describe('cascade decline — group offer accept declines cross-table siblings',
       'route-001',
     )
 
-    await markRouteFeeReserved('route-001')
     await groupOfferService.acceptGroupOffer(offers[0].id)
 
     for (const offer of offers.slice(1)) {
@@ -370,7 +358,6 @@ describe('cascade decline — group offer accept declines cross-table siblings',
       ],
     )
 
-    await markRouteFeeReserved('route-001')
     const accepted = await groupOfferService.acceptGroupOffer(offers[0].id)
     assert.equal(accepted.status, 'accepted')
 
@@ -406,7 +393,6 @@ describe('cascade decline — route request accept declines siblings on same pla
     assert.equal(rr1.status, 'pending')
     assert.equal(rr2.status, 'pending')
 
-    await markRouteFeeReserved('route-001')
     await routeRequestService.acceptRouteRequest(rr1.id)
 
     const rr2Res = await query('SELECT status FROM route_requests WHERE id = $1', [rr2.id])
@@ -438,7 +424,6 @@ describe('cascade decline — route request accept declines siblings on same pla
     const rr = await routeRequestService.createRouteRequest(CLIENT_002_ID, 'plan-004', 'route-001')
     assert.equal(rr.status, 'pending')
 
-    await markRouteFeeReserved('route-001')
     const accepted = await routeRequestService.acceptRouteRequest(rr.id)
     assert.equal(accepted.status, 'accepted')
 
@@ -475,7 +460,6 @@ describe('cascade decline — race accept on declined offer returns 409', () => 
     )
     assert.ok(offers.length >= 2)
 
-    await markRouteFeeReserved('route-001')
     await groupOfferService.acceptGroupOffer(offers[0].id)
 
     const siblingRes = await query('SELECT status FROM group_offers WHERE id = $1', [offers[1].id])

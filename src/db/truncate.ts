@@ -4,8 +4,6 @@ const TABLES = [
   'notifications',
   'reports',
   'reviews',
-  'wallet_transactions',
-  'wallets',
   'saved_locations',
   'route_requests',
   'group_offers',

@@ -14,7 +14,6 @@ import * as journeyRepository from '../src/repositories/journeyRepository'
 import * as planService from '../src/services/planService'
 import * as routeRequestService from '../src/services/routeRequestService'
 import * as userService from '../src/services/userService'
-import * as walletService from '../src/services/walletService'
 import {
   createDbTest,
   isDbAvailable,
@@ -79,13 +78,6 @@ describe('MVC journey repository route and plan helpers', () => {
 })
 
 // ─── 6.8 CRUD coverage ────────────────────────────────────────────────────────
-
-async function markRouteFeeReserved(routeId: string): Promise<void> {
-  await query(
-    "UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1",
-    [routeId],
-  )
-}
 
 // ─── Cancel cascade: unmatched route (task 5.5) ───────────────────────────────
 
@@ -169,7 +161,6 @@ describe('cascade decline — matched-trip cancel does not re-decline terminal s
     )
     assert.ok(offers.length >= 2)
 
-    await markRouteFeeReserved('route-001')
     const accepted = await groupOfferService.acceptGroupOffer(offers[0].id)
     assert.equal(accepted.status, 'accepted')
 

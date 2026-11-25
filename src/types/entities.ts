@@ -83,54 +83,10 @@ export interface Route {
   departureWindowEndDate: string
   tripPrice: number
   distanceMeters?: number | null
-  feeRateVndPerKm?: number
-  feeRequiredVnd?: number
-  walletFeeStatus?: WalletFeeStatus
-  walletReservedAt?: string | null
-  walletChargedAt?: string | null
-  walletReleasedAt?: string | null
-  walletRefundedAt?: string | null
   emptySeats?: number
   status: string
   notes?: string | null
   completedAt?: string | null
-  createdAt?: string
-}
-
-export type WalletFeeStatus =
-  | 'none'
-  | 'reserved'
-  | 'charged'
-  | 'released'
-  | 'refunded'
-
-export type WalletTransactionType =
-  | 'topup'
-  | 'reservation'
-  | 'release'
-  | 'charge'
-  | 'refund'
-
-export interface Wallet {
-  id: string
-  driverId: string
-  balanceVnd: number
-  reservedBalanceVnd: number
-  createdAt?: string
-  updatedAt?: string
-}
-
-export interface WalletTransaction {
-  id: string
-  walletId: string
-  driverId: string
-  routeId?: string | null
-  type: WalletTransactionType
-  amountVnd: number
-  balanceAfterVnd: number
-  reservedBalanceAfterVnd: number
-  description?: string | null
-  metadata?: Record<string, unknown> | null
   createdAt?: string
 }
 

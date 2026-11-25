@@ -9,11 +9,7 @@ import {
 import { HttpError } from '../http-error'
 import { Plan, Route, RouteRequest } from '../types/entities'
 import type { HydratedRouteRequest } from '../types/payloads'
-import {
-  type DbQueryExecutor,
-  chargeRouteFeeTx,
-  loadRouteForWalletTx,
-} from './walletRepository'
+import { type DbQueryExecutor, loadRouteForUpdateTx } from './routeAvailabilityRepository'
 import { cascadeDeclineParentGroupRequestsTx, cascadeDeclineSiblingsTx } from './matchCascade'
 
 function mapHydratedRouteRequestRow(
@@ -74,7 +70,6 @@ function mapRoute(row: Record<string, unknown>): Route {
   const route = toCamelCase<Route>(row)
   if (!route) throw new Error('Cannot map null row to Route')
   route.tripPrice = parseNumeric(route.tripPrice)
-  route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd)
   return route
 }
 
@@ -205,7 +200,7 @@ export async function acceptRouteRequest(
       )
     }
 
-    const route = await loadRouteForWalletTx(tx, sreq.routeId, mapRoute)
+    const route = await loadRouteForUpdateTx(tx, sreq.routeId)
     if (route.status !== 'published') {
       throw new HttpError(
         409,
@@ -239,9 +234,6 @@ export async function acceptRouteRequest(
         [sreq.planId],
       )
     }
-    await chargeRouteFeeTx(tx, route, mapRoute, {
-      description: 'Route fee charged on accepted search request',
-    })
     await cascadeDeclineSiblingsTx(tx, {
       routeId: sreq.routeId,
       planId: sreq.planId ?? null,

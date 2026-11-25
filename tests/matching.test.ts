@@ -18,13 +18,6 @@ const DRIVER_001_ID = 'a1b2c3d4-0001-4000-8000-000000000001'
 const CLIENT_001_ID = 'a1b2c3d4-0003-4000-8000-000000000003'
 const CLIENT_002_ID = 'a1b2c3d4-0004-4000-8000-000000000004'
 
-async function markRouteFeeReserved(routeId: string): Promise<void> {
-  await query(
-    "UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1",
-    [routeId],
-  )
-}
-
 before(async () => {
   await setupTestDb()
 })
@@ -840,7 +833,6 @@ describe('computeMatchedDemandGroups', () => {
       beforeAccept[0].demandGroupId,
       beforeAccept[0].memberPlanIds || [],
     )
-    await markRouteFeeReserved(route.id)
     await groupOfferService.acceptGroupOffer(groupRequest.offers[0].id)
 
     assert.deepEqual(await matching.computeMatchedDemandGroups(route.id), [])
@@ -875,7 +867,6 @@ describe('computeMatchedDemandGroups', () => {
       plan.id,
       route.id,
     )
-    await markRouteFeeReserved(route.id)
     await routeRequestService.acceptRouteRequest(routeRequest.id)
 
     assert.deepEqual(await matching.computeMatchedDemandGroups(route.id), [])
@@ -1004,7 +995,6 @@ describe('computeMatchingRoutesFromCriteria', () => {
         matches[0].memberPlanIds || [],
       )
       if (status === 'accepted') {
-        await markRouteFeeReserved(route.id)
         await groupOfferService.acceptGroupOffer(groupRequest.offers[0].id)
       }
 
@@ -1052,7 +1042,6 @@ describe('computeMatchingRoutesFromCriteria', () => {
         route.id,
       )
       if (status === 'accepted') {
-        await markRouteFeeReserved(route.id)
         await routeRequestService.acceptRouteRequest(routeRequest.id)
       }
 

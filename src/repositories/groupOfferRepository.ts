@@ -3,8 +3,7 @@ import { mapCounterpartyRow, mapRows, parseLocationJson, parseNumeric, toCamelCa
 import { GroupOffer } from '../types/entities'
 import type { HydratedClientGroupOffer } from '../types/payloads'
 import { cascadeDeclineParentGroupRequestsTx, cascadeDeclineSiblingsTx } from './matchCascade'
-import { mapRoute, ROUTE_ACCEPTED_SQL } from './routeAvailabilityRepository'
-import { chargeRouteFeeTx, loadRouteForWalletTx } from './walletRepository'
+import { loadRouteForUpdateTx, ROUTE_ACCEPTED_SQL } from './routeAvailabilityRepository'
 
 export async function getGroupOfferById(offerId: string): Promise<GroupOffer | null> {
   const result = await query('SELECT * FROM group_offers WHERE id = ?', [offerId])
@@ -133,7 +132,7 @@ export async function acceptGroupOfferTx(offerId: string): Promise<AcceptGroupOf
       return { status: 'not_pending' as const, offer }
     }
 
-    const route = await loadRouteForWalletTx(tx, offer.routeId, mapRoute)
+    const route = await loadRouteForUpdateTx(tx, offer.routeId)
     if (route.status !== 'published') {
       return { status: 'route_unpublished' as const, offer, routeStatus: route.status }
     }
@@ -158,10 +157,6 @@ export async function acceptGroupOfferTx(offerId: string): Promise<AcceptGroupOf
         [updatedOffer.planId],
       )
     }
-
-    await chargeRouteFeeTx(tx, route, mapRoute, {
-      description: 'Route fee charged on accepted group offer',
-    })
 
     const siblingIdParams: unknown[] = [updatedOffer.id, updatedOffer.routeId]
     let siblingIdScope = 'route_id = ?'

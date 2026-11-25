@@ -10,9 +10,6 @@ import {
   Route,
   RouteRequest,
   User,
-  Wallet,
-  WalletFeeStatus,
-  WalletTransaction,
 } from './entities'
 
 // -- Bootstrap --
@@ -258,26 +255,6 @@ export type JourneySummary = (Route | Plan) & {
   reviewEligibility?: ReviewEligibility
 }
 
-export interface WalletSummary extends Wallet {
-  availableBalanceVnd: number
-  feeRateVndPerKm: number
-  maxPublishableDistanceMeters: number
-}
-
-export interface WalletTransactionListPayload {
-  items: WalletTransaction[]
-}
-
-export interface ManualTopUpPayload {
-  amountVnd: number
-  description?: string
-}
-
-export interface ManualTopUpResult {
-  summary: WalletSummary
-  transaction: WalletTransaction
-}
-
 export interface UpdateUserPayload {
   displayName?: string
   avatarUrl?: string
@@ -310,17 +287,6 @@ export interface CreateNotificationPayload {
   deepLink?: string
   requestSource?: ClientRequestSource
   metadata?: Record<string, unknown>
-}
-
-export interface RouteFeeSnapshot {
-  distanceMeters: number | null
-  feeRateVndPerKm: number
-  feeRequiredVnd: number
-  walletFeeStatus: WalletFeeStatus
-  walletReservedAt?: string | null
-  walletChargedAt?: string | null
-  walletReleasedAt?: string | null
-  walletRefundedAt?: string | null
 }
 
 // -- Hydrated request-list types --

@@ -1,7 +1,7 @@
 import { query, withTransaction } from '../db/connection'
 import { mapRows, normalizeUtc, parseNumeric, toCamelCase } from '../db/utils'
 import { computeDepartureBlock } from '../domain/departureBlock'
-import { loadRouteForWalletTx, reserveRouteFeeTx } from './walletRepository'
+import { loadRouteForUpdateTx } from './routeAvailabilityRepository'
 import * as planRepository from './planRepository'
 import {
   filterTripsByScope,
@@ -18,7 +18,7 @@ function generateId(prefix: string): string { return `${prefix}-${Date.now()}${M
 function toSnakeCase(key: string): string { return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`) }
 function isTerminalTripStatus(status?: string | null): boolean { return status === 'completed' || status === 'canceled' }
 function isActiveTripStatus(status?: string | null): boolean { return status === 'draft' || status === 'published' || status === 'matched' }
-function mapRoute(row: Record<string, unknown>): Route { const route = toCamelCase<Route>(row); if (!route) throw new Error('Cannot map null row to Route'); route.tripPrice = parseNumeric(route.tripPrice); route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd); return route }
+function mapRoute(row: Record<string, unknown>): Route { const route = toCamelCase<Route>(row); if (!route) throw new Error('Cannot map null row to Route'); route.tripPrice = parseNumeric(route.tripPrice); return route }
 async function dynamicUpdate<T>(table: string, id: string, data: Record<string, unknown>, jsonFields: string[] = []): Promise<T | null> {
   const keys = Object.keys(data).filter((k) => data[k] !== undefined)
   if (keys.length === 0) {
@@ -85,12 +85,7 @@ export interface RouteWriteValues {
 
 export type PublishTransitionDecision =
   | { kind: 'idempotent'; route: Route }
-  | {
-      kind: 'proceed'
-      nextValues: RouteWriteValues
-      feeRequiredVnd: number
-      reservationDescription?: string
-    }
+  | { kind: 'proceed'; nextValues: RouteWriteValues }
 
 export async function createRoute(
   driverId: string,
@@ -184,17 +179,13 @@ export async function runPublishTransition(
   decide: (route: Route) => PublishTransitionDecision,
 ): Promise<Route> {
   return withTransaction(async (tx) => {
-    const route = await loadRouteForWalletTx(tx, id, mapRoute)
+    const route = await loadRouteForUpdateTx(tx, id)
     const decision = decide(route)
     if (decision.kind === 'idempotent') {
       return decision.route
     }
 
-    const { nextValues, feeRequiredVnd, reservationDescription } = decision
-
-    await reserveRouteFeeTx(tx, route, feeRequiredVnd, mapRoute, {
-      description: reservationDescription,
-    })
+    const { nextValues } = decision
 
     await tx.query(
       `

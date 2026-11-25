@@ -43,25 +43,9 @@ interface SeedRoute {
   departureWindowEndDate: string
   tripPrice: number
   distanceMeters?: number | null
-  feeRateVndPerKm?: number
-  feeRequiredVnd?: number
-  walletFeeStatus?: 'none' | 'reserved' | 'charged' | 'released' | 'refunded'
-  walletReservedAt?: string | null
-  walletChargedAt?: string | null
-  walletReleasedAt?: string | null
-  walletRefundedAt?: string | null
   notes: string
   status: string
   createdAt: string
-}
-
-interface SeedWallet {
-  id: string
-  driverId: string
-  balanceVnd: number
-  reservedBalanceVnd: number
-  createdAt: string
-  updatedAt: string
 }
 
 interface SeedPlan {
@@ -127,13 +111,6 @@ function makeRoute(
     destinationWardId: WARD_TD,
     destinationProvinceId: PROVINCE_HCM,
     distanceMeters: null,
-    feeRateVndPerKm: 0,
-    feeRequiredVnd: 0,
-    walletFeeStatus: 'none',
-    walletReservedAt: null,
-    walletChargedAt: null,
-    walletReleasedAt: null,
-    walletRefundedAt: null,
     notes: '',
     status: 'published',
     ...overrides,
@@ -291,25 +268,6 @@ const cars = [
   },
 ]
 
-const wallets: SeedWallet[] = [
-  {
-    id: 'wallet-001',
-    driverId: DRIVER_001_ID,
-    balanceVnd: 500000,
-    reservedBalanceVnd: 0,
-    createdAt: '2026-01-03 00:00:00.000',
-    updatedAt: '2026-01-03 00:00:00.000',
-  },
-  {
-    id: 'wallet-002',
-    driverId: DRIVER_002_ID,
-    balanceVnd: 250000,
-    reservedBalanceVnd: 0,
-    createdAt: '2026-01-04 00:00:00.000',
-    updatedAt: '2026-01-04 00:00:00.000',
-  },
-]
-
 const routes = [
   makeRoute({
     id: 'route-001',
@@ -383,8 +341,6 @@ export async function seed() {
     // Truncate all tables with FK checks disabled (MariaDB TRUNCATE does not support CASCADE)
     await conn.query('SET FOREIGN_KEY_CHECKS=0')
     for (const table of [
-      'wallet_transactions',
-      'wallets',
       'group_offers',
       'route_requests',
       'group_requests',
@@ -470,13 +426,11 @@ export async function seed() {
           origin_ward_id, origin_province_id,
           destination_ward_id, destination_province_id,
           departure_window_start_date, departure_window_end_date,
-          trip_price, distance_meters, fee_rate_vnd_per_km, fee_required_vnd,
-          wallet_fee_status, wallet_reserved_at, wallet_charged_at,
-          wallet_released_at, wallet_refunded_at, notes, status, created_at
+          trip_price, distance_meters, notes, status, created_at
         )
         VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?
         )
       `,
         [
@@ -493,36 +447,9 @@ export async function seed() {
           r.departureWindowEndDate,
           r.tripPrice,
           r.distanceMeters,
-          r.feeRateVndPerKm,
-          r.feeRequiredVnd,
-          r.walletFeeStatus,
-          r.walletReservedAt,
-          r.walletChargedAt,
-          r.walletReleasedAt,
-          r.walletRefundedAt,
           r.notes,
           r.status,
           r.createdAt,
-        ],
-      )
-    }
-
-    // Insert wallets
-    for (const wallet of wallets) {
-      await conn.query(
-        `
-        INSERT INTO wallets (
-          id, driver_id, balance_vnd, reserved_balance_vnd, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-      `,
-        [
-          wallet.id,
-          wallet.driverId,
-          wallet.balanceVnd,
-          wallet.reservedBalanceVnd,
-          wallet.createdAt,
-          wallet.updatedAt,
         ],
       )
     }

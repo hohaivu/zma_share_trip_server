@@ -11,12 +11,7 @@ import {
   getReviewEligibility as getTripReviewEligibility,
 } from './tripListRepository'
 import { findUserById } from './userRepository'
-import {
-  loadRouteForWalletTx,
-  refundRouteFeeTx,
-  releaseRouteFeeTx,
-  type DbQueryExecutor,
-} from './walletRepository'
+import type { DbQueryExecutor } from './routeAvailabilityRepository'
 import { cascadeDeclineSiblingsTx } from './matchCascade'
 
 function generateId(prefix: string): string {
@@ -27,7 +22,6 @@ export function mapRoute(row: Record<string, unknown>): Route {
   const route = toCamelCase<Route>(row)
   if (!route) throw new Error('Cannot map null row to Route')
   route.tripPrice = parseNumeric(route.tripPrice)
-  route.feeRequiredVnd = parseNumeric(route.feeRequiredVnd)
   return route
 }
 
@@ -96,21 +90,6 @@ export async function deleteSavedLocation(id: string): Promise<boolean> {
 
 type AcceptedJourneyMatch = Awaited<ReturnType<typeof findAcceptedRouteMatchTx>>
 
-async function unwindRouteFeeOnMatchedCancel(executor: DbQueryExecutor, route: Route): Promise<Route> {
-  switch (route.walletFeeStatus) {
-    case 'charged':
-      return refundRouteFeeTx(executor, route, mapRoute, { description: 'Route fee refunded on trip cancel' })
-    case 'reserved':
-      return releaseRouteFeeTx(executor, route, mapRoute, { description: 'Route fee released on trip cancel' })
-    case 'refunded':
-    case 'released':
-    case 'none':
-      return route
-    default:
-      throw new HttpError(409, `Cannot cancel matched route in fee state: ${route.walletFeeStatus}`)
-  }
-}
-
 async function cancelAcceptedMatchTx(executor: DbQueryExecutor, accepted: AcceptedJourneyMatch): Promise<void> {
   if (!accepted) return
   if (accepted.kind === 'route_request') {
@@ -124,14 +103,8 @@ async function cancelRouteTripTx(executor: DbQueryExecutor, route: Route): Promi
   if (route.status === 'canceled') return route
   const accepted = await findAcceptedRouteMatchTx(executor, route.id)
   if (accepted) {
-    route = await unwindRouteFeeOnMatchedCancel(executor, route)
     await cancelAcceptedMatchTx(executor, accepted)
-  } else if (route.walletFeeStatus === 'reserved') {
-    route = await releaseRouteFeeTx(executor, route, mapRoute, { description: 'Route fee released on route cancel' })
-  } else if (route.walletFeeStatus === 'charged') {
-    throw new HttpError(409, 'Cannot cancel an unmatched route after the fee has already been charged')
-  }
-  if (!accepted) {
+  } else {
     await cascadeDeclineSiblingsTx(executor, { routeId: route.id, planId: null })
   }
   await executor.query("UPDATE routes SET status = 'canceled' WHERE id = ?", [route.id])
@@ -143,9 +116,6 @@ async function cancelPlanTripTx(executor: DbQueryExecutor, plan: Plan): Promise<
   if (plan.status === 'canceled') return plan
   const accepted = await findAcceptedPlanMatchTx(executor, plan)
   if (accepted) {
-    const routeId = accepted.kind === 'route_request' ? accepted.request.routeId : accepted.offer.routeId
-    const route = await loadRouteForWalletTx(executor, routeId, mapRoute)
-    await unwindRouteFeeOnMatchedCancel(executor, route)
     await cancelAcceptedMatchTx(executor, accepted)
   } else {
     await cascadeDeclineSiblingsTx(executor, { routeId: null, planId: plan.id })

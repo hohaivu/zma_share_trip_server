@@ -9,9 +9,7 @@ import * as demandGroupRepository from '../src/repositories/demandGroupRepositor
 import * as groupRequestRepository from '../src/repositories/groupRequestRepository'
 import * as reviewRepository from '../src/repositories/reviewRepository'
 import { toCamelCase } from '../src/db/utils'
-import * as walletRepository from '../src/repositories/walletRepository'
 import * as carService from '../src/services/carService'
-import * as walletService from '../src/services/walletService'
 import * as driverRouteService from '../src/services/driverRouteService'
 import * as groupOfferService from '../src/services/groupOfferService'
 import * as groupRequestService from '../src/services/groupRequestService'
@@ -130,7 +128,7 @@ async function acceptRouteRequest(requestId: string): Promise<RouteRequest> {
   const request = toCamelCase<RouteRequest>(requestResult.rows[0])
   assert.ok(request)
   await query("UPDATE route_requests SET status = 'accepted' WHERE id = $1", [requestId])
-  await query("UPDATE routes SET status = 'matched', wallet_fee_status = 'charged' WHERE id = $1", [request.routeId])
+  await query("UPDATE routes SET status = 'matched' WHERE id = $1", [request.routeId])
   if (request.planId) {
     await query("UPDATE plans SET status = 'matched' WHERE id = $1", [request.planId])
   }
@@ -144,7 +142,7 @@ async function acceptGroupOffer(offerId: string): Promise<void> {
   const offer = result.rows[0]
   assert.ok(offer)
   await query("UPDATE group_offers SET status = 'accepted' WHERE id = $1", [offerId])
-  await query("UPDATE routes SET status = 'matched', wallet_fee_status = 'charged' WHERE id = $1", [offer.route_id])
+  await query("UPDATE routes SET status = 'matched' WHERE id = $1", [offer.route_id])
   await query("UPDATE plans SET status = 'matched' WHERE id = $1", [offer.plan_id])
   await query("UPDATE group_offers SET status = 'declined' WHERE route_id = $1 AND id != $2 AND status = 'pending'", [offer.route_id, offerId])
   await query("UPDATE route_requests SET status = 'declined' WHERE route_id = $1 AND status = 'pending'", [offer.route_id])
@@ -659,175 +657,6 @@ describe('POST /api/drivers/routes/list', () => {
   })
 })
 
-describe('driver wallet routes', () => {
-  it('returns wallet summary with derived balances and fee configuration', async () => {
-    await setupTestDb()
-    if (!isDbAvailable()) return
-
-    const wallet = await walletRepository.getOrCreateDriverWallet(DRIVER_001_ID)
-    await query(
-      `
-        UPDATE wallets
-        SET balance_vnd = $2,
-            reserved_balance_vnd = $3,
-            updated_at = NOW()
-        WHERE id = $1
-      `,
-      [wallet.id, 250000, 50000],
-    )
-
-    const res = await request(
-      server,
-      'POST',
-      '/api/drivers/wallet/get',
-      { driverId: DRIVER_001_ID },
-    )
-
-    assert.equal(res.status, 200)
-    assertOnlyEnvelopeKeys(res.body, ['data'])
-    assert.ok(res.body.data, 'expected success envelope { data }')
-    assert.equal(res.body.driverId, undefined, 'must not expose legacy bare wallet fields')
-    assert.equal(res.body.data.driverId, DRIVER_001_ID)
-    assert.equal(res.body.data.balanceVnd, 250000)
-    assert.equal(res.body.data.reservedBalanceVnd, 50000)
-    assert.equal(res.body.data.availableBalanceVnd, 200000)
-    assert.equal(res.body.data.feeRateVndPerKm, 500)
-    assert.equal(res.body.data.maxPublishableDistanceMeters, 400000)
-  })
-
-  it('lists wallet transactions in reverse chronological order after top-up activity', async () => {
-    await setupTestDb()
-    if (!isDbAvailable()) return
-
-    const wallet = await walletRepository.getOrCreateDriverWallet(DRIVER_001_ID)
-    await query(
-      `
-        INSERT INTO wallet_transactions (
-          id,
-          wallet_id,
-          driver_id,
-          route_id,
-          type,
-          amount_vnd,
-          balance_after_vnd,
-          reserved_balance_after_vnd,
-          description,
-          metadata,
-          created_at
-        )
-        VALUES
-          ($1, $2, $3, NULL, 'topup', $4, $5, 0, $6, $7, $8),
-          ($9, $2, $3, NULL, 'reservation', $10, $11, $12, $13, $14, $15)
-      `,
-      [
-        'wtx-wallet-older',
-        wallet.id,
-        DRIVER_001_ID,
-        120000,
-        620000,
-        'Older top-up',
-        JSON.stringify({ source: 'manual_top_up' }),
-        '2030-04-01T08:00:00.000Z',
-        'wtx-wallet-newer',
-        -50000,
-        620000,
-        50000,
-        'Reserved route fee',
-        JSON.stringify({ routeId: 'route-001' }),
-        '2030-04-01T09:00:00.000Z',
-      ],
-    )
-
-    const res = await request(
-      server,
-      'POST',
-      '/api/drivers/wallet/transactions/list',
-      { driverId: DRIVER_001_ID, limit: 2 },
-    )
-
-    assert.equal(res.status, 200)
-    assertOnlyEnvelopeKeys(res.body, ['data', 'meta'])
-    assert.ok(Array.isArray(res.body.data), 'expected envelope { data: [...] }')
-    assert.equal(res.body.items, undefined, 'must not expose legacy { items } wrapper')
-    assert.equal(res.body.data.length, 2)
-    assert.equal(res.body.meta?.count, 2)
-    assert.equal(res.body.data[0].id, 'wtx-wallet-newer')
-    assert.equal(res.body.data[0].type, 'reservation')
-    assert.equal(res.body.data[0].amountVnd, -50000)
-    assert.equal(res.body.data[0].description, 'Reserved route fee')
-    assert.equal(res.body.data[1].id, 'wtx-wallet-older')
-    assert.equal(res.body.data[1].type, 'topup')
-    assert.equal(res.body.data[1].amountVnd, 120000)
-    assert.equal(res.body.data[1].description, 'Older top-up')
-  })
-
-  it('creates a manual top-up and returns refreshed wallet state plus ledger row', async () => {
-    await setupTestDb()
-    if (!isDbAvailable()) return
-
-    const initialSummary = await walletService.getDriverWalletSummary(DRIVER_001_ID)
-
-    const res = await request(server, 'POST', '/api/drivers/wallet/topups/create', {
-      driverId: DRIVER_001_ID,
-      amountVnd: 150000,
-      description: 'API manual top-up test',
-    })
-
-    assert.equal(res.status, 201)
-    assertOnlyEnvelopeKeys(res.body, ['data'])
-    assert.ok(res.body.data, 'expected envelope { data } for created top-up')
-    assert.equal(res.body.summary, undefined, 'must not expose legacy top-level summary')
-    assert.equal(res.body.transaction, undefined, 'must not expose legacy top-level transaction')
-    assert.equal(res.body.data.summary.driverId, DRIVER_001_ID)
-    assert.equal(
-      res.body.data.summary.balanceVnd,
-      initialSummary.balanceVnd + 150000,
-    )
-    assert.equal(
-      res.body.data.summary.availableBalanceVnd,
-      initialSummary.availableBalanceVnd + 150000,
-    )
-    assert.equal(res.body.data.transaction.type, 'topup')
-    assert.equal(res.body.data.transaction.amountVnd, 150000)
-    assert.equal(res.body.data.transaction.description, 'API manual top-up test')
-
-    const summaryRes = await request(
-      server,
-      'POST',
-      '/api/drivers/wallet/get',
-      { driverId: DRIVER_001_ID },
-    )
-    assert.equal(summaryRes.status, 200)
-    assertOnlyEnvelopeKeys(summaryRes.body, ['data'])
-    assert.equal(
-      summaryRes.body.data.balanceVnd,
-      initialSummary.balanceVnd + 150000,
-    )
-  })
-
-  it('does not expose legacy singular driver wallet routes', async () => {
-    const legacySummaryRes = await request(
-      server,
-      'GET',
-      `/api/driver/wallet?driverId=${DRIVER_001_ID}`,
-    )
-    const legacyTransactionsRes = await request(
-      server,
-      'GET',
-      `/api/driver/wallet/transactions?driverId=${DRIVER_001_ID}&limit=2`,
-    )
-    const legacyTopUpRes = await request(server, 'POST', '/api/driver/wallet/topups', {
-      driverId: DRIVER_001_ID,
-      amountVnd: 150000,
-      description: 'Legacy route should not exist',
-    })
-
-    assert.equal(legacySummaryRes.status, 404)
-    assert.equal(legacyTransactionsRes.status, 404)
-    assert.equal(legacyTopUpRes.status, 404)
-  })
-})
-
 describe('POST /api/trips/cancel', () => {
   it('cancels a matched route and suppresses the accepted pairing in summary reads', async () => {
     await setupTestDb()
@@ -869,7 +698,6 @@ describe('POST /api/trips/cancel', () => {
     )
     assert.equal(cancelRes.status, 200)
     assert.equal(cancelRes.body.status, 'canceled')
-    assert.equal(cancelRes.body.walletFeeStatus, 'refunded')
 
     const summaryRes = await request(
       server,
@@ -879,6 +707,47 @@ describe('POST /api/trips/cancel', () => {
     )
     assert.equal(summaryRes.status, 200)
     assert.equal(summaryRes.body.accepted, null)
+  })
+
+  it('publishes, accepts and cancels a route and keeps distance_meters', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const route = await publishRoute(
+      (
+        await createRoute(DRIVER_001_ID, {
+          carId: 'car-001',
+          origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+          destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+          departureWindowStartDate: '2030-04-04T07:00:00.000Z',
+          tripPrice: 155000,
+          distanceMeters: 10000,
+        })
+      ).id,
+    )
+    const plan = await planService.createPlan(CLIENT_001_ID, {
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      originWardId: 'ward-cancel-nofee',
+      destinationWardId: 'ward-cancel-nofee-dest',
+      departureWindowStartDate: '2030-04-04T07:00:00.000Z',
+      departureWindowEndDate: '2030-04-04T07:30:00.000Z',
+      passengerCount: 1,
+    })
+    const routeRequest = await createRouteRequest(CLIENT_001_ID, plan.id, route.id)
+
+    const acceptRes = await request(server, 'POST', '/api/drivers/search-requests/accept', {
+      id: routeRequest.id,
+    })
+    assert.equal(acceptRes.status, 200)
+    assert.equal(acceptRes.body.status, 'accepted')
+
+    const cancelRes = await request(server, 'POST', '/api/trips/cancel', { id: route.id })
+    assert.equal(cancelRes.status, 200)
+    assert.equal(cancelRes.body.status, 'canceled')
+
+    const stored = await query('SELECT distance_meters FROM routes WHERE id = $1', [route.id])
+    assert.equal(Number(stored.rows[0].distance_meters), 10000)
   })
 })
 
@@ -2181,10 +2050,6 @@ describe('POST /api/clients/search-requests/create', () => {
 
     const acceptCreate = await createRequest('2030-04-07', 'ward-route-request-accept')
     assert.equal(acceptCreate.status, 201)
-    await walletService.topUpDriverWallet(DRIVER_001_ID, {
-      amountVnd: 1000000,
-      description: 'route request accept test',
-    })
     const acceptRes = await request(server, 'POST', '/api/drivers/search-requests/accept', {
       id: acceptCreate.body.id,
     })

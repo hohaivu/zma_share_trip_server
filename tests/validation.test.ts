@@ -3,9 +3,15 @@ import http from 'node:http'
 import { after, before, describe, it } from 'node:test'
 
 import express, { type Express, type Request, type Response } from 'express'
+import { z } from 'zod'
 
 import { validateSchema } from '../src/middleware/validate'
-import { manualTopUpBodySchema } from '../src/schemas/driverWallet'
+
+const itemBodySchema = z.object({
+  name: z.string().min(1),
+  quantity: z.number().int().positive(),
+  description: z.string().optional(),
+})
 
 /**
  * Smoke test for the zod-based request validation boundary.
@@ -68,8 +74,8 @@ before(async () => {
   const app: Express = express()
   app.use(express.json())
   app.post(
-    '/topups',
-    validateSchema('body', manualTopUpBodySchema),
+    '/items',
+    validateSchema('body', itemBodySchema),
     (req: Request, res: Response) => {
       invokedWithBody = req.body
       res.status(201).json({ ok: true, received: req.body })
@@ -89,26 +95,26 @@ after(async () => {
 describe('validateSchema middleware', () => {
   it('forwards valid payloads to the downstream handler', async () => {
     invokedWithBody = undefined
-    const res = await request(server, 'POST', '/topups', {
-      driverId: 'driver-1',
-      amountVnd: 50000,
-      description: 'first top up',
+    const res = await request(server, 'POST', '/items', {
+      name: 'item-1',
+      quantity: 5,
+      description: 'first item',
     })
 
     assert.equal(res.status, 201)
     assert.deepEqual(invokedWithBody, {
-      driverId: 'driver-1',
-      amountVnd: 50000,
-      description: 'first top up',
+      name: 'item-1',
+      quantity: 5,
+      description: 'first item',
     })
     assert.equal(res.body.ok, true)
   })
 
   it('returns the documented 400 envelope for invalid payloads', async () => {
     invokedWithBody = undefined
-    const res = await request(server, 'POST', '/topups', {
-      driverId: '',
-      amountVnd: -5,
+    const res = await request(server, 'POST', '/items', {
+      name: '',
+      quantity: -5,
     })
 
     assert.equal(res.status, 400)
@@ -125,10 +131,10 @@ describe('validateSchema middleware', () => {
     assert.equal(typeof issue.code, 'string')
   })
 
-  it('rejects non-integer amountVnd with a 400', async () => {
-    const res = await request(server, 'POST', '/topups', {
-      driverId: 'driver-1',
-      amountVnd: 12.5,
+  it('rejects non-integer quantity with a 400', async () => {
+    const res = await request(server, 'POST', '/items', {
+      name: 'item-1',
+      quantity: 12.5,
     })
 
     assert.equal(res.status, 400)
@@ -136,6 +142,6 @@ describe('validateSchema middleware', () => {
     const paths = res.body.error.issues.map((i: { path: unknown[] }) =>
       i.path.join('.'),
     )
-    assert.ok(paths.includes('amountVnd'))
+    assert.ok(paths.includes('quantity'))
   })
 })

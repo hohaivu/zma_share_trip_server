@@ -3,7 +3,7 @@ import { mapRows } from '../db/utils'
 import { HttpError } from '../http-error'
 import { GroupOffer, Plan, Route, RouteRequest } from '../types/entities'
 import { ReviewEligibility, WithReviewEligibility } from '../types/payloads'
-import { type DbQueryExecutor } from './walletRepository'
+import { type DbQueryExecutor } from './routeAvailabilityRepository'
 
 type AcceptedJourneyMatch =
   | { kind: 'route_request'; request: RouteRequest }

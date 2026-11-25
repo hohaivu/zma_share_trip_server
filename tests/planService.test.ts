@@ -14,7 +14,6 @@ import * as journeyRepository from '../src/repositories/journeyRepository'
 import * as planService from '../src/services/planService'
 import * as routeRequestService from '../src/services/routeRequestService'
 import * as userService from '../src/services/userService'
-import * as walletService from '../src/services/walletService'
 import {
   createDbTest,
   isDbAvailable,
@@ -56,13 +55,6 @@ const NORMALIZED_DESTINATION = {
   lat: 10.85,
   lng: 106.75,
   isVerified: true,
-}
-
-async function markRouteFeeReserved(routeId: string): Promise<void> {
-  await query(
-    "UPDATE routes SET wallet_fee_status = 'reserved', fee_required_vnd = COALESCE(fee_required_vnd, 0) WHERE id = $1",
-    [routeId],
-  )
 }
 
 // Note: require resets are not trivial in CJS, so tests use the shared
@@ -201,7 +193,6 @@ describe('MVC plan service client cancellation', () => {
       'plan-001',
       'route-002',
     )
-    await markRouteFeeReserved('route-002')
     await routeRequestService.acceptRouteRequest(request.id)
 
     await assert.rejects(
@@ -228,7 +219,6 @@ describe('MVC plan service client cancellation', () => {
       (offer) => offer.clientId === CLIENT_001_ID,
     )
     assert.ok(targetOffer)
-    await markRouteFeeReserved('route-001')
     await groupOfferService.acceptGroupOffer(targetOffer.id)
 
     await assert.rejects(

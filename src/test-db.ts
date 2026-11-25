@@ -11,8 +11,6 @@ const TABLES_IN_ORDER = [
   'notifications',
   'reports',
   'reviews',
-  'wallet_transactions',
-  'wallets',
   'saved_locations',
   'route_requests',
   'group_offers',
