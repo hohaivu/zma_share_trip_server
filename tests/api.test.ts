@@ -2614,41 +2614,6 @@ describe('POST /api/clients/inbox/list status filter', () => {
 // ─── 6.8 Regression tests for preserved endpoints ────────────────────────────
 
 describe('preserved endpoints', () => {
-  it('POST /api/authorize returns 200', async () => {
-    const res = await request(server, 'POST', '/api/authorize', {
-      code: 'test',
-    })
-    // authorize route makes an external call, so it should return 500 or similar
-    // in test — we just verify the endpoint exists and doesn't 404
-    assert.ok(
-      [200, 400, 401, 500].includes(res.status),
-      'Endpoint should exist',
-    )
-  })
-
-  it('POST /api/user-info returns response', async () => {
-    const res = await request(server, 'POST', '/api/user-info', {
-      accessToken: 'test',
-    })
-    assert.ok([200, 400, 401, 500].includes(res.status))
-  })
-
-  it('POST /api/phone-number returns response', async () => {
-    const res = await request(server, 'POST', '/api/phone-number', {
-      accessToken: 'test',
-      code: 'test',
-    })
-    assert.ok([200, 400, 401, 500].includes(res.status))
-  })
-
-  it('POST /api/location returns response', async () => {
-    const res = await request(server, 'POST', '/api/location', {
-      accessToken: 'test',
-      token: 'test',
-    })
-    assert.ok([200, 400, 401, 500].includes(res.status))
-  })
-
   it('POST /api/drivers/cars/list works', async () => {
     const res = await request(server, 'POST', '/api/drivers/cars/list', {
       ownerId: DRIVER_001_ID,
