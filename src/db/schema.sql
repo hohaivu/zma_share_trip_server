@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS routes (
   departure_window_start_date DATETIME(3) NOT NULL,
   departure_window_end_date DATETIME(3) NOT NULL,
   trip_price DECIMAL(12,2) NOT NULL,
-  distance_meters INTEGER,
+  distance_meters BIGINT,
   notes TEXT,
   status VARCHAR(50) DEFAULT 'draft',
   completed_at DATETIME(3),

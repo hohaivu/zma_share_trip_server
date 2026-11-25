@@ -749,6 +749,31 @@ describe('POST /api/trips/cancel', () => {
     const stored = await query('SELECT distance_meters FROM routes WHERE id = $1', [route.id])
     assert.equal(Number(stored.rows[0].distance_meters), 10000)
   })
+
+  it('publishes and reads back a distance above the signed INTEGER limit', async () => {
+    await setupTestDb()
+    if (!isDbAvailable()) return
+
+    const distanceMeters = 2147483648
+    const draft = await createRoute(DRIVER_001_ID, {
+      carId: 'car-001',
+      origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+      destination: { lat: 10.85, lng: 106.75, label: 'TD' },
+      departureWindowStartDate: '2030-04-05T07:00:00.000Z',
+      tripPrice: 155000,
+      distanceMeters,
+    })
+    assert.equal(draft.distanceMeters, distanceMeters)
+
+    const publishRes = await request(server, 'POST', '/api/drivers/routes/update', {
+      id: draft.id,
+      driverId: DRIVER_001_ID,
+      status: 'published',
+    })
+    assert.equal(publishRes.status, 200)
+    assert.equal(publishRes.body.status, 'published')
+    assert.equal((await getRoute(draft.id)).distanceMeters, distanceMeters)
+  })
 })
 
 describe('POST /api/trips/complete', () => {
