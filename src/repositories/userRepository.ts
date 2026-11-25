@@ -3,7 +3,7 @@ import { parseJsonb, parseNumeric, toCamelCase } from '../db/utils'
 import { HttpError } from '../http-error'
 import { listReportsByReporter as listReportsByReporterFromRepository } from './reportRepository'
 import { listReviewsByReviewer as listReviewsByReviewerFromRepository } from './reviewRepository'
-import { BootstrapSession, HostMode, Identity, User } from '../types/entities'
+import { BootstrapSession, Identity, User, UserMode } from '../types/entities'
 import { BootstrapResult, UpdateUserPayload } from '../types/payloads'
 
 export function mapUser(row: Record<string, unknown>): User {
@@ -65,9 +65,9 @@ function generateId(prefix: string): string {
 
 export async function bootstrapUser(
   mauid: string,
-  displayName: string | undefined,
-  avatarUrl: string | undefined,
-  mode: HostMode,
+  mode: UserMode,
+  displayName?: string,
+  avatarUrl?: string,
 ): Promise<BootstrapResult> {
   return withTransaction(async (tx) => {
     const existing = await tx.query('SELECT * FROM identities WHERE mauid = ?', [

@@ -1,7 +1,7 @@
 {
   "name": "cung-tuyen-api",
   "version": "1.0.0",
-  "description": "Cùng Tuyến — Zalo Mini App token exchange proxy server",
+  "description": "Cùng Tuyến — ride-sharing API server",
   "main": "dist/index.js",
   "scripts": {
     "start": "tsx src/index.ts",

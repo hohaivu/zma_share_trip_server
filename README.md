@@ -7,10 +7,7 @@ TypeScript-authored Express API backed by Postgres for bootstrap, matching, trip
 | Method | Path                | Description                                |
 | ------ | ------------------- | ------------------------------------------ |
 | GET    | `/health`           | Server health check                        |
-| POST   | `/api/authorize`    | Validate access token, return user profile |
-| POST   | `/api/user-info`    | Get user profile from access token         |
-| POST   | `/api/phone-number` | Exchange phone token → phone number        |
-| POST   | `/api/location`     | Exchange location token → GPS coords       |
+| POST   | `/api/auth`         | Exchange host API key/secret for a token   |
 | GET    | `/api/vnmap/place/autocomplete` | Proxy VNMap autocomplete      |
 | GET    | `/api/vnmap/place/details`      | Proxy VNMap place detail       |
 | GET    | `/api/vnmap/directions`         | Proxy VNMap directions         |

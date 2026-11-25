@@ -1,5 +1,5 @@
-/** Persona mode of the host app, fixed by the verified API key. */
-export type HostMode = 'client' | 'driver'
+/** Persona mode: the host app's role, fixed by its verified API key. */
+export type UserMode = 'client' | 'driver'
 
 export interface Location {
   label?: string

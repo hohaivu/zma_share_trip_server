@@ -1,8 +1,6 @@
 import express from 'express'
 
 import { Kernel, Provider } from '../kernel'
-import { requireAuth } from '../middleware/requireAuth'
-import authRoute from '../routes/authRoutes'
 import bootstrapRoute from '../routes/bootstrap'
 import carsRoute from '../routes/cars'
 import clientMatchesRoute from '../routes/clientMatches'
@@ -29,9 +27,6 @@ const routeGroups: Array<[string, express.Router[]]> = [
 export const routeProvider: Provider = {
   name: 'routes',
   register(kernel: Kernel) {
-    // POST /api/auth is public; everything else under /api (incl. /api/drivers, /api/clients) needs a token.
-    kernel.app.use('/api', authRoute)
-    kernel.app.use('/api', requireAuth)
     for (const [prefix, routers] of routeGroups) {
       for (const router of routers) kernel.app.use(prefix, router)
     }

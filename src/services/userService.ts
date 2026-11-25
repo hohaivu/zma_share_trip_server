@@ -3,7 +3,7 @@ import * as notificationService from './notificationService'
 import * as reportService from './reportService'
 import * as reviewService from './reviewService'
 import * as userRepository from '../repositories/userRepository'
-import { AppNotification, BootstrapSession, HostMode, Report, Review, User } from '../types/entities'
+import { AppNotification, BootstrapSession, Report, Review, User, UserMode } from '../types/entities'
 import {
   CreateNotificationPayload,
   CreateReportPayload,
@@ -35,11 +35,11 @@ function assertValidMode(mode: string): void {
 
 export async function bootstrapUser(
   mauid: string,
-  displayName: string | undefined,
-  avatarUrl: string | undefined,
-  mode: HostMode,
+  mode: UserMode,
+  displayName?: string,
+  avatarUrl?: string,
 ): Promise<BootstrapResult> {
-  return userRepository.bootstrapUser(mauid, displayName, avatarUrl, mode)
+  return userRepository.bootstrapUser(mauid, mode, displayName, avatarUrl)
 }
 
 export async function getUser(userId: string): Promise<User | null> {
@@ -48,7 +48,7 @@ export async function getUser(userId: string): Promise<User | null> {
 
 export async function assertUserRole(
   userId: string,
-  role: 'driver' | 'client',
+  role: UserMode,
 ): Promise<void> {
   const user = await getUser(userId)
   if (!user) throw new HttpError(404, 'User not found')

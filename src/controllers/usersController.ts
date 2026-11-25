@@ -66,9 +66,9 @@ export function createUsersController(): UsersController {
 
       const { session, wasCreated } = await userService.bootstrapUser(
         mauid,
+        res.locals.mode,
         displayName,
-        avatarUrl ?? '',
-        res.locals.hostMode,
+        avatarUrl,
       )
 
       res.status(wasCreated ? 201 : 200).json(session)

@@ -18,9 +18,7 @@ describe('authService', () => {
       ['client', 'test-client-key', 'test-client-secret'],
       ['driver', 'test-driver-key', 'test-driver-secret'],
     ] as const) {
-      const issued = issueToken(key, secret)
-      assert.equal(issued.mode, mode)
-      assert.deepEqual(verifyAuthorization(header(key, issued.token)), { apiKey: key, mode })
+      assert.equal(verifyAuthorization(header(key, issueToken(key, secret))), mode)
     }
   })
 
@@ -40,7 +38,7 @@ describe('authService', () => {
       assert.throws(() => issueToken('', ''), is401)
       process.env.CLIENT_API_KEY = saved.CLIENT_API_KEY
       process.env.CLIENT_API_SECRET = saved.CLIENT_API_SECRET
-      const { token } = issueToken('test-client-key', 'test-client-secret')
+      const token = issueToken('test-client-key', 'test-client-secret')
       delete process.env.AUTH_TOKEN_SECRET
       assert.throws(() => issueToken('test-client-key', 'test-client-secret'), is401)
       assert.throws(() => verifyAuthorization(header('test-client-key', token)), is401)
@@ -50,8 +48,8 @@ describe('authService', () => {
   })
 
   it('rejects missing, malformed, and tampered headers with 401 (never 500)', () => {
-    const { token } = issueToken('test-client-key', 'test-client-secret')
-    const [payload, signature] = token.split('.')
+    const token = issueToken('test-client-key', 'test-client-secret')
+    const [exp, signature] = token.split('.')
     const flip = (s: string, i: number) => s.slice(0, i) + (s[i] === 'A' ? 'B' : 'A') + s.slice(i + 1)
     const bad: Array<string | undefined> = [
       undefined,
@@ -62,28 +60,28 @@ describe('authService', () => {
       `Basic ${Buffer.from('nocolon').toString('base64')}`,
       `Basic ${Buffer.from(`:${token}`).toString('base64')}`,
       header('test-client-key', 'garbage'),
-      header('test-client-key', `${payload}.`),
-      header('test-client-key', `${payload}.${signature}.extra`),
-      header('test-client-key', `${flip(payload, 3)}.${signature}`),
-      header('test-client-key', `${payload}.${flip(signature, 3)}`),
+      header('test-client-key', `${exp}.`),
+      header('test-client-key', `${exp}.${signature}.extra`),
+      header('test-client-key', `${Number(exp) + 1}.${signature}`),
+      header('test-client-key', `${exp}.${flip(signature, 3)}`),
     ]
     for (const value of bad) assert.throws(() => verifyAuthorization(value), is401, String(value))
   })
 
   it('rejects a token used with another configured apiKey', () => {
-    const { token } = issueToken('test-client-key', 'test-client-secret')
+    const token = issueToken('test-client-key', 'test-client-secret')
     assert.throws(() => verifyAuthorization(header('test-driver-key', token)), is401)
   })
 
   it('rejects an expired token', () => {
     const now = Date.now()
-    const { token } = issueToken('test-client-key', 'test-client-secret')
+    const token = issueToken('test-client-key', 'test-client-secret')
     mock.method(Date, 'now', () => now + 24 * 60 * 60 * 1000 + 1)
     assert.throws(() => verifyAuthorization(header('test-client-key', token)), is401)
   })
 
   it('rejects a token whose key is no longer configured', () => {
-    const { token } = issueToken('test-client-key', 'test-client-secret')
+    const token = issueToken('test-client-key', 'test-client-secret')
     process.env.CLIENT_API_KEY = 'rotated-key'
     try {
       assert.throws(() => verifyAuthorization(header('test-client-key', token)), is401)

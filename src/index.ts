@@ -2,6 +2,7 @@ import 'dotenv/config'
 
 import { checkConnection } from './db/connection'
 import { createKernel } from './kernel'
+import { authProvider } from './providers/authProvider'
 import { errorProvider } from './providers/errorProvider'
 import { healthProvider } from './providers/healthProvider'
 import { httpProvider } from './providers/httpProvider'
@@ -11,6 +12,7 @@ const PORT = process.env.PORT || 3010
 
 const kernel = createKernel()
   .register(httpProvider)
+  .register(authProvider)
   .register(routeProvider)
   .register(healthProvider)
   .register(errorProvider) // MUST be last (error middleware)
